@@ -22,6 +22,16 @@ export class GenreRepository {
     });
   }
 
+  static async list(db: DbClient = prisma) {
+    return db.genre.findMany();
+  }
+
+  static async findById(id: string, db: DbClient = prisma) {
+    return db.genre.findUnique({
+      where: { id },
+    });
+  }
+
   static async linkMovieGenre(movieId: string, genreId: string, db: DbClient = prisma) {
     return db.movieGenre.create({
       data: { movieId, genreId },

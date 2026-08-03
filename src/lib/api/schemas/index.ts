@@ -24,10 +24,45 @@ export const ImportSchema = z.object({
 /**
  * Movie Update Schema (Example for Admin edits)
  */
-export const MovieUpdateSchema = z.object({
-  title: z.string().min(1, 'Title is required').optional(),
+export const MovieAdminUpdateSchema = z.object({
+  title: z.string().min(1, "Title is required").optional(),
   synopsis: z.string().optional(),
-  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
+  status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
+  lockedFields: z.array(z.string()).optional(),
+});
+
+/**
+ * Genre Update Schema
+ */
+export const GenreUpdateSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().min(1).optional(),
+});
+
+/**
+ * Tag Update Schema
+ */
+export const TagUpdateSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().min(1).optional(),
+});
+
+/**
+ * Collection Update Schema
+ */
+export const CollectionUpdateSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  isActive: z.boolean().optional(),
+});
+
+/**
+ * SEO Update Schema
+ */
+export const SeoUpdateSchema = z.object({
+  metaTitle: z.string().optional(),
+  metaDescription: z.string().optional(),
+  canonicalUrl: z.string().url().optional().nullable(),
 });
 
 /**
