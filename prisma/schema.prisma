@@ -7,30 +7,94 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // -----------------------------------------------------------------------------
-// Better Auth Core Tables
+// Enums
+// -----------------------------------------------------------------------------
+
+enum MovieStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TrailerSource {
+  YOUTUBE
+  VIMEO
+  NATIVE
+}
+
+enum TrailerType {
+  TEASER
+  TRAILER
+  FEATURETTE
+  CLIP
+}
+
+enum TrailerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PersonRoleType {
+  DIRECTOR
+  ACTOR
+  WRITER
+  PRODUCER
+}
+
+enum HomepageSectionType {
+  AUTO_RECENT
+  AUTO_UPCOMING
+  MANUAL_COLLECTION
+  AD_SLOT
+}
+
+enum SettingType {
+  STRING
+  BOOLEAN
+  INTEGER
+  JSON
+}
+
+enum AuditActionType {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum ImportJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+// -----------------------------------------------------------------------------
+// Better Auth Core & Admin Security (Phase 3)
 // -----------------------------------------------------------------------------
 
 model User {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  email         String   @unique
+  emailVerified Boolean  @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Custom fields per Phase 3 requirements (admin_users mapping)
-  roleId        String?
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  sessions      Session[]
-  accounts      Account[]
-  
+  // Admin / CMS extensions
+  roleId      String?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  sessions  Session[]
+  accounts  Account[]
+  auditLogs AuditLog[]
+  favorites UserFavorite[]
+  role      Role?          @relation(fields: [roleId], references: [id])
+
   @@map("users")
 }
 
@@ -43,9 +107,9 @@ model Session {
   userAgent String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("sessions")
 }
 
@@ -61,9 +125,9 @@ model Account {
   password     String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("accounts")
 }
 
@@ -74,33 +138,441 @@ model Verification {
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  
+
   @@map("verifications")
 }
 
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id     String           @id @default(cuid())
+  action String           @unique
+  roles  RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model AuditLog {
+  id         String          @id @default(cuid())
+  userId     String?
+  actionType AuditActionType
+  entityType String
+  entityId   String
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  createdAt  DateTime        @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
 // -----------------------------------------------------------------------------
-// Core Domain Models (Stubs based on Phase 3)
+// Core Domain (Movies, Trailers)
 // -----------------------------------------------------------------------------
 
 model Movie {
-  id          String   @id @default(cuid())
-  title       String
-  slug        String   @unique
-  releaseDate DateTime?
-  overview    String?  @db.Text
-  posterUrl   String?
-  backdropUrl String?
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
-  
+  id             String      @id @default(cuid())
+  title          String
+  slug           String      @unique
+  originalTitle  String?
+  synopsis       String?     @db.Text
+  releaseDate    DateTime
+  status         MovieStatus @default(DRAFT)
+  runtimeMinutes Int?
+  mpaaRating     String?
+  posterUrl      String?
+  backdropUrl    String?
+  tmdbId         Int?        @unique
+  lockedFields   Json?       @default("[]") // Array of strings protecting fields from sync
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  trailers    Trailer[]
+  people      MoviePerson[]
+  genres      MovieGenre[]
+  tags        MovieTag[]
+  countries   MovieCountry[]
+  languages   MovieLanguage[]
+  companies   MovieCompany[]
+  collections CollectionMovie[]
+  favorites   UserFavorite[]
+  featuredIn  FeaturedItem[]
+
+  @@index([releaseDate])
+  @@index([status])
+  @@index([status, releaseDate])
   @@map("movies")
 }
 
-model Role {
+model Trailer {
+  id              String        @id @default(cuid())
+  movieId         String
+  title           String
+  sourceType      TrailerSource @default(YOUTUBE)
+  sourceId        String
+  videoType       TrailerType
+  isPrimary       Boolean
+  publishedDate   DateTime?
+  durationSeconds Int?
+  thumbnailUrl    String?
+  status          TrailerStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([movieId, sourceId]) // Prevent duplicate videos per movie
+  @@index([movieId, isPrimary])
+  @@map("trailers")
+}
+
+// -----------------------------------------------------------------------------
+// People (Cast & Crew)
+// -----------------------------------------------------------------------------
+
+model Person {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  biography   String? @db.Text
+  headshotUrl String?
+  tmdbId      Int?    @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MoviePerson[]
+
+  @@map("people")
+}
+
+model MoviePerson {
+  movieId       String
+  personId      String
+  roleType      PersonRoleType
+  characterName String? // Only for ACTOR
+  sortOrder     Int?
+
+  movie  Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, personId, roleType])
+  @@map("movie_people")
+}
+
+// -----------------------------------------------------------------------------
+// Taxonomy & Classification
+// -----------------------------------------------------------------------------
+
+model Genre {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String? @db.Text
+  tmdbId      Int?    @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MovieGenre[]
+
+  @@map("genres")
+}
+
+model MovieGenre {
+  movieId String
+  genreId String
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, genreId])
+  @@map("movie_genres")
+}
+
+model Tag {
   id   String @id @default(cuid())
-  name String @unique
-  
-  @@map("roles")
+  name String
+  slug String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MovieTag[]
+
+  @@map("tags")
+}
+
+model MovieTag {
+  movieId String
+  tagId   String
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, tagId])
+  @@map("movie_tags")
+}
+
+model Country {
+  id      String @id @default(cuid())
+  isoCode String @unique
+  name    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MovieCountry[]
+
+  @@map("countries")
+}
+
+model MovieCountry {
+  movieId   String
+  countryId String
+
+  movie   Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, countryId])
+  @@map("movie_countries")
+}
+
+model Language {
+  id      String @id @default(cuid())
+  isoCode String @unique
+  name    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MovieLanguage[]
+
+  @@map("languages")
+}
+
+model MovieLanguage {
+  movieId    String
+  languageId String
+
+  movie    Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, languageId])
+  @@map("movie_languages")
+}
+
+model ProductionCompany {
+  id      String  @id @default(cuid())
+  name    String
+  slug    String  @unique
+  logoUrl String?
+  tmdbId  Int?    @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MovieCompany[]
+
+  @@map("production_companies")
+}
+
+model MovieCompany {
+  movieId   String
+  companyId String
+
+  movie   Movie             @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  company ProductionCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, companyId])
+  @@map("movie_companies")
+}
+
+// -----------------------------------------------------------------------------
+// Content Management & Curation
+// -----------------------------------------------------------------------------
+
+model Collection {
+  id          String  @id @default(cuid())
+  title       String
+  slug        String  @unique
+  description String? @db.Text
+  isActive    Boolean @default(false)
+
+  movies   CollectionMovie[]
+  sections HomepageSection[]
+
+  @@map("collections")
+}
+
+model CollectionMovie {
+  collectionId String
+  movieId      String
+  sortOrder    Int    @default(0)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  movie      Movie      @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, movieId])
+  @@map("collection_movies")
+}
+
+model HomepageSection {
+  id           String              @id @default(cuid())
+  title        String
+  type         HomepageSectionType
+  collectionId String?
+  sortOrder    Int                 @default(0)
+  isActive     Boolean             @default(true)
+
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  @@map("homepage_sections")
+}
+
+model FeaturedItem {
+  id                String    @id @default(cuid())
+  movieId           String
+  customHeadline    String?
+  customBackdropUrl String?
+  sortOrder         Int       @default(0)
+  isActive          Boolean   @default(true)
+  startDate         DateTime?
+  endDate           DateTime?
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@map("featured_items")
+}
+
+// -----------------------------------------------------------------------------
+// SEO & Media Assets (Polymorphic Pattern)
+// -----------------------------------------------------------------------------
+
+model SeoPage {
+  id              String  @id @default(cuid())
+  seoableType     String // e.g., "Movie", "Genre", "Page"
+  seoableId       String // Polymorphic ID
+  routePath       String? @unique // Used for static routes
+  metaTitle       String?
+  metaDescription String? @db.Text
+  canonicalUrl    String?
+  ogImageUrl      String?
+  isNoindex       Boolean @default(false)
+  inSitemap       Boolean @default(true)
+
+  @@unique([seoableType, seoableId])
+  @@index([routePath])
+  @@map("seo_pages")
+}
+
+model MediaAsset {
+  id             String @id @default(cuid())
+  assetableType  String
+  assetableId    String
+  collectionName String
+  fileName       String
+  mimeType       String
+  diskPath       String
+  fileSizeBytes  Int
+  metadata       Json? // e.g., { width: 1920, height: 1080 }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetableType, assetableId])
+  @@map("media_assets")
+}
+
+// -----------------------------------------------------------------------------
+// System Settings
+// -----------------------------------------------------------------------------
+
+model Setting {
+  id    String      @id @default(cuid())
+  key   String      @unique
+  value String      @db.Text
+  type  SettingType
+  group String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// -----------------------------------------------------------------------------
+// Telemetry & Sync
+// -----------------------------------------------------------------------------
+
+model SearchLog {
+  id           String   @id @default(cuid())
+  query        String
+  resultsCount Int
+  sessionId    String?
+  createdAt    DateTime @default(now())
+
+  @@map("search_logs")
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  eventName  String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("analytics_events")
+}
+
+model ImportJob {
+  id         String          @id @default(cuid())
+  tmdbId     Int
+  entityType String          @default("Movie") // e.g., "Movie", "Person"
+  status     ImportJobStatus @default(PENDING)
+  logs       Json? // Storing sync success/error traces
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("import_jobs")
+}
+
+model UserFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  movieId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@map("user_favorites")
 }
