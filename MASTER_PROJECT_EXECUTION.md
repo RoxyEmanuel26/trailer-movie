@@ -433,3 +433,10 @@ The first executable document will be:
 Phase 1 — Research Architecture
 
 Nothing else.
+
+Presentation Layer (React/UI) tidak boleh mengakses Prisma secara langsung.
+API Route tidak boleh berisi business logic.
+Business logic hanya berada di Domain Service.
+Repository hanya menangani operasi database.
+External API (TMDB) hanya boleh diakses melalui TMDB Client.
+Tidak boleh ada circular dependency antar layer.
