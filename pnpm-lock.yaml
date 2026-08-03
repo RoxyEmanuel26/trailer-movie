@@ -26,6 +26,9 @@ importers:
       slugify:
         specifier: ^1.6.9
         version: 1.6.9
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4
