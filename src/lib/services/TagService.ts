@@ -16,6 +16,12 @@ export class TagService {
     return tag;
   }
 
+  static async getBySlug(slug: string) {
+    const tag = await TagRepository.findBySlug(slug);
+    if (!tag) throw new NotFoundError(`Tag with slug ${slug} not found`);
+    return tag;
+  }
+
   static async createTag(data: { name: string }) {
     const slug = generateSlug(data.name);
     

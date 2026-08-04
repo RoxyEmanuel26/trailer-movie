@@ -72,6 +72,7 @@ export class HomepageRepository {
           select: {
             id: true,
             title: true,
+            slug: true,
             backdropUrl: true,
             posterUrl: true,
             releaseDate: true,

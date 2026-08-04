@@ -14,6 +14,20 @@ export class MovieRepository {
     });
   }
 
+  static async findBySlug(slug: string, db: DbClient = prisma) {
+    return db.movie.findUnique({
+      where: { slug },
+      include: {
+        genres: { include: { genre: true } },
+        people: { include: { person: true }, orderBy: { sortOrder: 'asc' } },
+        trailers: true,
+        collections: { include: { collection: true } },
+        tags: { include: { tag: true } },
+        companies: { include: { company: true } },
+      },
+    });
+  }
+
   static async findByTmdbId(tmdbId: number, db: DbClient = prisma) {
     return db.movie.findUnique({
       where: { tmdbId },

@@ -16,6 +16,12 @@ export class GenreService {
     return genre;
   }
 
+  static async getBySlug(slug: string) {
+    const genre = await GenreRepository.findBySlug(slug);
+    if (!genre) throw new NotFoundError(`Genre with slug ${slug} not found`);
+    return genre;
+  }
+
   static async createGenre(data: { name: string; description?: string | null }) {
     const slug = generateSlug(data.name);
     

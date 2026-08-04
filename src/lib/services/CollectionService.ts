@@ -24,6 +24,12 @@ export class CollectionService {
     return collection;
   }
 
+  static async getBySlug(slug: string) {
+    const collection = await CollectionRepository.findBySlug(slug);
+    if (!collection) throw new NotFoundError(`Collection with slug ${slug} not found`);
+    return collection;
+  }
+
   static async createCollection(data: CollectionData) {
     const slug = generateSlug(data.title);
     
