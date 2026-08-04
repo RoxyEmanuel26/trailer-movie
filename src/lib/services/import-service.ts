@@ -23,6 +23,16 @@ export class SyncService {
         ? (existingMovie?.lockedFields as string[])
         : [];
 
+      let primaryTrailerId = null;
+      if (videos && videos.results) {
+        const trailers = videos.results.filter(
+          (v: any) => v.site === 'YouTube' && v.type === 'Trailer'
+        );
+        if (trailers.length > 0) {
+          primaryTrailerId = trailers[0].key;
+        }
+      }
+
       const movieData = mapTmdbMovieToPrisma(tmdbMovie, lockedFields);
 
       // Orchestrate standard Prisma transaction for atomicity
@@ -35,8 +45,12 @@ export class SyncService {
               title: movieData.title!,
               slug: movieData.slug!,
               releaseDate: movieData.releaseDate!,
+              youtubeTrailerId: lockedFields.includes('trailers') ? existingMovie?.youtubeTrailerId : primaryTrailerId,
             } as any,
-            movieData,
+            {
+              ...movieData,
+              youtubeTrailerId: lockedFields.includes('trailers') ? undefined : primaryTrailerId,
+            },
             tx
           );
 

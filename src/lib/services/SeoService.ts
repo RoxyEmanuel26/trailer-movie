@@ -149,7 +149,7 @@ export class SeoService {
     }
     
     if (type === 'Movie') {
-      return {
+      const schema: any = {
         '@context': 'https://schema.org',
         '@type': 'Movie',
         name: data.title,
@@ -160,6 +160,19 @@ export class SeoService {
         actor: data.actors?.map((a: any) => ({ '@type': 'Person', name: a.name })),
         genre: data.genre?.name,
       };
+
+      if (data.youtubeTrailerId) {
+        schema.trailer = {
+          '@type': 'VideoObject',
+          name: `${data.title} Trailer`,
+          description: data.description || `Trailer for ${data.title}`,
+          thumbnailUrl: data.image || `https://img.youtube.com/vi/${data.youtubeTrailerId}/maxresdefault.jpg`,
+          embedUrl: `https://www.youtube.com/embed/${data.youtubeTrailerId}`,
+          uploadDate: data.releaseDate,
+        };
+      }
+
+      return schema;
     }
 
     if (type === 'CollectionPage') {

@@ -28,6 +28,7 @@ export const MovieAdminUpdateSchema = z.object({
   title: z.string().min(1, "Title is required").optional(),
   synopsis: z.string().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
+  youtubeTrailerId: z.string().optional().nullable(),
   lockedFields: z.array(z.string()).optional(),
 });
 

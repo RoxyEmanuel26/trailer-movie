@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 
+import { extractYouTubeId } from "@/lib/utils/youtube"
+
 export function MovieEditDialog({
   movie,
   open,
@@ -25,15 +27,24 @@ export function MovieEditDialog({
 }) {
   const router = useRouter()
   const [title, setTitle] = React.useState("")
+  const [youtubeTrailerId, setYoutubeTrailerId] = React.useState("")
   const [lockedFields, setLockedFields] = React.useState<string[]>([])
   const [isSaving, setIsSaving] = React.useState(false)
 
   React.useEffect(() => {
     if (movie) {
       setTitle(movie.title)
+      setYoutubeTrailerId(movie.youtubeTrailerId || "")
       setLockedFields(movie.lockedFields || [])
     }
   }, [movie])
+
+  const handleYoutubeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    // If they paste a full URL, extract the ID. Otherwise allow them to type.
+    const extracted = extractYouTubeId(val)
+    setYoutubeTrailerId(extracted || val)
+  }
 
   const handleSave = async () => {
     if (!movie) return
@@ -44,6 +55,7 @@ export function MovieEditDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           title, 
+          youtubeTrailerId: youtubeTrailerId || null,
           lockedFields 
         }),
       })
@@ -66,9 +78,12 @@ export function MovieEditDialog({
 
   if (!movie) return null
 
+  // If the youtubeTrailerId is exactly 11 chars, we assume it's a valid ID for preview
+  const isValidPreview = youtubeTrailerId && youtubeTrailerId.length === 11
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Movie: {movie.title}</DialogTitle>
         </DialogHeader>
@@ -81,6 +96,32 @@ export function MovieEditDialog({
               placeholder="Movie Title"
             />
           </div>
+          
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">YouTube Trailer</label>
+            <Input
+              value={youtubeTrailerId}
+              onChange={handleYoutubeChange}
+              placeholder="Paste YouTube URL or Video ID"
+            />
+            {isValidPreview && (
+              <div className="mt-2 aspect-video overflow-hidden rounded-md border bg-muted">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src={`https://www.youtube-nocookie.com/embed/${youtubeTrailerId}?rel=0&modestbranding=1`}
+                  title="YouTube video player"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                ></iframe>
+              </div>
+            )}
+            {!isValidPreview && youtubeTrailerId.length > 0 && (
+              <p className="text-sm text-destructive">Invalid YouTube ID or URL.</p>
+            )}
+          </div>
+
           <div className="grid gap-2">
             <label className="text-sm font-medium">Locked Fields (Prevent TMDB Overwrite)</label>
             <div className="flex items-center space-x-2">
@@ -98,6 +139,14 @@ export function MovieEditDialog({
                 onCheckedChange={() => toggleLock("synopsis")}
               />
               <label htmlFor="lock-synopsis" className="text-sm font-medium leading-none">Synopsis</label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="lock-trailers" 
+                checked={lockedFields.includes("trailers")} 
+                onCheckedChange={() => toggleLock("trailers")}
+              />
+              <label htmlFor="lock-trailers" className="text-sm font-medium leading-none">Trailers</label>
             </div>
           </div>
         </div>

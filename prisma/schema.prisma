@@ -206,6 +206,7 @@ model Movie {
   posterUrl      String?
   backdropUrl    String?
   tmdbId         Int?        @unique
+  youtubeTrailerId String?
   lockedFields   Json?       @default("[]") // Array of strings protecting fields from sync
 
   createdAt DateTime  @default(now())

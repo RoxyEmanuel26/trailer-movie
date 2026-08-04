@@ -6,7 +6,7 @@ import { Calendar, Clock, Star, Users, Film } from 'lucide-react';
 
 import { MovieService } from '@/lib/services/MovieService';
 import { SeoService } from '@/lib/services/SeoService';
-import { TrailerPlayerPlaceholder } from '@/components/public/TrailerPlayerPlaceholder';
+import { YouTubePlayer } from '@/components/public/YouTubePlayer';
 import { MovieCard } from '@/components/public/MovieCard';
 import { badgeVariants } from '@/components/ui/badge';
 
@@ -52,6 +52,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
     directors: directors.map((d) => ({ name: d.person.name })),
     actors: cast.map((a) => ({ name: a.person.name })),
     genre: movie.genres[0]?.genre,
+    youtubeTrailerId: movie.youtubeTrailerId,
   });
 
   const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
@@ -68,7 +69,18 @@ export default async function MovieDetailPage({ params }: PageProps) {
       {/* Media Player Section */}
       <section className="bg-black w-full border-b">
         <div className="container mx-auto max-w-6xl py-8 px-4">
-          <TrailerPlayerPlaceholder backdropUrl={movie.backdropUrl} title={movie.title} />
+          {movie.youtubeTrailerId ? (
+            <YouTubePlayer 
+              youtubeId={movie.youtubeTrailerId} 
+              title={movie.title} 
+              thumbnailUrl={movie.backdropUrl || undefined} 
+            />
+          ) : (
+            <div className="w-full aspect-video bg-muted flex flex-col items-center justify-center rounded-lg border border-border">
+              <Film className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
+              <p className="text-muted-foreground font-medium">Trailer not available</p>
+            </div>
+          )}
         </div>
       </section>
 
