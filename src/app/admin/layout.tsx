@@ -18,6 +18,8 @@ const mockRequireAdmin = async () => {
 import { SessionProvider } from "@/components/auth/SessionProvider"
 import { AdminLayoutClient } from "@/components/admin/layout/AdminLayoutClient"
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminLayout({
   children,
 }: {

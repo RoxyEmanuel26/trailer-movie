@@ -1,0 +1,16 @@
+.dockerignore
+Dockerfile
+.git
+.gitignore
+.prettierrc
+eslint.config.mjs
+node_modules
+npm-debug.log
+README.md
+.next
+.env*
+docs
+.agents
+.claude
+.windsurf
+! .env.example

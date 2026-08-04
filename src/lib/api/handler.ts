@@ -4,6 +4,7 @@ import { AppError } from '../errors';
 import { ZodError } from 'zod';
 import { rateLimit } from '../security/rateLimiter';
 import { Prisma } from '@prisma/client';
+import { logger } from '../logger';
 
 type ApiHandler<T = any> = (
   request: NextRequest,
@@ -23,7 +24,7 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
 
       return await handler(request, context);
     } catch (error: any) {
-      console.error('[API_ERROR]', error);
+      logger.error({ err: error }, '[API_ERROR] Uncaught exception in API handler');
 
       // Handle Zod Validation Errors
       if (error instanceof ZodError) {

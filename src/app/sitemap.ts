@@ -1,6 +1,8 @@
 import { MetadataRoute } from 'next';
 import { SeoService } from '@/lib/services/SeoService';
 
+export const dynamic = 'force-dynamic';
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const data = await SeoService.generateSitemapData();
   
