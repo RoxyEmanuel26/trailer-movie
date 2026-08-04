@@ -38,4 +38,8 @@ export class AnalyticsService {
       totalSearchesAnalyzed: 'All-time (Database Aggregation)', // We don't limit to 1000 anymore
     };
   }
+
+  static async listAdminActivity(skip: number, take: number) {
+    return AnalyticsRepository.listAdminActivity(skip, take);
+  }
 }

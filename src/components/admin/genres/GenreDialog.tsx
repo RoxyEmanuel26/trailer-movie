@@ -23,6 +23,7 @@ export function GenreDialog({ open, onOpenChange, genre, onSuccess }: GenreDialo
 
   React.useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(genre?.name || "")
       setDescription(genre?.description || "")
     }

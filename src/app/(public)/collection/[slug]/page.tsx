@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { CollectionService } from '@/lib/services/CollectionService';
 import { SeoService } from '@/lib/services/SeoService';
-import { prisma } from '@/lib/prisma';
+import { MovieService } from '@/lib/services/MovieService';
 import { MovieCard } from '@/components/public/MovieCard';
 import { Pagination } from '@/components/public/Pagination';
 import { Layers } from 'lucide-react';
@@ -45,27 +45,13 @@ export default async function CollectionPage({ params, searchParams }: PageProps
   const itemsPerPage = 24;
   const skip = (currentPage - 1) * itemsPerPage;
 
-  // We have collection.movies from getBySlug, but for pagination we should query explicitly
-  const [collectionMovies, totalMovies] = await Promise.all([
-    prisma.collectionMovie.findMany({
-      where: {
-        collectionId: collection.id,
-        movie: { status: 'PUBLISHED' }
-      },
-      include: { movie: true },
-      orderBy: { sortOrder: 'asc' },
-      skip,
-      take: itemsPerPage,
-    }),
-    prisma.collectionMovie.count({
-      where: {
-        collectionId: collection.id,
-        movie: { status: 'PUBLISHED' }
-      }
-    }),
-  ]);
-
-  const movies = collectionMovies.map(cm => cm.movie);
+  const { data: movies, total: totalMovies } = await MovieService.searchMovies({
+    collectionSlug: collection.slug,
+    status: 'PUBLISHED',
+    skip,
+    take: itemsPerPage,
+    orderBy: { releaseDate: 'desc' },
+  });
 
   const jsonLd = SeoService.generateStructuredData('CollectionPage', {
     title: collection.title,

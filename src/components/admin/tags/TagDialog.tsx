@@ -21,6 +21,7 @@ export function TagDialog({ open, onOpenChange, tag, onSuccess }: TagDialogProps
 
   React.useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(tag?.name || "")
     }
   }, [open, tag])

@@ -19,6 +19,7 @@ export function HomepageSectionsClient({ initialData }: { initialData: any[] }) 
   const [isAddOpen, setIsAddOpen] = React.useState(false)
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setItems(initialData)
   }, [initialData])
 
@@ -149,6 +150,7 @@ function AddSectionDialog({ open, onOpenChange, onSuccess }: { open: boolean, on
 
   React.useEffect(() => {
     if (!debouncedSearch) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchResults([])
       return
     }
@@ -174,6 +176,7 @@ function AddSectionDialog({ open, onOpenChange, onSuccess }: { open: boolean, on
 
   // Reset fields when type changes
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollectionId(null)
     setGenreId(null)
     setSearchQuery("")

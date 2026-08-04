@@ -1,5 +1,4 @@
 import { AnalyticsRepository } from '../repositories/AnalyticsRepository';
-import { prisma } from '../prisma';
 import { Prisma } from '@prisma/client';
 
 export class ErrorLogService {
@@ -20,20 +19,10 @@ export class ErrorLogService {
   }
 
   static async getRecentErrors(take: number = 50) {
-    return prisma.analyticsEvent.findMany({
-      where: { eventName: 'system_error' },
-      orderBy: { createdAt: 'desc' },
-      take,
-    });
+    return AnalyticsRepository.getRecentErrors(take);
   }
 
   static async getErrorStats() {
-    const errorCount = await prisma.dailyMetrics.aggregate({
-      where: { metric: 'system_error' },
-      _sum: { value: true },
-    });
-    return {
-      totalErrors: errorCount._sum.value || 0,
-    };
+    return AnalyticsRepository.getErrorStats();
   }
 }

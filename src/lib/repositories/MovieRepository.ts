@@ -109,6 +109,7 @@ export class MovieRepository {
     orderBy?: any;
     genreSlug?: string;
     collectionSlug?: string;
+    tagSlug?: string;
   }, db: DbClient = prisma) {
     const where: Prisma.MovieWhereInput = { deletedAt: null };
     
@@ -138,6 +139,14 @@ export class MovieRepository {
       where.collections = {
         some: {
           collection: { slug: params.collectionSlug }
+        }
+      };
+    }
+
+    if (params.tagSlug) {
+      where.tags = {
+        some: {
+          tag: { slug: params.tagSlug }
         }
       };
     }

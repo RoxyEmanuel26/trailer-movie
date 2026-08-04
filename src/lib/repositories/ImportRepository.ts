@@ -62,4 +62,23 @@ export class ImportRepository {
 
     return { data, total };
   }
+
+  static async getOverview(db: DbClient = prisma) {
+    const [queued, running, completed, failed] = await Promise.all([
+      db.importJob.count({ where: { status: 'PENDING' } }),
+      db.importJob.count({ where: { status: 'IN_PROGRESS' } }),
+      db.importJob.count({ where: { status: 'COMPLETED' } }),
+      db.importJob.count({ where: { status: 'FAILED' } }),
+    ]);
+
+    const recentJobs = await db.importJob.findMany({
+      take: 20,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      stats: { queued, running, completed, failed },
+      recentJobs,
+    };
+  }
 }

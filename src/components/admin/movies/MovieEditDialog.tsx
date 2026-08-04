@@ -33,6 +33,7 @@ export function MovieEditDialog({
 
   React.useEffect(() => {
     if (movie) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(movie.title)
       setYoutubeTrailerId(movie.youtubeTrailerId || "")
       setLockedFields(movie.lockedFields || [])

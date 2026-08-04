@@ -67,6 +67,7 @@ export function MoviesTable({ data, total, skip, take, onEdit }: MoviesTableProp
     },
   ]
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,

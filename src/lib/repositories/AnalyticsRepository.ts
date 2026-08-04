@@ -141,6 +141,37 @@ export class AnalyticsRepository {
     });
   }
 
+  static async listAdminActivity(skip: number, take: number, db: any = prisma) {
+    const [total, data] = await Promise.all([
+      db.auditLog.count(),
+      db.auditLog.findMany({
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: { user: { select: { id: true, name: true, email: true } } },
+      }),
+    ]);
+    return { total, data };
+  }
+
+  static async getRecentErrors(take: number = 50, db: any = prisma) {
+    return db.analyticsEvent.findMany({
+      where: { eventName: 'system_error' },
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+  }
+
+  static async getErrorStats(db: any = prisma) {
+    const errorCount = await db.dailyMetrics.aggregate({
+      where: { metric: 'system_error' },
+      _sum: { value: true },
+    });
+    return {
+      totalErrors: errorCount._sum.value || 0,
+    };
+  }
+
   static async getMovieAnalytics(movieId: string, db: any = prisma) {
     const movie = await db.movie.findUnique({
       where: { id: movieId },

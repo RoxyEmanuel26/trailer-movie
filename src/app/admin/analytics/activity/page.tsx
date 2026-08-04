@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { prisma } from '@/lib/prisma';
+import { AnalyticsService } from '@/lib/services/AnalyticsService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -16,17 +16,7 @@ export default async function ActivityAnalyticsPage({
   const limit = 20;
   const skip = (page - 1) * limit;
 
-  const [total, activities] = await Promise.all([
-    prisma.auditLog.count(),
-    prisma.auditLog.findMany({
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
-    }),
-  ]);
+  const { total, data: activities } = await AnalyticsService.listAdminActivity(skip, limit);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -48,7 +38,7 @@ export default async function ActivityAnalyticsPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activities.map((activity) => (
+              {activities.map((activity: any) => (
                 <TableRow key={activity.id}>
                   <TableCell className="whitespace-nowrap">
                     {new Date(activity.createdAt).toLocaleString()}

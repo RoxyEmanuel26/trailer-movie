@@ -1,12 +1,12 @@
 import { getMovie, getMovieCredits, getMovieVideos } from '../tmdb/api';
 import { mapTmdbMovieToPrisma, generateSlug } from '../tmdb/mapping';
-import { prisma } from '../prisma';
 import { PersonRoleType, TrailerSource, TrailerType } from '@prisma/client';
 
 import { MovieRepository } from '../repositories/MovieRepository';
 import { GenreRepository } from '../repositories/GenreRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { TrailerRepository } from '../repositories/TrailerRepository';
+import { TransactionManager } from '../repositories/TransactionManager';
 
 export class SyncService {
   static async importMovie(tmdbId: number) {
@@ -36,7 +36,7 @@ export class SyncService {
       const movieData = mapTmdbMovieToPrisma(tmdbMovie, lockedFields);
 
       // Orchestrate standard Prisma transaction for atomicity
-      const savedMovie = await prisma.$transaction(
+      const savedMovie = await TransactionManager.run(
         async (tx) => {
           const movie = await MovieRepository.upsert(
             tmdbId,

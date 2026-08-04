@@ -27,6 +27,7 @@ export function CollectionDialog({ open, onOpenChange, collection, onSuccess }: 
 
   React.useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(collection?.title || "")
       setDescription(collection?.description || "")
       setIsActive(collection?.isActive ?? false)

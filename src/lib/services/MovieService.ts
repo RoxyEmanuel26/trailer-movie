@@ -109,6 +109,7 @@ export class MovieService {
     orderBy?: any;
     genreSlug?: string;
     collectionSlug?: string;
+    tagSlug?: string;
   }) {
     // Public search method that uses full-text search
     const skip = params.skip || 0;

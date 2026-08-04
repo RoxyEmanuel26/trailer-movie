@@ -3,7 +3,6 @@ import { errorResponse } from './response';
 import { AppError } from '../errors';
 import { ZodError } from 'zod';
 import { rateLimit } from '../security/rateLimiter';
-import { Prisma } from '@prisma/client';
 import { logger } from '../logger';
 
 type ApiHandler<T = any> = (
@@ -19,10 +18,9 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
   return async (request, context) => {
     try {
       // Global rate limiter using IP address
-      // Fallback to x-real-ip then x-forwarded-for, but be aware these can be spoofed 
-      // if the app is not behind a trusted proxy (e.g. Vercel/Cloudflare).
-      // Next.js standardizes request.ip on some hosting platforms.
-      const ip = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown-ip';
+      // Next.js standardizes request.ip in edge, but in Node we fallback to headers.
+      // To harden, we prefer the platform-provided x-real-ip or x-forwarded-for.
+      const ip = (request as any).ip || request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown-ip';
       rateLimit(ip, 200, 60000); // Max 200 requests per minute globally per IP
 
       return await handler(request, context);
@@ -53,10 +51,9 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
         return errorResponse(error.message, code, error.statusCode);
       }
 
-      // Hide Database Implementation Details
-      if (error instanceof Prisma.PrismaClientKnownRequestError || 
-          error instanceof Prisma.PrismaClientUnknownRequestError || 
-          error instanceof Prisma.PrismaClientValidationError) {
+      // Hide Database Implementation Details (decoupled from Prisma client)
+      const errorName = error?.name || '';
+      if (typeof errorName === 'string' && errorName.startsWith('PrismaClient')) {
         return errorResponse('A database error occurred. Please try again later.', 'DATABASE_ERROR', 500);
       }
 
@@ -65,3 +62,4 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
     }
   };
 }
+

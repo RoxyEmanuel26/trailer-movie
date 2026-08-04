@@ -42,7 +42,7 @@ export default async function ErrorAnalyticsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {errors.map((error) => {
+              {errors.map((error: any) => {
                 const meta = (error.metadata as any) || {};
                 return (
                   <TableRow key={error.id}>

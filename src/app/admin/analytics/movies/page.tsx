@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { AnalyticsService } from '@/lib/services/AnalyticsService';
+import { MovieService } from '@/lib/services/MovieService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
@@ -16,10 +16,9 @@ export default async function MovieAnalyticsPage({
 
   // If no movie is selected, show a list of movies to select from
   if (!movieId) {
-    const movies = await prisma.movie.findMany({
+    const { data: movies } = await MovieService.adminListMovies({
       take: 50,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, title: true, slug: true },
     });
 
     return (

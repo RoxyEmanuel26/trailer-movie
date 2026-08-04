@@ -19,6 +19,7 @@ export function FeaturedHeroClient({ initialData }: { initialData: any[] }) {
 
   // Sync state if initialData changes (e.g. on router.refresh)
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setItems(initialData)
   }, [initialData])
 
@@ -139,6 +140,7 @@ function AddFeaturedItemDialog({ open, onOpenChange, onSuccess }: { open: boolea
 
   React.useEffect(() => {
     if (!debouncedSearch) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchResults([])
       return
     }

@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { TagService } from '@/lib/services/TagService';
 import { SeoService } from '@/lib/services/SeoService';
-import { prisma } from '@/lib/prisma';
+import { MovieService } from '@/lib/services/MovieService';
 import { MovieCard } from '@/components/public/MovieCard';
 import { Pagination } from '@/components/public/Pagination';
 import { Hash } from 'lucide-react';
@@ -43,23 +43,13 @@ export default async function TagPage({ params, searchParams }: PageProps) {
   const itemsPerPage = 24;
   const skip = (currentPage - 1) * itemsPerPage;
 
-  const [movies, totalMovies] = await Promise.all([
-    prisma.movie.findMany({
-      where: {
-        status: 'PUBLISHED',
-        tags: { some: { tagId: tag.id } },
-      },
-      orderBy: { releaseDate: 'desc' },
-      skip,
-      take: itemsPerPage,
-    }),
-    prisma.movie.count({
-      where: {
-        status: 'PUBLISHED',
-        tags: { some: { tagId: tag.id } },
-      }
-    }),
-  ]);
+  const { data: movies, total: totalMovies } = await MovieService.searchMovies({
+    tagSlug: tag.slug,
+    status: 'PUBLISHED',
+    skip,
+    take: itemsPerPage,
+    orderBy: { releaseDate: 'desc' },
+  });
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">

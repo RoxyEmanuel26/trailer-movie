@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiHandler } from '@/lib/api/handler';
-import { prisma } from '@/lib/prisma';
+import { AnalyticsService } from '@/lib/services/AnalyticsService';
 import { requireAdmin } from '@/lib/auth/utils';
 
 export const GET = apiHandler(async (req: NextRequest) => {
@@ -10,17 +10,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
   const limit = parseInt(url.searchParams.get('limit') || '50');
   const skip = (page - 1) * limit;
 
-  const [total, activities] = await Promise.all([
-    prisma.auditLog.count(),
-    prisma.auditLog.findMany({
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: { select: { id: true, name: true, email: true } }
-      }
-    }),
-  ]);
+  const { total, data: activities } = await AnalyticsService.listAdminActivity(skip, limit);
 
   return NextResponse.json({
     data: activities,

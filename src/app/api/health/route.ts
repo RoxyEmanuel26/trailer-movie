@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { HealthService } from '@/lib/services/HealthService';
 
 export async function GET() {
   try {
     // Ping DB
-    await prisma.$queryRaw`SELECT 1`;
+    await HealthService.checkDatabase();
 
     return NextResponse.json(
       {
