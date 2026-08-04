@@ -1,62 +1,95 @@
-"use client"
+'use client';
 
-import React, { useState } from 'react'
-import { Play } from 'lucide-react'
+import * as React from 'react';
+import YouTube, { YouTubeProps } from 'react-youtube';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 interface YouTubePlayerProps {
-  youtubeId: string;
-  title: string;
-  thumbnailUrl?: string;
+  videoId: string;
+  movieId?: string;
+  autoplay?: boolean;
+  className?: string;
+  onReady?: () => void;
+  onPlay?: () => void;
+  onEnd?: () => void;
 }
 
-export function YouTubePlayer({ youtubeId, title, thumbnailUrl }: YouTubePlayerProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
+export function YouTubePlayer({
+  videoId,
+  movieId,
+  autoplay = false,
+  className,
+  onReady,
+  onPlay,
+  onEnd,
+}: YouTubePlayerProps) {
+  const [isReady, setIsReady] = React.useState(false);
 
-  // Fallback to high-res YouTube thumbnail if no poster/backdrop is provided
-  const coverImage = thumbnailUrl || `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
+  const opts: YouTubeProps['opts'] = {
+    height: '100%',
+    width: '100%',
+    playerVars: {
+      autoplay: autoplay ? 1 : 0,
+      modestbranding: 1,
+      rel: 0,
+    },
+  };
 
-  if (isPlaying) {
-    return (
-      <div className="w-full aspect-video bg-black rounded-lg overflow-hidden border border-border">
-        <iframe
-          width="100%"
-          height="100%"
-          src={`https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1`}
-          title={title || "YouTube video player"}
-          frameBorder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          className="w-full h-full"
-        ></iframe>
-      </div>
-    );
-  }
+  const handleReady = (event: any) => {
+    setIsReady(true);
+    if (onReady) onReady();
+  };
+
+  const handlePlay = (event: any) => {
+    if (movieId) {
+      fetch('/api/analytics/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventName: 'trailer_play',
+          entityId: movieId,
+          metadata: { trailerId: videoId },
+        }),
+        keepalive: true,
+      }).catch(console.error);
+    }
+    if (onPlay) onPlay();
+  };
+
+  const handleEnd = (event: any) => {
+    if (movieId) {
+      fetch('/api/analytics/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventName: 'trailer_complete',
+          entityId: movieId,
+          metadata: { trailerId: videoId },
+        }),
+        keepalive: true,
+      }).catch(console.error);
+    }
+    if (onEnd) onEnd();
+  };
 
   return (
-    <div 
-      className="w-full aspect-video bg-black rounded-lg overflow-hidden border border-border relative cursor-pointer group"
-      onClick={() => setIsPlaying(true)}
-      role="button"
-      tabIndex={0}
-      aria-label={`Play ${title} trailer`}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          setIsPlaying(true);
-        }
-      }}
-    >
-      <img
-        src={coverImage}
-        alt={`${title} Trailer Thumbnail`}
-        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-        loading="lazy"
+    <div className={cn("relative w-full aspect-video rounded-xl overflow-hidden bg-muted", className)}>
+      {!isReady && (
+        <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
+      )}
+      <YouTube
+        videoId={videoId}
+        opts={opts}
+        onReady={handleReady}
+        onPlay={handlePlay}
+        onEnd={handleEnd}
+        className={cn(
+          "absolute top-0 left-0 w-full h-full transition-opacity duration-500",
+          isReady ? "opacity-100" : "opacity-0"
+        )}
+        iframeClassName="w-full h-full"
       />
-      <div className="absolute inset-0 bg-black/40 transition-colors duration-300 group-hover:bg-black/20 flex items-center justify-center">
-        <div className="w-20 h-20 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shadow-lg backdrop-blur-sm">
-          <Play className="w-10 h-10 ml-2" fill="currentColor" />
-        </div>
-      </div>
     </div>
-  )
+  );
 }

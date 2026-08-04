@@ -14,6 +14,16 @@ export function NavbarSearch() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
+      fetch('/api/analytics/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventName: 'search',
+          metadata: { query: searchQuery.trim(), resultsCount: 0 },
+        }),
+        keepalive: true,
+      }).catch(console.error);
+
       router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
       setIsSearchOpen(false);
     }

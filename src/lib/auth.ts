@@ -17,3 +17,16 @@ export const auth = betterAuth({
   }
   */
 });
+
+export const requireAdmin = async () => {
+  // Mocked for now to match the admin layout until auth is fully wired
+  return {
+    id: "admin-1",
+    email: "admin@example.com",
+    name: "System Admin",
+    role: {
+      name: "ADMIN",
+      permissions: [{ permission: { action: "manage_all" } }],
+    },
+  };
+};

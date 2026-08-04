@@ -73,9 +73,9 @@ export default async function MovieDetailPage({ params }: PageProps) {
         <div className="container mx-auto max-w-6xl py-8 px-4">
           {movie.youtubeTrailerId ? (
             <YouTubePlayer 
-              youtubeId={movie.youtubeTrailerId} 
-              title={movie.title} 
-              thumbnailUrl={movie.backdropUrl || undefined} 
+              videoId={movie.youtubeTrailerId} 
+              movieId={movie.id}
+              autoplay={true}
             />
           ) : (
             <div className="w-full aspect-video bg-muted flex flex-col items-center justify-center rounded-lg border border-border">

@@ -584,3 +584,16 @@ model UserFavorite {
   @@unique([userId, movieId])
   @@map("user_favorites")
 }
+
+model DailyMetrics {
+  id         String   @id @default(cuid())
+  date       DateTime @db.Date
+  metric     String   // e.g., 'page_view', 'trailer_play', 'error'
+  entityType String?  // e.g., 'Movie', 'Genre'
+  entityId   String?
+  value      Int      @default(0)
+
+  @@unique([date, metric, entityType, entityId])
+  @@index([date, metric])
+  @@map("daily_metrics")
+}
