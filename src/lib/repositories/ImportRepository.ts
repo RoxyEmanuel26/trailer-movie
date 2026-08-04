@@ -50,7 +50,7 @@ export class ImportRepository {
       where.status = params.status;
     }
 
-    const [data, total] = await prisma.$transaction([
+    const [data, total] = await Promise.all([
       db.importJob.findMany({
         skip: params.skip,
         take: params.take,

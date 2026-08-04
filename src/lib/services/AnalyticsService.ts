@@ -22,7 +22,7 @@ export class AnalyticsService {
 
     return {
       metrics,
-      chartData: dailyViews.map(d => ({ date: d.date.toISOString().split('T')[0], views: d.value })),
+      chartData: dailyViews.map((d: any) => ({ date: d.date.toISOString().split('T')[0], views: d.value })),
       topMovies,
       recentActivity,
     };

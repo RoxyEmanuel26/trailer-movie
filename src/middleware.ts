@@ -3,7 +3,11 @@ import type { NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Only protect admin routes for now
+  // Only protect admin routes for now.
+  // Note: This is a "soft" redirect check for UX. It does not cryptographically verify 
+  // the session token at the edge (due to database/crypto limitations in Edge runtime). 
+  // Cryptographic and DB validation is enforced securely inside `requireAdmin()` on API 
+  // routes and Server Components (like AdminLayout).
   if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
     const sessionCookie =
       request.cookies.get('trailer-movie.session_token')?.value ||

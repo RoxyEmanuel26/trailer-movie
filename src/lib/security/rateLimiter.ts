@@ -6,16 +6,7 @@ interface RateLimitTracker {
 }
 
 const rateLimitStore = new Map<string, RateLimitTracker>();
-
-// Cleanup stale entries every 5 minutes to prevent memory leaks
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, tracker] of rateLimitStore.entries()) {
-    if (tracker.resetAt < now) {
-      rateLimitStore.delete(key);
-    }
-  }
-}, 300000).unref?.();
+const MAX_STORE_SIZE = 5000; // Cap to prevent memory leaks in long-running processes
 
 // Default limit of 100 requests per minute
 export const rateLimit = (
@@ -24,9 +15,21 @@ export const rateLimit = (
   windowMs: number = 60000
 ) => {
   const now = Date.now();
-  const tracker = rateLimitStore.get(identifier);
+  let tracker = rateLimitStore.get(identifier);
 
-  if (!tracker || tracker.resetAt < now) {
+  // Lazy cleanup if expired
+  if (tracker && tracker.resetAt < now) {
+    rateLimitStore.delete(identifier);
+    tracker = undefined;
+  }
+
+  if (!tracker) {
+    // Prevent unbounded growth by clearing old/random entries if we hit the limit
+    if (rateLimitStore.size >= MAX_STORE_SIZE) {
+      // In a real LRU this is better, but here we just clear it to avoid OOM
+      // For production, consider using Redis (e.g. Upstash) or lru-cache
+      rateLimitStore.clear(); 
+    }
     rateLimitStore.set(identifier, {
       count: 1,
       resetAt: now + windowMs,

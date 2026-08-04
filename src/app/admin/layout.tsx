@@ -1,19 +1,6 @@
 import * as React from "react"
 import { redirect } from "next/navigation"
-
-// import { requireAdmin } from "@/lib/auth" 
-// We mock this for now since we don't have the auth layer fully wired in the page yet.
-const mockRequireAdmin = async () => {
-  return {
-    id: "admin-1",
-    email: "admin@example.com",
-    name: "System Admin",
-    role: {
-      name: "ADMIN",
-      permissions: [{ permission: { action: "manage_all" } }],
-    },
-  }
-}
+import { requireAdmin } from "@/lib/auth/utils"
 
 import { SessionProvider } from "@/components/auth/SessionProvider"
 import { AdminLayoutClient } from "@/components/admin/layout/AdminLayoutClient"
@@ -25,14 +12,22 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const user = await mockRequireAdmin()
+  let adminSession;
+  try {
+    adminSession = await requireAdmin();
+  } catch (error) {
+    redirect("/login");
+  }
+
+  // SessionProvider usually takes the user object
+  const user = adminSession?.user;
 
   if (!user) {
     redirect("/login")
   }
 
   return (
-    <SessionProvider initialUser={user}>
+    <SessionProvider initialUser={user as any}>
       <AdminLayoutClient>{children}</AdminLayoutClient>
     </SessionProvider>
   )

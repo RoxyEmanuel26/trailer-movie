@@ -216,7 +216,7 @@ export class SeoService {
       { url: APP_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
     ];
 
-    movies.forEach(m => sitemap.push({ url: `${APP_URL}/movies/${m.slug}`, lastModified: m.updatedAt, changeFrequency: 'weekly', priority: 0.8 }));
+    movies.forEach(m => sitemap.push({ url: `${APP_URL}/watch/${m.slug}`, lastModified: m.updatedAt, changeFrequency: 'weekly', priority: 0.8 }));
     genres.forEach(g => sitemap.push({ url: `${APP_URL}/genres/${g.slug}`, lastModified: g.updatedAt, changeFrequency: 'weekly', priority: 0.6 }));
     collections.forEach(c => sitemap.push({ url: `${APP_URL}/collections/${c.slug}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 }));
 
@@ -246,8 +246,8 @@ Sitemap: ${APP_URL}/sitemap.xml`;
     const items = movies.map(m => `
       <item>
         <title><![CDATA[${m.title}]]></title>
-        <link>${APP_URL}/movies/${m.slug}</link>
-        <guid>${APP_URL}/movies/${m.slug}</guid>
+        <link>${APP_URL}/watch/${m.slug}</link>
+        <guid>${APP_URL}/watch/${m.slug}</guid>
         <pubDate>${m.createdAt.toUTCString()}</pubDate>
         <description><![CDATA[${m.synopsis || ''}]]></description>
       </item>

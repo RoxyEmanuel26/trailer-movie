@@ -544,6 +544,7 @@ model SearchLog {
   sessionId    String?
   createdAt    DateTime @default(now())
 
+  @@index([createdAt])
   @@map("search_logs")
 }
 
@@ -556,6 +557,7 @@ model AnalyticsEvent {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+  @@index([eventName, createdAt])
   @@map("analytics_events")
 }
 

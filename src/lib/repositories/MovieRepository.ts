@@ -85,7 +85,7 @@ export class MovieRepository {
       where.id = { not: params.excludeId };
     }
 
-    const [data, total] = await prisma.$transaction([
+    const [data, total] = await Promise.all([
       db.movie.findMany({
         skip: params.skip,
         take: params.take,

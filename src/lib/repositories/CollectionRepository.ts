@@ -74,8 +74,10 @@ export class CollectionRepository {
 
   // Movie assignments
   static async replaceMovies(collectionId: string, movieIds: string[], db: DbClient = prisma) {
-    // We execute this in a transaction to ensure atomicity
-    return prisma.$transaction(async (tx) => {
+    // If db is already a transaction client, we just execute on it.
+    // In Prisma, nested transactions require the interactive transaction client ($transaction).
+    // To be safe, if `db` has `$transaction`, use it. Otherwise, assume it's already inside one.
+    const run = async (tx: any) => {
       await tx.collectionMovie.deleteMany({ where: { collectionId } });
       
       if (movieIds.length > 0) {
@@ -95,6 +97,12 @@ export class CollectionRepository {
           },
         },
       });
-    });
+    };
+
+    if ('$transaction' in db) {
+      return (db as any).$transaction(run);
+    }
+    
+    return run(db);
   }
 }

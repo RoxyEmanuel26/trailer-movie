@@ -19,7 +19,10 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
   return async (request, context) => {
     try {
       // Global rate limiter using IP address
-      const ip = request.headers.get('x-forwarded-for') || 'unknown-ip';
+      // Fallback to x-real-ip then x-forwarded-for, but be aware these can be spoofed 
+      // if the app is not behind a trusted proxy (e.g. Vercel/Cloudflare).
+      // Next.js standardizes request.ip on some hosting platforms.
+      const ip = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown-ip';
       rateLimit(ip, 200, 60000); // Max 200 requests per minute globally per IP
 
       return await handler(request, context);
