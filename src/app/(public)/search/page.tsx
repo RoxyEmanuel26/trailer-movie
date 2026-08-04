@@ -1,9 +1,8 @@
 import { Metadata } from 'next';
 import { SeoService } from '@/lib/services/SeoService';
-import { prisma } from '@/lib/prisma';
+import { MovieService } from '@/lib/services/MovieService';
 import { MovieCard } from '@/components/public/MovieCard';
 import { Pagination } from '@/components/public/Pagination';
-import { Prisma } from '@prisma/client';
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -30,57 +29,21 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const itemsPerPage = 24;
   const skip = (page - 1) * itemsPerPage;
 
-  // Build where clause
-  const where: Prisma.MovieWhereInput = {
-    deletedAt: null,
-  };
-
-  if (q) {
-    where.OR = [
-      { title: { contains: q, mode: 'insensitive' } },
-      { originalTitle: { contains: q, mode: 'insensitive' } },
-      { synopsis: { contains: q, mode: 'insensitive' } },
-    ];
-  }
-
-  if (status && status !== 'ALL') {
-    where.status = status as import('@prisma/client').MovieStatus;
-  } else if (!status) {
-    where.status = 'PUBLISHED';
-  }
-
-  if (genreSlug) {
-    where.genres = {
-      some: {
-        genre: { slug: genreSlug }
-      }
-    };
-  }
-
-  if (collectionSlug) {
-    where.collections = {
-      some: {
-        collection: { slug: collectionSlug }
-      }
-    };
-  }
-
-  // Build order by
   let orderBy: any = { createdAt: 'desc' };
   if (sort === 'releaseDate_desc') orderBy = { releaseDate: 'desc' };
   if (sort === 'releaseDate_asc') orderBy = { releaseDate: 'asc' };
   if (sort === 'title_asc') orderBy = { title: 'asc' };
   if (sort === 'title_desc') orderBy = { title: 'desc' };
 
-  const [movies, totalMovies] = await Promise.all([
-    prisma.movie.findMany({
-      where,
-      orderBy,
-      skip,
-      take: itemsPerPage,
-    }),
-    prisma.movie.count({ where }),
-  ]);
+  const { data: movies, total: totalMovies } = await MovieService.searchMovies({
+    skip,
+    take: itemsPerPage,
+    search: q,
+    status: status === 'ALL' ? undefined : status,
+    genreSlug,
+    collectionSlug,
+    orderBy,
+  });
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">

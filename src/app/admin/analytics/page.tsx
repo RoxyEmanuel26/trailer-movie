@@ -101,7 +101,7 @@ export default async function AnalyticsOverviewPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {recentActivity.map((activity) => (
+            {recentActivity.map((activity: any) => (
               <div key={activity.id} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">

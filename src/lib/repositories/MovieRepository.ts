@@ -100,4 +100,61 @@ export class MovieRepository {
 
     return { data, total };
   }
+
+  static async search(params: { 
+    skip?: number; 
+    take?: number; 
+    search?: string; 
+    status?: import('@prisma/client').MovieStatus; 
+    orderBy?: any;
+    genreSlug?: string;
+    collectionSlug?: string;
+  }, db: DbClient = prisma) {
+    const where: Prisma.MovieWhereInput = { deletedAt: null };
+    
+    if (params.search) {
+      // Use Postgres full text search instead of ILIKE
+      const searchStr = params.search.split(' ').map(s => s + ':*').join(' | ');
+      where.OR = [
+        { title: { search: searchStr } },
+        { originalTitle: { search: searchStr } },
+        { synopsis: { search: searchStr } },
+      ];
+    }
+    
+    if (params.status) {
+      where.status = params.status;
+    }
+
+    if (params.genreSlug) {
+      where.genres = {
+        some: {
+          genre: { slug: params.genreSlug }
+        }
+      };
+    }
+
+    if (params.collectionSlug) {
+      where.collections = {
+        some: {
+          collection: { slug: params.collectionSlug }
+        }
+      };
+    }
+
+    const [data, total] = await Promise.all([
+      db.movie.findMany({
+        skip: params.skip,
+        take: params.take,
+        where,
+        orderBy: params.orderBy || { createdAt: 'desc' },
+        include: {
+          genres: { include: { genre: true } },
+        }
+      }),
+      db.movie.count({ where })
+    ]);
+
+    return { data, total };
+  }
 }

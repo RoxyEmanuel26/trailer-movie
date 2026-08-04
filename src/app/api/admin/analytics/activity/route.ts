@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiHandler } from '@/lib/api/handler';
 import { prisma } from '@/lib/prisma';
-import { requireAdmin } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth/utils';
 
 export const GET = apiHandler(async (req: NextRequest) => {
   await requireAdmin();

@@ -24,7 +24,7 @@ export default async function SearchAnalyticsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.topQueries.map((item, idx) => (
+                {data.topQueries.map((item: any, idx: number) => (
                   <TableRow key={idx}>
                     <TableCell className="font-medium">{item.query}</TableCell>
                     <TableCell className="text-right">{item.count}</TableCell>
@@ -57,7 +57,7 @@ export default async function SearchAnalyticsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.zeroResultQueries.map((query, idx) => (
+                {data.zeroResultQueries.map((query: any, idx: number) => (
                   <TableRow key={idx}>
                     <TableCell className="font-medium">{query}</TableCell>
                   </TableRow>

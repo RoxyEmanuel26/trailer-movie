@@ -1,7 +1,6 @@
 import { SeoRepository } from '../repositories/SeoRepository';
 import { SettingsRepository } from '../repositories/SettingsRepository';
 import { Prisma } from '@prisma/client';
-import { prisma } from '../prisma';
 import { Metadata } from 'next';
 import { cache } from 'react';
 
@@ -206,11 +205,7 @@ export class SeoService {
    * Generate Sitemap Data
    */
   static async generateSitemapData() {
-    const [movies, genres, collections] = await Promise.all([
-      prisma.movie.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true }, take: 1000 }),
-      prisma.genre.findMany({ select: { slug: true, updatedAt: true }, take: 100 }),
-      prisma.collection.findMany({ where: { isActive: true }, select: { slug: true }, take: 100 }),
-    ]);
+    const { movies, genres, collections } = await SeoRepository.getSitemapData();
 
     const sitemap = [
       { url: APP_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
@@ -237,11 +232,7 @@ Sitemap: ${APP_URL}/sitemap.xml`;
    * Generate RSS Feed XML
    */
   static async generateRssFeed() {
-    const movies = await prisma.movie.findMany({
-      where: { status: 'PUBLISHED' },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
+    const movies = await SeoRepository.getRssFeedData();
 
     const items = movies.map(m => `
       <item>

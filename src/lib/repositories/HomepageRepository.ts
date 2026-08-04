@@ -125,4 +125,86 @@ export class HomepageRepository {
     );
     return Promise.all(promises);
   }
+
+  // ---------------------------------------------------------------------------
+  // UI Data Retrieval
+  // ---------------------------------------------------------------------------
+
+  static async getSectionData(section: any, db: DbClient = prisma) {
+    let movies: any[] = [];
+    let viewAllLink = '';
+
+    switch (section.type) {
+      case 'AUTO_RECENT':
+        const recent = await db.movie.findMany({
+          where: { status: 'PUBLISHED', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+          include: { genres: { include: { genre: true } } }
+        });
+        movies = recent;
+        viewAllLink = '/search?status=PUBLISHED';
+        break;
+
+      case 'AUTO_UPCOMING':
+        const upcoming = await db.movie.findMany({
+          where: { status: 'PUBLISHED', releaseDate: { gt: new Date() }, deletedAt: null },
+          orderBy: { releaseDate: 'asc' },
+          take: 6,
+          include: { genres: { include: { genre: true } } }
+        });
+        movies = upcoming;
+        viewAllLink = '/search?status=PUBLISHED&sort=releaseDate_asc';
+        break;
+
+      case 'AUTO_TRENDING':
+        const trending = await db.movie.findMany({
+          where: { status: 'PUBLISHED', deletedAt: null },
+          orderBy: { createdAt: 'desc' }, // placeholder for trending
+          take: 6,
+          include: { genres: { include: { genre: true } } }
+        });
+        movies = trending;
+        viewAllLink = '/search?status=PUBLISHED';
+        break;
+
+      case 'MANUAL_COLLECTION':
+        if (section.collectionId) {
+          const collection = await db.collection.findUnique({
+            where: { id: section.collectionId },
+            include: {
+              movies: {
+                include: { movie: { include: { genres: { include: { genre: true } } } } },
+                orderBy: { sortOrder: 'asc' },
+                take: 6,
+              }
+            }
+          });
+          if (collection) {
+            movies = collection.movies.map(cm => cm.movie).filter(m => m.status === 'PUBLISHED' && m.deletedAt === null);
+            viewAllLink = `/collection/${section.collection?.slug}`;
+          }
+        }
+        break;
+
+      case 'GENRE_BASED':
+        if (section.genreId) {
+          const genreMovies = await db.movie.findMany({
+            where: {
+              status: 'PUBLISHED',
+              deletedAt: null,
+              genres: { some: { genreId: section.genreId } }
+            },
+            orderBy: { releaseDate: 'desc' },
+            take: 6,
+            include: { genres: { include: { genre: true } } }
+          });
+          movies = genreMovies;
+          viewAllLink = `/genre/${section.genre?.slug}`;
+        }
+        break;
+    }
+
+    return { movies, viewAllLink };
+  }
 }

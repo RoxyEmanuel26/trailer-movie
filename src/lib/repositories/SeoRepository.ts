@@ -68,4 +68,22 @@ export class SeoRepository {
       where: { inSitemap: true },
     });
   }
+
+  static async getSitemapData(db: DbClient = prisma) {
+    const [movies, genres, collections] = await Promise.all([
+      db.movie.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true }, take: 1000 }),
+      db.genre.findMany({ select: { slug: true, updatedAt: true }, take: 100 }),
+      db.collection.findMany({ where: { isActive: true }, select: { slug: true }, take: 100 }),
+    ]);
+
+    return { movies, genres, collections };
+  }
+
+  static async getRssFeedData(db: DbClient = prisma) {
+    return db.movie.findMany({
+      where: { status: 'PUBLISHED' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+  }
 }

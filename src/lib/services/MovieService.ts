@@ -1,6 +1,7 @@
 import { MovieRepository } from '../repositories/MovieRepository';
 import { NotFoundError, ValidationError } from '../errors';
 import { cache } from 'react';
+import { requireAdmin } from '../auth/utils';
 
 export class MovieService {
   static getMovie = cache(async (id: string) => {
@@ -29,6 +30,7 @@ export class MovieService {
   }
 
   static async publishMovie(id: string) {
+    await requireAdmin('write:movies');
     const movie = await MovieRepository.findById(id);
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
@@ -41,6 +43,7 @@ export class MovieService {
   }
 
   static async archiveMovie(id: string) {
+    await requireAdmin('write:movies');
     const movie = await MovieRepository.findById(id);
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
@@ -50,6 +53,7 @@ export class MovieService {
   }
 
   static async deleteMovie(id: string) {
+    await requireAdmin('write:movies');
     const movie = await MovieRepository.findById(id);
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
@@ -58,11 +62,23 @@ export class MovieService {
   }
 
   static async updateMovie(id: string, data: any) {
+    await requireAdmin('write:movies');
     const movie = await MovieRepository.findById(id);
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
     }
     return MovieRepository.update(id, data);
+  }
+
+  static async adminListMovies(params: { 
+    skip?: number; 
+    take?: number; 
+    search?: string; 
+    status?: any; 
+    orderBy?: any 
+  }) {
+    await requireAdmin('read:movies');
+    return this.listMovies(params);
   }
 
   static async listMovies(params: { 
@@ -83,5 +99,21 @@ export class MovieService {
         take,
       }
     };
+  }
+
+  static async searchMovies(params: { 
+    skip?: number; 
+    take?: number; 
+    search?: string; 
+    status?: any; 
+    orderBy?: any;
+    genreSlug?: string;
+    collectionSlug?: string;
+  }) {
+    // Public search method that uses full-text search
+    const skip = params.skip || 0;
+    const take = params.take || 24;
+    const { data, total } = await MovieRepository.search(params);
+    return { data, total };
   }
 }

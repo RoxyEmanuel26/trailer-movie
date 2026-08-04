@@ -1,6 +1,6 @@
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
-import { prisma } from '@/lib/prisma';
+import { UserRepository } from '@/lib/repositories/UserRepository';
 import { UnauthorizedError, PermissionError } from '@/lib/errors';
 
 export async function getCurrentSession() {
@@ -23,20 +23,7 @@ export async function requireAdmin(action?: string) {
   const user = session.user;
 
   // The database schema uses custom Role/Permission for admin rights
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    include: {
-      role: {
-        include: {
-          permissions: {
-            include: {
-              permission: true,
-            },
-          },
-        },
-      },
-    },
-  });
+  const dbUser = await UserRepository.findById(user.id);
 
   if (!dbUser || !dbUser.isActive) {
     throw new UnauthorizedError('Account inactive or not found');

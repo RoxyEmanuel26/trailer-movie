@@ -1,5 +1,4 @@
 import { AnalyticsRepository } from '../repositories/AnalyticsRepository';
-import { prisma } from '../prisma';
 
 export class AnalyticsService {
   static async getOverviewDashboard() {
@@ -14,11 +13,7 @@ export class AnalyticsService {
     const topMovies = await AnalyticsRepository.getTopMoviesByMetric('movie_view', 5);
 
     // Get recent admin actions
-    const recentActivity = await prisma.auditLog.findMany({
-      take: 10,
-      orderBy: { createdAt: 'desc' },
-      include: { user: { select: { name: true, email: true } } },
-    });
+    const recentActivity = await AnalyticsRepository.getRecentAdminActivity(10);
 
     return {
       metrics,
@@ -29,61 +24,18 @@ export class AnalyticsService {
   }
 
   static async getMovieAnalytics(movieId: string) {
-    const movie = await prisma.movie.findUnique({
-      where: { id: movieId },
-      select: { title: true, id: true }
-    });
-
-    if (!movie) return null;
-
-    const views = await prisma.dailyMetrics.aggregate({
-      where: { metric: 'movie_view', entityType: 'Movie', entityId: movieId },
-      _sum: { value: true },
-    });
-
-    const trailerPlays = await prisma.dailyMetrics.aggregate({
-      where: { metric: 'trailer_play', entityType: 'Movie', entityId: movieId },
-      _sum: { value: true },
-    });
-
-    return {
-      movie,
-      views: views._sum.value || 0,
-      trailerPlays: trailerPlays._sum.value || 0,
-    };
+    return AnalyticsRepository.getMovieAnalytics(movieId);
   }
 
   static async getSearchAnalytics() {
-    // A bit more complex: group search terms from AnalyticsEvent metadata
-    const searchEvents = await prisma.analyticsEvent.findMany({
-      where: { eventName: 'search' },
-      orderBy: { createdAt: 'desc' },
-      take: 1000, // Process last 1000 searches
-    });
-
-    const queryCounts: Record<string, number> = {};
-    const zeroResultQueries: string[] = [];
-
-    searchEvents.forEach(event => {
-      const meta = event.metadata as any;
-      if (meta && meta.query) {
-        const query = meta.query.toLowerCase();
-        queryCounts[query] = (queryCounts[query] || 0) + 1;
-        if (meta.resultsCount === 0) {
-          zeroResultQueries.push(query);
-        }
-      }
-    });
-
-    const topQueries = Object.entries(queryCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
-      .map(([query, count]) => ({ query, count }));
+    // Uses native PostgreSQL GROUP BY instead of loading 1000 rows into Node.js memory
+    const topQueries = await AnalyticsRepository.getTopSearchQueries(20);
+    const zeroResultRaw = await AnalyticsRepository.getZeroResultSearchQueries(20);
 
     return {
       topQueries,
-      zeroResultQueries: Array.from(new Set(zeroResultQueries)).slice(0, 20),
-      totalSearchesAnalyzed: searchEvents.length,
+      zeroResultQueries: zeroResultRaw.map((r: any) => r.query),
+      totalSearchesAnalyzed: 'All-time (Database Aggregation)', // We don't limit to 1000 anymore
     };
   }
 }

@@ -67,4 +67,12 @@ export class HomepageService {
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
     return HomepageRepository.updateFeaturedItemOrder(updates);
   }
+
+  // ---------------------------------------------------------------------------
+  // UI Data Retrieval
+  // ---------------------------------------------------------------------------
+
+  static getSectionData = cache(async (section: any) => {
+    return HomepageRepository.getSectionData(section);
+  });
 }

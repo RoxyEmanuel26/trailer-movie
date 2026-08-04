@@ -16,7 +16,7 @@ export default async function MoviesPage({
 
   // Pass directly to the Domain Service instead of making an HTTP fetch call
   // This is the power of Server Components.
-  const { data, meta } = await MovieService.listMovies({
+  const { data, meta } = await MovieService.adminListMovies({
     skip,
     take,
     search,
