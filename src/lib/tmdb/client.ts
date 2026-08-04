@@ -1,4 +1,5 @@
 import { TmdbError, TmdbRateLimitError } from './errors';
+import { secureFetch } from '../security/fetcher';
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;
@@ -26,10 +27,6 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
     });
   }
 
-  // Setup abort controller for timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   const config: RequestInit = {
     ...customConfig,
     headers: {
@@ -37,12 +34,13 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
       accept: 'application/json',
       ...customConfig.headers,
     },
-    signal: controller.signal,
   };
 
   try {
-    const response = await fetch(url.toString(), config);
-    clearTimeout(timeoutId);
+    const response = await secureFetch(url.toString(), {
+      ...config,
+      timeoutMs: TIMEOUT_MS,
+    });
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -79,7 +77,6 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
 
     return (await response.json()) as T;
   } catch (error: any) {
-    clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
       throw new Error(`TMDB API request timed out after ${TIMEOUT_MS}ms`);
     }

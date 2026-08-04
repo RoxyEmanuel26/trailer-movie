@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { sanitizeHtml, sanitizeRichText } from '../../security/sanitize';
+
+const safeString = z.string().trim().transform((val) => sanitizeHtml(val));
+const safeRichText = z.string().trim().transform((val) => sanitizeRichText(val));
 
 /**
  * Shared generic validations
@@ -10,7 +14,7 @@ const TmdbIdSchema = z.number().int().positive('Invalid TMDB ID');
  * Search Schema
  */
 export const SearchSchema = z.object({
-  query: z.string().min(1, 'Search query is required').max(100, 'Search query is too long'),
+  query: safeString.refine(s => s.length > 0 && s.length <= 100, { message: 'Search query must be between 1 and 100 characters' }),
   page: z.coerce.number().int().min(1).default(1),
 });
 
@@ -25,10 +29,10 @@ export const ImportSchema = z.object({
  * Movie Update Schema (Example for Admin edits)
  */
 export const MovieAdminUpdateSchema = z.object({
-  title: z.string().min(1, "Title is required").optional(),
-  synopsis: z.string().optional(),
+  title: safeString.refine(s => s.length > 0, "Title is required").optional(),
+  synopsis: safeRichText.optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
-  youtubeTrailerId: z.string().optional().nullable(),
+  youtubeTrailerId: safeString.optional().nullable(),
   lockedFields: z.array(z.string()).optional(),
 });
 
@@ -36,23 +40,23 @@ export const MovieAdminUpdateSchema = z.object({
  * Genre Schemas
  */
 export const GenreInputSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  description: z.string().optional().nullable(),
+  name: safeString.refine(s => s.length > 0, "Name is required"),
+  description: safeRichText.optional().nullable(),
 });
 
 /**
  * Tag Schemas
  */
 export const TagInputSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name: safeString.refine(s => s.length > 0, "Name is required"),
 });
 
 /**
  * Collection Schemas
  */
 export const CollectionInputSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional().nullable(),
+  title: safeString.refine(s => s.length > 0, "Title is required"),
+  description: safeRichText.optional().nullable(),
   isActive: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
   coverImageUrl: z.string().url().optional().nullable(),

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { EventTrackingService } from '@/lib/services/EventTrackingService';
 
 const eventSchema = z.object({
-  eventName: z.enum(['page_view', 'movie_view', 'trailer_play', 'trailer_complete', 'search', 'homepage_click', 'system_error']),
+  eventName: z.enum(['page_view', 'movie_view', 'trailer_play', 'trailer_complete', 'search', 'homepage_click', 'system_error', 'security_alert']),
   entityId: z.string().optional(),
   metadata: z.record(z.string(), z.any()).optional(),
 });

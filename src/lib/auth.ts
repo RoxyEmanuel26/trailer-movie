@@ -9,6 +9,10 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  advanced: {
+    cookiePrefix: 'trailer-movie',
+    useSecureCookies: process.env.NODE_ENV === 'production',
+  },
   // We can add OAuth providers here later
   /*
   socialProviders: {
@@ -18,15 +22,35 @@ export const auth = betterAuth({
   */
 });
 
+import { headers } from 'next/headers';
+import { UnauthorizedError, PermissionError } from './errors';
+
 export const requireAdmin = async () => {
-  // Mocked for now to match the admin layout until auth is fully wired
+  const session = await auth.api.getSession({
+    headers: await headers()
+  });
+
+  if (!session || !session.user) {
+    throw new UnauthorizedError('You must be logged in to perform this action');
+  }
+
+  const userWithRole = session.user as any;
+
+  if (!userWithRole.roleId) {
+    throw new UnauthorizedError('You must be logged in to perform this action');
+  }
+
+  const role = await prisma.role.findUnique({
+    where: { id: userWithRole.roleId },
+    include: { permissions: { include: { permission: true } } }
+  });
+
+  if (!role || role.name !== 'ADMIN') {
+    throw new PermissionError('You do not have permission to access this resource');
+  }
+
   return {
-    id: "admin-1",
-    email: "admin@example.com",
-    name: "System Admin",
-    role: {
-      name: "ADMIN",
-      permissions: [{ permission: { action: "manage_all" } }],
-    },
+    ...session.user,
+    role,
   };
 };

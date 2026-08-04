@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse } from './response';
 import { AppError } from '../errors';
 import { ZodError } from 'zod';
+import { rateLimit } from '../security/rateLimiter';
+import { Prisma } from '@prisma/client';
 
 type ApiHandler<T = any> = (
   request: NextRequest,
@@ -15,6 +17,10 @@ type ApiHandler<T = any> = (
 export function apiHandler(handler: ApiHandler): ApiHandler {
   return async (request, context) => {
     try {
+      // Global rate limiter using IP address
+      const ip = request.headers.get('x-forwarded-for') || 'unknown-ip';
+      rateLimit(ip, 200, 60000); // Max 200 requests per minute globally per IP
+
       return await handler(request, context);
     } catch (error: any) {
       console.error('[API_ERROR]', error);
@@ -29,7 +35,6 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
 
       // Handle custom Domain Errors
       if (error instanceof AppError) {
-        // Map specific error types to specific code strings if needed
         let code = 'INTERNAL_ERROR';
         if (error.name === 'ValidationError') code = 'VALIDATION_ERROR';
         else if (error.name === 'UnauthorizedError') code = 'UNAUTHORIZED';
@@ -37,8 +42,18 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
         else if (error.name === 'NotFoundError') code = 'NOT_FOUND';
         else if (error.name === 'ConflictError') code = 'CONFLICT';
         else if (error.name === 'ExternalApiError') code = 'BAD_GATEWAY';
+        
+        // 429 logic
+        if (error.statusCode === 429) code = 'TOO_MANY_REQUESTS';
 
         return errorResponse(error.message, code, error.statusCode);
+      }
+
+      // Hide Database Implementation Details
+      if (error instanceof Prisma.PrismaClientKnownRequestError || 
+          error instanceof Prisma.PrismaClientUnknownRequestError || 
+          error instanceof Prisma.PrismaClientValidationError) {
+        return errorResponse('A database error occurred. Please try again later.', 'DATABASE_ERROR', 500);
       }
 
       // Handle generic/unknown errors

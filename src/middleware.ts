@@ -6,8 +6,9 @@ export async function middleware(request: NextRequest) {
   // Only protect admin routes for now
   if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
     const sessionCookie =
-      request.cookies.get('better-auth.session_token')?.value ||
-      request.cookies.get('__Secure-better-auth.session_token')?.value;
+      request.cookies.get('trailer-movie.session_token')?.value ||
+      request.cookies.get('__Secure-trailer-movie.session_token')?.value ||
+      request.cookies.get('better-auth.session_token')?.value;
 
     if (!sessionCookie) {
       // If it's an API request, return 401
