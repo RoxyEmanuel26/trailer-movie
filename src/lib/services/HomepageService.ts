@@ -1,9 +1,69 @@
-import { CollectionRepository } from '../repositories/CollectionRepository';
+import { HomepageRepository } from '../repositories/HomepageRepository';
+import { Prisma } from '@prisma/client';
 
 export class HomepageService {
-  static async getActiveCollections() {
-    // In a real scenario, this would orchestrate pulling different sections for the homepage
-    // like "Upcoming", "Recent", and manual collections.
-    return CollectionRepository.listActive();
+  // ---------------------------------------------------------------------------
+  // Sections
+  // ---------------------------------------------------------------------------
+
+  static async listSections() {
+    return HomepageRepository.listSections();
+  }
+
+  static async getSection(id: string) {
+    const section = await HomepageRepository.getSection(id);
+    if (!section) throw new Error(`Section not found: ${id}`);
+    return section;
+  }
+
+  static async createSection(data: Prisma.HomepageSectionUncheckedCreateInput) {
+    // Determine sortOrder if not provided
+    if (data.sortOrder === undefined) {
+      const existing = await HomepageRepository.listSections();
+      data.sortOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
+    }
+    return HomepageRepository.createSection(data);
+  }
+
+  static async updateSection(id: string, data: Prisma.HomepageSectionUncheckedUpdateInput) {
+    return HomepageRepository.updateSection(id, data);
+  }
+
+  static async deleteSection(id: string) {
+    return HomepageRepository.deleteSection(id);
+  }
+
+  static async reorderSections(orderedIds: string[]) {
+    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
+    return HomepageRepository.updateSectionOrder(updates);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Featured Items
+  // ---------------------------------------------------------------------------
+
+  static async listFeaturedItems() {
+    return HomepageRepository.listFeaturedItems();
+  }
+
+  static async addFeaturedItem(data: Prisma.FeaturedItemUncheckedCreateInput) {
+    if (data.sortOrder === undefined) {
+      const existing = await HomepageRepository.listFeaturedItems();
+      data.sortOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
+    }
+    return HomepageRepository.createFeaturedItem(data);
+  }
+
+  static async updateFeaturedItem(id: string, data: Prisma.FeaturedItemUncheckedUpdateInput) {
+    return HomepageRepository.updateFeaturedItem(id, data);
+  }
+
+  static async removeFeaturedItem(id: string) {
+    return HomepageRepository.deleteFeaturedItem(id);
+  }
+
+  static async reorderFeaturedItems(orderedIds: string[]) {
+    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
+    return HomepageRepository.updateFeaturedItemOrder(updates);
   }
 }

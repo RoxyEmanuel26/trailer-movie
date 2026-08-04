@@ -23,12 +23,38 @@ export class GenreRepository {
   }
 
   static async list(db: DbClient = prisma) {
-    return db.genre.findMany();
+    return db.genre.findMany({
+      orderBy: { name: 'asc' },
+    });
   }
 
   static async findById(id: string, db: DbClient = prisma) {
     return db.genre.findUnique({
       where: { id },
+    });
+  }
+
+  static async findBySlug(slug: string, db: DbClient = prisma) {
+    return db.genre.findUnique({
+      where: { slug },
+    });
+  }
+
+  static async create(data: Prisma.GenreCreateInput, db: DbClient = prisma) {
+    return db.genre.create({ data });
+  }
+
+  static async update(id: string, data: Prisma.GenreUpdateInput, db: DbClient = prisma) {
+    return db.genre.update({ where: { id }, data });
+  }
+
+  static async delete(id: string, db: DbClient = prisma) {
+    return db.genre.delete({ where: { id } });
+  }
+
+  static async deleteMany(ids: string[], db: DbClient = prisma) {
+    return db.genre.deleteMany({
+      where: { id: { in: ids } },
     });
   }
 

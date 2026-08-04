@@ -3,6 +3,7 @@ import { apiHandler } from "@/lib/api/handler";
 import { successResponse } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/utils";
 import { GenreService } from "@/lib/services/GenreService";
+import { GenreInputSchema } from "@/lib/api/schemas";
 
 export const GET = apiHandler(async () => {
   await requireAdmin("read:genres");
@@ -12,6 +13,7 @@ export const GET = apiHandler(async () => {
 
 export const POST = apiHandler(async (request: NextRequest) => {
   await requireAdmin("create:genres");
-  // const data = GenreUpdateSchema.parse(await request.json());
-  return successResponse({ message: "Not implemented" }, 201);
+  const data = GenreInputSchema.parse(await request.json());
+  const genre = await GenreService.createGenre(data);
+  return successResponse(genre, 201);
 });

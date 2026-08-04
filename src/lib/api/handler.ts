@@ -5,7 +5,7 @@ import { ZodError } from 'zod';
 
 type ApiHandler<T = any> = (
   request: NextRequest,
-  context: { params: Record<string, string> | Promise<Record<string, string>> }
+  context: any
 ) => Promise<NextResponse<T> | Response>;
 
 /**

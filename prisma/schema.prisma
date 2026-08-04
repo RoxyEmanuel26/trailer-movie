@@ -47,7 +47,9 @@ enum PersonRoleType {
 enum HomepageSectionType {
   AUTO_RECENT
   AUTO_UPCOMING
+  AUTO_TRENDING
   MANUAL_COLLECTION
+  GENRE_BASED
   AD_SLOT
 }
 
@@ -298,7 +300,8 @@ model Genre {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  movies MovieGenre[]
+  movies           MovieGenre[]
+  homepageSections HomepageSection[]
 
   @@map("genres")
 }
@@ -422,6 +425,8 @@ model Collection {
   slug        String  @unique
   description String? @db.Text
   isActive    Boolean @default(false)
+  isFeatured  Boolean @default(false)
+  coverImageUrl String?
 
   movies   CollectionMovie[]
   sections HomepageSection[]
@@ -446,10 +451,12 @@ model HomepageSection {
   title        String
   type         HomepageSectionType
   collectionId String?
+  genreId      String?
   sortOrder    Int                 @default(0)
   isActive     Boolean             @default(true)
 
   collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  genre      Genre?      @relation(fields: [genreId], references: [id], onDelete: SetNull)
 
   @@map("homepage_sections")
 }

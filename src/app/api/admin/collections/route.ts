@@ -3,6 +3,7 @@ import { apiHandler } from "@/lib/api/handler";
 import { successResponse } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/utils";
 import { CollectionService } from "@/lib/services/CollectionService";
+import { CollectionInputSchema } from "@/lib/api/schemas";
 
 export const GET = apiHandler(async () => {
   await requireAdmin("read:collections");
@@ -12,5 +13,7 @@ export const GET = apiHandler(async () => {
 
 export const POST = apiHandler(async (request: NextRequest) => {
   await requireAdmin("create:collections");
-  return successResponse({ message: "Not implemented" }, 201);
+  const data = CollectionInputSchema.parse(await request.json());
+  const collection = await CollectionService.createCollection(data);
+  return successResponse(collection, 201);
 });

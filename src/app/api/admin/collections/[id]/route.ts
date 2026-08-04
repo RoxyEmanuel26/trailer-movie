@@ -2,13 +2,27 @@ import { NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api/handler";
 import { successResponse } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/utils";
+import { CollectionService } from "@/lib/services/CollectionService";
+import { CollectionInputSchema } from "@/lib/api/schemas";
 
-export const PATCH = apiHandler(async (request: NextRequest, { params }: any) => {
-  await requireAdmin("update:collections");
-  return successResponse({ updatedId: params.id });
+export const GET = apiHandler(async (req: NextRequest, { params }: any) => {
+  await requireAdmin("read:collections");
+  const { id } = await params;
+  const collection = await CollectionService.getCollection(id);
+  return successResponse(collection);
 });
 
-export const DELETE = apiHandler(async (request: NextRequest, { params }: any) => {
+export const PUT = apiHandler(async (req: NextRequest, { params }: any) => {
+  await requireAdmin("update:collections");
+  const { id } = await params;
+  const data = CollectionInputSchema.parse(await req.json());
+  const collection = await CollectionService.updateCollection(id, data);
+  return successResponse(collection);
+});
+
+export const DELETE = apiHandler(async (req: NextRequest, { params }: any) => {
   await requireAdmin("delete:collections");
-  return successResponse({ deletedId: params.id });
+  const { id } = await params;
+  await CollectionService.deleteCollection(id);
+  return successResponse({ success: true });
 });

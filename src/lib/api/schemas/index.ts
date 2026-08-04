@@ -32,28 +32,45 @@ export const MovieAdminUpdateSchema = z.object({
 });
 
 /**
- * Genre Update Schema
+ * Genre Schemas
  */
-export const GenreUpdateSchema = z.object({
-  name: z.string().min(1),
-  slug: z.string().min(1).optional(),
+export const GenreInputSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional().nullable(),
 });
 
 /**
- * Tag Update Schema
+ * Tag Schemas
  */
-export const TagUpdateSchema = z.object({
-  name: z.string().min(1),
-  slug: z.string().min(1).optional(),
+export const TagInputSchema = z.object({
+  name: z.string().min(1, "Name is required"),
 });
 
 /**
- * Collection Update Schema
+ * Collection Schemas
  */
-export const CollectionUpdateSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
+export const CollectionInputSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
+  isFeatured: z.boolean().optional(),
+  coverImageUrl: z.string().url().optional().nullable(),
+});
+
+export const BulkIdsSchema = z.object({
+  ids: z.array(z.string()),
+});
+
+export const BulkStatusSchema = BulkIdsSchema.extend({
+  isActive: z.boolean(),
+});
+
+export const BulkFeaturedSchema = BulkIdsSchema.extend({
+  isFeatured: z.boolean(),
+});
+
+export const CollectionMoviesSchema = z.object({
+  movieIds: z.array(z.string()),
 });
 
 /**
@@ -97,4 +114,46 @@ export const TrailerUpdateSchema = z.object({
 export const UserUpdateSchema = z.object({
   isActive: z.boolean().optional(),
   roleId: z.string().cuid().optional().nullable(),
+});
+
+/**
+ * Homepage Schemas
+ */
+export const HomepageSectionInputSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  type: z.enum([
+    "AUTO_RECENT",
+    "AUTO_UPCOMING",
+    "AUTO_TRENDING",
+    "MANUAL_COLLECTION",
+    "GENRE_BASED",
+    "AD_SLOT"
+  ]),
+  collectionId: z.string().cuid().optional().nullable(),
+  genreId: z.string().cuid().optional().nullable(),
+  isActive: z.boolean().optional(),
+});
+
+export const FeaturedItemInputSchema = z.object({
+  movieId: z.string().cuid("Movie is required"),
+  customHeadline: z.string().optional().nullable(),
+  customBackdropUrl: z.string().url().optional().nullable(),
+  isActive: z.boolean().optional(),
+  startDate: z.string().datetime().optional().nullable(),
+  endDate: z.string().datetime().optional().nullable(),
+});
+
+export const ReorderSchema = z.object({
+  orderedIds: z.array(z.string().cuid()),
+});
+
+export const GlobalSeoSettingsSchema = z.object({
+  defaultTitle: z.string().optional().default(''),
+  defaultDescription: z.string().optional().default(''),
+  defaultKeywords: z.string().optional().default(''),
+  ogSiteName: z.string().optional().default(''),
+  twitterHandle: z.string().optional().default(''),
+  googleVerification: z.string().optional().default(''),
+  bingVerification: z.string().optional().default(''),
+  yandexVerification: z.string().optional().default(''),
 });
