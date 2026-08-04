@@ -10,9 +10,18 @@ export const GET = apiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const skip = parseInt(searchParams.get("skip") || "0", 10);
   const take = parseInt(searchParams.get("take") || "50", 10);
+  const search = searchParams.get("search") || undefined;
+  const status = searchParams.get("status") || undefined;
+  
+  const sort = searchParams.get("sort") || "createdAt";
+  const order = searchParams.get("order") === "asc" ? "asc" : "desc";
+  const orderBy = { [sort]: order };
 
-  const movies = await MovieService.listMovies(skip, take);
-  return successResponse(movies);
+  const result = await MovieService.listMovies({
+    skip, take, search, status, orderBy
+  });
+  
+  return successResponse(result);
 });
 
 export const POST = apiHandler(async (request: NextRequest) => {

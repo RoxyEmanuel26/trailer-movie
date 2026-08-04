@@ -3,7 +3,20 @@ import { apiHandler } from '@/lib/api/handler';
 import { successResponse } from '@/lib/api/response';
 import { ImportSchema } from '@/lib/api/schemas';
 import { requireAdmin } from '@/lib/auth/utils';
-import { queue } from '@/lib/jobs/queue';
+import { ImportManagerService } from '@/lib/services/ImportManagerService';
+import { ImportJobStatus } from '@prisma/client';
+
+export const GET = apiHandler(async (request: NextRequest) => {
+  await requireAdmin("read:imports");
+  
+  const { searchParams } = new URL(request.url);
+  const skip = parseInt(searchParams.get("skip") || "0", 10);
+  const take = parseInt(searchParams.get("take") || "50", 10);
+  const status = searchParams.get("status") as ImportJobStatus | undefined;
+
+  const result = await ImportManagerService.listJobs({ skip, take, status });
+  return successResponse(result);
+});
 
 export const POST = apiHandler(async (request: NextRequest) => {
   await requireAdmin("create:imports");
@@ -11,7 +24,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   const body = await request.json();
   const input = ImportSchema.parse(body);
 
-  const jobId = await queue.enqueue("movie-import", input);
+  const job = await ImportManagerService.enqueueMovieImport(input.tmdbId);
 
-  return successResponse({ jobId, message: "Import queued" }, 202);
+  return successResponse({ job, message: "Import queued" }, 202);
 });

@@ -9,7 +9,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
   const take = parseInt(searchParams.get('take') || '50', 10);
 
   // Authentication/Authorization would have happened in middleware
-  const movies = await MovieService.listMovies(skip, take);
+  const movies = await MovieService.listMovies({ skip, take });
 
   return successResponse(movies);
 });

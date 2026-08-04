@@ -49,12 +49,36 @@ export class MovieRepository {
     });
   }
 
-  static async list(params: { skip?: number; take?: number }, db: DbClient = prisma) {
-    return db.movie.findMany({
-      skip: params.skip,
-      take: params.take,
-      where: { deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
+  static async list(params: { 
+    skip?: number; 
+    take?: number; 
+    search?: string; 
+    status?: import('@prisma/client').MovieStatus; 
+    orderBy?: { [key: string]: 'asc' | 'desc' } 
+  }, db: DbClient = prisma) {
+    const where: Prisma.MovieWhereInput = { deletedAt: null };
+    
+    if (params.search) {
+      where.title = { contains: params.search, mode: 'insensitive' };
+    }
+    
+    if (params.status) {
+      where.status = params.status;
+    }
+
+    const [data, total] = await prisma.$transaction([
+      db.movie.findMany({
+        skip: params.skip,
+        take: params.take,
+        where,
+        orderBy: params.orderBy || { createdAt: 'desc' },
+        include: {
+          genres: { include: { genre: true } },
+        }
+      }),
+      db.movie.count({ where })
+    ]);
+
+    return { data, total };
   }
 }

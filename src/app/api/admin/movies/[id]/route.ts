@@ -12,8 +12,8 @@ export const PATCH = apiHandler(async (request: NextRequest, { params }: any) =>
   const body = await request.json();
   const data = MovieAdminUpdateSchema.parse(body);
 
-  // Future: MovieService.updateMovie(id, data);
-  return successResponse({ updatedId: id, data });
+  const updated = await MovieService.updateMovie(id, data);
+  return successResponse({ updatedId: id, data: updated });
 });
 
 export const DELETE = apiHandler(async (request: NextRequest, { params }: any) => {

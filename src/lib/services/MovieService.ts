@@ -39,7 +39,31 @@ export class MovieService {
     return MovieRepository.delete(id);
   }
 
-  static async listMovies(skip = 0, take = 50) {
-    return MovieRepository.list({ skip, take });
+  static async updateMovie(id: string, data: any) {
+    const movie = await MovieRepository.findById(id);
+    if (!movie) {
+      throw new NotFoundError(`Movie with id ${id} not found`);
+    }
+    return MovieRepository.update(id, data);
+  }
+
+  static async listMovies(params: { 
+    skip?: number; 
+    take?: number; 
+    search?: string; 
+    status?: any; 
+    orderBy?: any 
+  }) {
+    const skip = params.skip || 0;
+    const take = params.take || 50;
+    const { data, total } = await MovieRepository.list({ ...params, skip, take });
+    return {
+      data,
+      meta: {
+        total,
+        skip,
+        take,
+      }
+    };
   }
 }
