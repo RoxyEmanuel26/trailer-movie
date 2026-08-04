@@ -1,20 +1,21 @@
 import { HomepageRepository } from '../repositories/HomepageRepository';
 import { Prisma } from '@prisma/client';
+import { cache } from 'react';
 
 export class HomepageService {
   // ---------------------------------------------------------------------------
   // Sections
   // ---------------------------------------------------------------------------
 
-  static async listSections() {
+  static listSections = cache(async () => {
     return HomepageRepository.listSections();
-  }
+  });
 
-  static async getSection(id: string) {
+  static getSection = cache(async (id: string) => {
     const section = await HomepageRepository.getSection(id);
     if (!section) throw new Error(`Section not found: ${id}`);
     return section;
-  }
+  });
 
   static async createSection(data: Prisma.HomepageSectionUncheckedCreateInput) {
     // Determine sortOrder if not provided
@@ -42,9 +43,9 @@ export class HomepageService {
   // Featured Items
   // ---------------------------------------------------------------------------
 
-  static async listFeaturedItems() {
+  static listFeaturedItems = cache(async () => {
     return HomepageRepository.listFeaturedItems();
-  }
+  });
 
   static async addFeaturedItem(data: Prisma.FeaturedItemUncheckedCreateInput) {
     if (data.sortOrder === undefined) {

@@ -3,6 +3,7 @@ import { SettingsRepository } from '../repositories/SettingsRepository';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { Metadata } from 'next';
+import { cache } from 'react';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -11,17 +12,17 @@ export class SeoService {
   // Basic SEO Page CRUD
   // --------------------------------------------------------------------------
 
-  static async getHomepageSeo() {
+  static getHomepageSeo = cache(async () => {
     return SeoRepository.getByRoute('/');
-  }
+  });
 
   static async updateHomepageSeo(data: Omit<Prisma.SeoPageCreateInput, 'routePath' | 'seoableType' | 'seoableId'>) {
     return SeoRepository.upsertByRoute('/', data);
   }
 
-  static async getEntitySeo(seoableType: string, seoableId: string) {
+  static getEntitySeo = cache(async (seoableType: string, seoableId: string) => {
     return SeoRepository.getByEntity(seoableType, seoableId);
-  }
+  });
 
   static async updateEntitySeo(
     seoableType: string,
@@ -35,7 +36,7 @@ export class SeoService {
   // Global Settings
   // --------------------------------------------------------------------------
 
-  static async getGlobalSeoSettings() {
+  static getGlobalSeoSettings = cache(async () => {
     const settings = await SettingsRepository.getGroup('seo');
     const map = settings.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {} as Record<string, string>);
     return {
@@ -48,7 +49,7 @@ export class SeoService {
       bingVerification: map['seo.bingVerification'] || '',
       yandexVerification: map['seo.yandexVerification'] || '',
     };
-  }
+  });
 
   static async updateGlobalSeoSettings(data: {
     defaultTitle: string;

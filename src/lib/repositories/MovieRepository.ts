@@ -68,7 +68,8 @@ export class MovieRepository {
     take?: number; 
     search?: string; 
     status?: import('@prisma/client').MovieStatus; 
-    orderBy?: { [key: string]: 'asc' | 'desc' } 
+    orderBy?: { [key: string]: 'asc' | 'desc' };
+    excludeId?: string;
   }, db: DbClient = prisma) {
     const where: Prisma.MovieWhereInput = { deletedAt: null };
     
@@ -78,6 +79,10 @@ export class MovieRepository {
     
     if (params.status) {
       where.status = params.status;
+    }
+
+    if (params.excludeId) {
+      where.id = { not: params.excludeId };
     }
 
     const [data, total] = await prisma.$transaction([

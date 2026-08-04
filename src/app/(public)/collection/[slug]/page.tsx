@@ -28,6 +28,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 }
 
+export const revalidate = 3600;
+
 export default async function CollectionPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const { page } = await searchParams;

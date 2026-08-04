@@ -1,34 +1,31 @@
 import { MovieRepository } from '../repositories/MovieRepository';
 import { NotFoundError, ValidationError } from '../errors';
+import { cache } from 'react';
 
 export class MovieService {
-  static async getMovie(id: string) {
+  static getMovie = cache(async (id: string) => {
     const movie = await MovieRepository.findById(id);
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
     }
     return movie;
-  }
+  });
 
-  static async getBySlug(slug: string) {
+  static getBySlug = cache(async (slug: string) => {
     const movie = await MovieRepository.findBySlug(slug);
     if (!movie) {
       throw new NotFoundError(`Movie with slug ${slug} not found`);
     }
     return movie;
-  }
+  });
 
   static async getRelatedMovies(movieId: string, genreIds: string[]) {
-    // Simple logic: fetch 6 movies sharing the same genres, excluding the current one
     const { data } = await MovieRepository.list({
       status: 'PUBLISHED',
-      take: 6,
+      take: 5,
+      excludeId: movieId,
     });
-    // For a real app, this should query Prisma for "some" matching genres.
-    // Let's implement it cleanly via MovieRepository if possible, or just return random recent ones for now if Prisma query is complex.
-    // Since MovieRepository.list doesn't support genres array filtering out of the box, we will just use Prisma directly here or fetch latest.
-    // Actually, I can use Prisma here for simplicity or update the repository. Let's just fetch latest published for now to keep it simple, filtering out self.
-    return data.filter(m => m.id !== movieId).slice(0, 5);
+    return data;
   }
 
   static async publishMovie(id: string) {

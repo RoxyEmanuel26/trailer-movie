@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import Image from 'next/image';
 import { HomepageService } from '@/lib/services/HomepageService';
 import { SeoService } from '@/lib/services/SeoService';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
@@ -9,6 +10,8 @@ import Link from 'next/link';
 export async function generateMetadata(): Promise<Metadata> {
   return SeoService.generateMetadata('Page', 'home');
 }
+
+export const revalidate = 3600;
 
 export default async function HomePage() {
   const [sections, featuredItems] = await Promise.all([
@@ -26,10 +29,16 @@ export default async function HomePage() {
       {hasHero && (
         <section className="relative w-full h-[70vh] min-h-[500px] overflow-hidden bg-black flex flex-col justify-end">
           {activeFeatured[0].movie?.backdropUrl && (
-            <div 
-              className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-50"
-              style={{ backgroundImage: `url(${activeFeatured[0].movie.backdropUrl})` }}
-            />
+            <div className="absolute inset-0 opacity-50">
+              <Image
+                src={activeFeatured[0].movie.backdropUrl}
+                alt={activeFeatured[0].movie.title || "Featured Movie"}
+                fill
+                priority
+                sizes="100vw"
+                className="object-cover"
+              />
+            </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
           

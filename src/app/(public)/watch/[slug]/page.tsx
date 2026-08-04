@@ -29,6 +29,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 }
 
+export const revalidate = 3600;
+
 export default async function MovieDetailPage({ params }: PageProps) {
   const { slug } = await params;
   let movie;
