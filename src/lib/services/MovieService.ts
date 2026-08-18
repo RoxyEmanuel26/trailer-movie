@@ -6,7 +6,7 @@ import { requireAdmin } from '../auth/utils';
 export class MovieService {
   static getMovie = cache(async (id: string) => {
     const movie = await MovieRepository.findById(id);
-    if (!movie) {
+    if (!movie || movie.status !== 'PUBLISHED') {
       throw new NotFoundError(`Movie with id ${id} not found`);
     }
     return movie;
@@ -14,7 +14,7 @@ export class MovieService {
 
   static getBySlug = cache(async (slug: string) => {
     const movie = await MovieRepository.findBySlug(slug);
-    if (!movie) {
+    if (!movie || movie.status !== 'PUBLISHED') {
       throw new NotFoundError(`Movie with slug ${slug} not found`);
     }
     return movie;
@@ -78,7 +78,17 @@ export class MovieService {
     orderBy?: any 
   }) {
     await requireAdmin('read:movies');
-    return this.listMovies(params);
+    const skip = params.skip || 0;
+    const take = Math.min(Number(params.take) || 50, 100);
+    const { data, total } = await MovieRepository.list({ ...params, skip, take });
+    return {
+      data,
+      meta: {
+        total,
+        skip,
+        take,
+      }
+    };
   }
 
   static async listMovies(params: { 
@@ -89,8 +99,8 @@ export class MovieService {
     orderBy?: any 
   }) {
     const skip = params.skip || 0;
-    const take = params.take || 50;
-    const { data, total } = await MovieRepository.list({ ...params, skip, take });
+    const take = Math.min(Number(params.take) || 50, 100);
+    const { data, total } = await MovieRepository.list({ ...params, skip, take, status: 'PUBLISHED' });
     return {
       data,
       meta: {
@@ -113,8 +123,8 @@ export class MovieService {
   }) {
     // Public search method that uses full-text search
     const skip = params.skip || 0;
-    const take = params.take || 24;
-    const { data, total } = await MovieRepository.search(params);
+    const take = Math.min(Number(params.take) || 24, 48);
+    const { data, total } = await MovieRepository.search({ ...params, skip, take, status: 'PUBLISHED' });
     return { data, total };
   }
 }

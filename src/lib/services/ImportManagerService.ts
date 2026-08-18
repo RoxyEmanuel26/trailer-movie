@@ -2,6 +2,7 @@ import { ImportRepository } from '../repositories/ImportRepository';
 import { MovieImportPipeline } from '../jobs/pipelines/MovieImportPipeline';
 import { ImportJobStatus } from '@prisma/client';
 import { ValidationError, NotFoundError } from '../errors';
+import { requireAdmin } from '../auth/utils';
 
 export class ImportManagerService {
   /**
@@ -9,6 +10,7 @@ export class ImportManagerService {
    * If a pending or in-progress job exists for this TMDB ID, it returns that job.
    */
   static async enqueueMovieImport(tmdbId: number) {
+    await requireAdmin('write:imports');
     // Basic duplication check to avoid spamming the same job
     const existingJobs = await ImportRepository.list({
       status: ImportJobStatus.PENDING,
@@ -29,15 +31,16 @@ export class ImportManagerService {
     // Create the persistent job record
     const job = await ImportRepository.create(tmdbId, 'Movie');
 
-    // Fire and forget the pipeline worker (background execution)
-    void new MovieImportPipeline(job.id).run({ tmdbId }).catch(console.error);
+    // Fire and forget promise removed to avoid unbounded memory/database connections.
+    // A background polling worker handles PENDING jobs via FOR UPDATE SKIP LOCKED.
 
     return job;
   }
 
   static async listJobs(params: { skip?: number; take?: number; status?: ImportJobStatus }) {
+    await requireAdmin('read:imports');
     const skip = params.skip || 0;
-    const take = params.take || 50;
+    const take = Math.min(Number(params.take) || 50, 100);
     const { data, total } = await ImportRepository.list({ ...params, skip, take });
     return {
       data,
@@ -50,6 +53,7 @@ export class ImportManagerService {
   }
 
   static async getJob(id: string) {
+    await requireAdmin('read:imports');
     const job = await ImportRepository.findById(id);
     if (!job) {
       throw new NotFoundError(`Import job with id ${id} not found`);
@@ -58,6 +62,7 @@ export class ImportManagerService {
   }
 
   static async cancelJob(id: string) {
+    await requireAdmin('write:imports');
     const job = await ImportRepository.findById(id);
     if (!job) {
       throw new NotFoundError(`Import job with id ${id} not found`);

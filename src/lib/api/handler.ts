@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { errorResponse } from './response';
 import { AppError } from '../errors';
 import { ZodError } from 'zod';
-import { rateLimit } from '../security/rateLimiter';
+import { resolveIp, enforceRateLimit, RateLimitTiers } from '../security/rateLimiter';
 import { logger } from '../logger';
 
 type ApiHandler<T = any> = (
@@ -17,11 +17,28 @@ type ApiHandler<T = any> = (
 export function apiHandler(handler: ApiHandler): ApiHandler {
   return async (request, context) => {
     try {
-      // Global rate limiter using IP address
-      // Next.js standardizes request.ip in edge, but in Node we fallback to headers.
-      // To harden, we prefer the platform-provided x-real-ip or x-forwarded-for.
-      const ip = (request as any).ip || request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown-ip';
-      rateLimit(ip, 200, 60000); // Max 200 requests per minute globally per IP
+      // 1. Resolve true IP addressing Cloudflare/Vercel proxies
+      const ip = resolveIp(request);
+      
+      // 2. Select appropriate Rate Limit tier based on route and method
+      const path = request.nextUrl.pathname;
+      const method = request.method;
+      
+      let limitTier = RateLimitTiers.PUBLIC_GET;
+      
+      if (path.startsWith('/api/admin/analytics')) {
+        limitTier = RateLimitTiers.ANALYTICS;
+      } else if (path.startsWith('/api/admin')) {
+        limitTier = RateLimitTiers.ADMIN;
+      } else if (path.startsWith('/api/import')) {
+        limitTier = RateLimitTiers.IMPORT;
+      } else if (path.startsWith('/api/search')) {
+        limitTier = RateLimitTiers.SEARCH;
+      } else if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+        limitTier = RateLimitTiers.PUBLIC_POST;
+      }
+      
+      await enforceRateLimit(ip, limitTier, path);
 
       return await handler(request, context);
     } catch (error: any) {
@@ -48,7 +65,17 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
         // 429 logic
         if (error.statusCode === 429) code = 'TOO_MANY_REQUESTS';
 
-        return errorResponse(error.message, code, error.statusCode);
+        const res = errorResponse(error.message, code, error.statusCode);
+        
+        // Inject rate limit headers if present on the error object
+        if ((error as any).headers) {
+          const headersObj = (error as any).headers;
+          for (const [key, value] of Object.entries(headersObj)) {
+            res.headers.set(key, value as string);
+          }
+        }
+        
+        return res;
       }
 
       // Hide Database Implementation Details (decoupled from Prisma client)

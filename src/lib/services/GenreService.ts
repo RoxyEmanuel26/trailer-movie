@@ -1,5 +1,6 @@
 import { GenreRepository } from "../repositories/GenreRepository";
 import { NotFoundError, ValidationError } from "../errors";
+import { requireAdmin } from "../auth/utils";
 
 function generateSlug(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -23,6 +24,7 @@ export class GenreService {
   }
 
   static async createGenre(data: { name: string; description?: string | null }) {
+    await requireAdmin('write:genres');
     const slug = generateSlug(data.name);
     
     const existing = await GenreRepository.findBySlug(slug);
@@ -38,6 +40,7 @@ export class GenreService {
   }
 
   static async updateGenre(id: string, data: { name?: string; description?: string | null }) {
+    await requireAdmin('write:genres');
     const existing = await GenreRepository.findById(id);
     if (!existing) throw new NotFoundError("Genre not found");
 
@@ -58,12 +61,14 @@ export class GenreService {
   }
 
   static async deleteGenre(id: string) {
+    await requireAdmin('write:genres');
     const existing = await GenreRepository.findById(id);
     if (!existing) throw new NotFoundError("Genre not found");
     return GenreRepository.delete(id);
   }
 
   static async deleteMany(ids: string[]) {
+    await requireAdmin('write:genres');
     return GenreRepository.deleteMany(ids);
   }
 }

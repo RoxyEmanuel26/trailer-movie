@@ -3,6 +3,16 @@ import type { NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // 1. Bot Protection & User Agent Inspection
+  const userAgent = request.headers.get('user-agent') || '';
+  const isMaliciousBot = /curl|python-requests|postman|scraper|wget|httpx|http-client/i.test(userAgent);
+
+  if (!userAgent || isMaliciousBot) {
+    const ip = (request as any).ip || request.headers.get('x-forwarded-for') || 'unknown';
+    console.warn(`[MIDDLEWARE_BOT_BLOCK] Blocked IP: ${ip} | UA: ${userAgent}`);
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+
   // Only protect admin routes for now.
   // Note: This is a "soft" redirect check for UX. It does not cryptographically verify 
   // the session token at the edge (due to database/crypto limitations in Edge runtime). 

@@ -16,14 +16,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Environment variables must be present for Prisma and Next standalone build to succeed
-ARG DATABASE_URL
-ARG TMDB_ACCESS_TOKEN
-ARG BETTER_AUTH_SECRET
+# Accept build arguments for database connectivity during SSG
+ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+ENV DATABASE_URL=${DATABASE_URL}
+ENV TMDB_ACCESS_TOKEN="dummy_token"
+ENV BETTER_AUTH_SECRET="dummy_secret_16_chars_long"
 
-ENV DATABASE_URL=$DATABASE_URL
-ENV TMDB_ACCESS_TOKEN=$TMDB_ACCESS_TOKEN
-ENV BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -56,6 +54,9 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
 # server.js is created by next build from the standalone output
 CMD ["node", "server.js"]

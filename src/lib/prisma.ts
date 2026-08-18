@@ -9,7 +9,10 @@ const globalForPrisma = globalThis as unknown as {
 // Create a pg pool and a Prisma driver adapter
 const connectionString = `${process.env.DATABASE_URL}`;
 
-const pool = new Pool({ connectionString });
+const pool = new Pool({
+  connectionString,
+  max: process.env.DATABASE_MAX_CONNECTIONS ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10) : 10,
+});
 const adapter = new PrismaPg(pool);
 
 export const prisma =

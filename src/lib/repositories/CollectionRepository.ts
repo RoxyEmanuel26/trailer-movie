@@ -3,11 +3,13 @@ import { prisma } from '../prisma';
 import { DbClient } from './base.types';
 
 export class CollectionRepository {
-  static async findBySlug(slug: string, db: DbClient = prisma) {
-    return db.collection.findUnique({
-      where: { slug },
+  static async findBySlug(slug: string, publicOnly = false, db: DbClient = prisma) {
+    const movieWhere = publicOnly ? { status: 'PUBLISHED' as const, deletedAt: null } : {};
+    return db.collection.findFirst({
+      where: publicOnly ? { slug, isActive: true } : { slug },
       include: {
         movies: {
+          where: { movie: movieWhere },
           include: { movie: true },
           orderBy: { sortOrder: 'asc' },
         },
@@ -28,11 +30,13 @@ export class CollectionRepository {
     });
   }
 
-  static async findById(id: string, db: DbClient = prisma) {
-    return db.collection.findUnique({
-      where: { id },
+  static async findById(id: string, publicOnly = false, db: DbClient = prisma) {
+    const movieWhere = publicOnly ? { status: 'PUBLISHED' as const, deletedAt: null } : {};
+    return db.collection.findFirst({
+      where: publicOnly ? { id, isActive: true } : { id },
       include: {
         movies: {
+          where: { movie: movieWhere },
           include: { movie: true },
           orderBy: { sortOrder: 'asc' },
         },

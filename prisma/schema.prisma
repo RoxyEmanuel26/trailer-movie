@@ -3,7 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
-  previewFeatures = ["fullTextSearchPostgres"]
+  previewFeatures = ["fullTextSearchPostgres", "tracing"]
 }
 
 datasource db {
@@ -228,6 +228,7 @@ model Movie {
   @@index([releaseDate])
   @@index([status])
   @@index([status, releaseDate])
+  @@index([deletedAt])
   @@map("movies")
 }
 
@@ -285,6 +286,7 @@ model MoviePerson {
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
   @@id([movieId, personId, roleType])
+  @@index([personId])
   @@map("movie_people")
 }
 
@@ -316,6 +318,7 @@ model MovieGenre {
   genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
 
   @@id([movieId, genreId])
+  @@index([genreId])
   @@map("movie_genres")
 }
 
@@ -340,6 +343,7 @@ model MovieTag {
   tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([movieId, tagId])
+  @@index([tagId])
   @@map("movie_tags")
 }
 
@@ -445,6 +449,7 @@ model CollectionMovie {
   movie      Movie      @relation(fields: [movieId], references: [id], onDelete: Cascade)
 
   @@id([collectionId, movieId])
+  @@index([movieId])
   @@map("collection_movies")
 }
 

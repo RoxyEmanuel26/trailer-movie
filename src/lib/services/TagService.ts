@@ -1,5 +1,6 @@
 import { TagRepository } from "../repositories/TagRepository";
 import { NotFoundError, ValidationError } from "../errors";
+import { requireAdmin } from "../auth/utils";
 
 function generateSlug(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -23,6 +24,7 @@ export class TagService {
   }
 
   static async createTag(data: { name: string }) {
+    await requireAdmin('write:tags');
     const slug = generateSlug(data.name);
     
     const existing = await TagRepository.findBySlug(slug);
@@ -37,6 +39,7 @@ export class TagService {
   }
 
   static async updateTag(id: string, data: { name?: string }) {
+    await requireAdmin('write:tags');
     const existing = await TagRepository.findById(id);
     if (!existing) throw new NotFoundError("Tag not found");
 
@@ -56,12 +59,14 @@ export class TagService {
   }
 
   static async deleteTag(id: string) {
+    await requireAdmin('write:tags');
     const existing = await TagRepository.findById(id);
     if (!existing) throw new NotFoundError("Tag not found");
     return TagRepository.delete(id);
   }
 
   static async deleteMany(ids: string[]) {
+    await requireAdmin('write:tags');
     return TagRepository.deleteMany(ids);
   }
 }

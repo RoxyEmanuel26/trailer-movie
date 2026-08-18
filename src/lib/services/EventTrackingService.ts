@@ -8,7 +8,7 @@ export class EventTrackingService {
         eventName: 'page_view',
         metadata: { path } as Prisma.JsonObject,
       });
-      await AnalyticsRepository.incrementDailyMetric('page_view');
+
     } catch (error) {
       console.error('Failed to track page view:', error);
     }
@@ -21,7 +21,6 @@ export class EventTrackingService {
         entityType: 'Movie',
         entityId: movieId,
       });
-      await AnalyticsRepository.incrementDailyMetric('movie_view', 'Movie', movieId);
     } catch (error) {
       console.error('Failed to track movie view:', error);
     }
@@ -35,7 +34,6 @@ export class EventTrackingService {
         entityId: movieId,
         metadata: { trailerId } as Prisma.JsonObject,
       });
-      await AnalyticsRepository.incrementDailyMetric('trailer_play', 'Movie', movieId);
     } catch (error) {
       console.error('Failed to track trailer play:', error);
     }
@@ -49,7 +47,6 @@ export class EventTrackingService {
         eventName: 'search',
         metadata: { query, resultsCount } as Prisma.JsonObject,
       });
-      await AnalyticsRepository.incrementDailyMetric('search');
     } catch (error) {
       console.error('Failed to track search:', error);
     }

@@ -4,8 +4,8 @@ import { DbClient } from './base.types';
 
 export class MovieRepository {
   static async findById(id: string, db: DbClient = prisma) {
-    return db.movie.findUnique({
-      where: { id },
+    return db.movie.findFirst({
+      where: { id, deletedAt: null },
       include: {
         genres: { include: { genre: true } },
         people: { include: { person: true } },
@@ -15,8 +15,8 @@ export class MovieRepository {
   }
 
   static async findBySlug(slug: string, db: DbClient = prisma) {
-    return db.movie.findUnique({
-      where: { slug },
+    return db.movie.findFirst({
+      where: { slug, deletedAt: null },
       include: {
         genres: { include: { genre: true } },
         people: { include: { person: true }, orderBy: { sortOrder: 'asc' } },

@@ -6,9 +6,78 @@ on:
   pull_request:
     branches: ["main"]
 
+# Prevent concurrent deployments and ensure idempotency for workflows
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Use minimal permissions at the top level
+permissions:
+  contents: read
+
 jobs:
-  build:
+  lint-and-typecheck:
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Linter
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm tsc --noEmit
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Dependency Audit (Fail on High)
+        run: pnpm audit --prod --audit-level high
+
+  migration-validation:
+    name: Migration Validation
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: trailer-movie
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -31,15 +100,170 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm prisma generate
 
-      - name: Run Linter
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm tsc --noEmit
-
-      - name: Build Application
-        run: pnpm build
+      - name: Validate Prisma Migrations
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-          TMDB_ACCESS_TOKEN: ci-token
-          BETTER_AUTH_SECRET: ci-secret-key-16-chars
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/trailer-movie
+          DIRECT_DATABASE_URL: postgresql://postgres:password@localhost:5432/trailer-movie
+        run: |
+          pnpm prisma migrate deploy
+          pnpm prisma migrate status
+
+  docker-build-and-test:
+    name: Docker Build & Test
+    needs: [lint-and-typecheck, security-audit, migration-validation]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: trailer-movie
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies for Prisma
+        run: pnpm install --frozen-lockfile
+
+      - name: Prep Database for SSG Build
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/trailer-movie
+          DIRECT_DATABASE_URL: postgresql://postgres:password@localhost:5432/trailer-movie
+        run: |
+          pnpm prisma generate
+          pnpm prisma migrate deploy
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: temp-app:local
+          network: host
+          build-args: |
+            DATABASE_URL=postgresql://postgres:password@localhost:5432/trailer-movie
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker Runtime Health
+        run: |
+          # Start the container temporarily to verify it boots up and listens
+          docker run -d --name temp-app-test -p 3000:3000 temp-app:local
+          
+          # Wait for container to become healthy or timeout
+          echo "Waiting for healthcheck..."
+          sleep 10
+          
+          # Hit the internal health endpoint
+          curl --fail --silent --show-error http://localhost:3000/api/health || (docker logs temp-app-test && exit 1)
+          
+          # Check that the Docker native HEALTHCHECK passed
+          HEALTH=$(docker inspect --format='{{json .State.Health.Status}}' temp-app-test)
+          if [ "$HEALTH" != "\"healthy\"" ] && [ "$HEALTH" != "\"starting\"" ]; then
+            echo "Docker native healthcheck failed or container exited!"
+            docker logs temp-app-test
+            exit 1
+          fi
+
+          echo "Container is running and healthy."
+          docker stop temp-app-test
+          docker rm temp-app-test
+
+      - name: Export Docker Image
+        run: docker save temp-app:local > temp-app.tar
+
+      - name: Upload Image Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: temp-app.tar
+          retention-days: 1
+
+  docker-scan:
+    name: Docker Security Scan
+    needs: [docker-build-and-test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Image Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker Image
+        run: docker load < temp-app.tar
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'temp-app:local'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  docker-publish:
+    name: Push to GHCR
+    needs: [docker-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Image Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker Image
+        run: docker load < temp-app.tar
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=raw,value=latest
+
+      - name: Tag and Push Image
+        run: |
+          docker tag temp-app:local ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          docker tag temp-app:local ghcr.io/${{ github.repository }}:latest
+          docker push ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}:latest

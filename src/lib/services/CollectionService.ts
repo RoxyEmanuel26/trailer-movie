@@ -1,5 +1,6 @@
 import { CollectionRepository } from "../repositories/CollectionRepository";
 import { NotFoundError, ValidationError } from "../errors";
+import { requireAdmin } from "../auth/utils";
 
 function generateSlug(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -25,12 +26,13 @@ export class CollectionService {
   }
 
   static async getBySlug(slug: string) {
-    const collection = await CollectionRepository.findBySlug(slug);
+    const collection = await CollectionRepository.findBySlug(slug, true);
     if (!collection) throw new NotFoundError(`Collection with slug ${slug} not found`);
     return collection;
   }
 
   static async createCollection(data: CollectionData) {
+    await requireAdmin('write:collections');
     const slug = generateSlug(data.title);
     
     const existing = await CollectionRepository.findBySlug(slug);
@@ -49,6 +51,7 @@ export class CollectionService {
   }
 
   static async updateCollection(id: string, data: Partial<CollectionData>) {
+    await requireAdmin('write:collections');
     const existing = await CollectionRepository.findById(id);
     if (!existing) throw new NotFoundError("Collection not found");
 
@@ -72,24 +75,29 @@ export class CollectionService {
   }
 
   static async deleteCollection(id: string) {
+    await requireAdmin('write:collections');
     const existing = await CollectionRepository.findById(id);
     if (!existing) throw new NotFoundError("Collection not found");
     return CollectionRepository.delete(id);
   }
 
   static async deleteMany(ids: string[]) {
+    await requireAdmin('write:collections');
     return CollectionRepository.deleteMany(ids);
   }
 
   static async updateStatus(ids: string[], isActive: boolean) {
+    await requireAdmin('write:collections');
     return CollectionRepository.updateStatus(ids, isActive);
   }
 
   static async updateFeatured(ids: string[], isFeatured: boolean) {
+    await requireAdmin('write:collections');
     return CollectionRepository.updateFeatured(ids, isFeatured);
   }
 
   static async assignMovies(id: string, movieIds: string[]) {
+    await requireAdmin('write:collections');
     const existing = await CollectionRepository.findById(id);
     if (!existing) throw new NotFoundError("Collection not found");
     

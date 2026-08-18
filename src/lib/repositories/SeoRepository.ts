@@ -63,10 +63,22 @@ export class SeoRepository {
   /**
    * Helper to list all SEO pages for sitemap generation (with inSitemap = true)
    */
-  static async listAllSeoPages(db: DbClient = prisma) {
-    return db.seoPage.findMany({
-      where: { inSitemap: true },
-    });
+  static async *listAllSeoPagesChunked(chunkSize: number = 5000, db: DbClient = prisma) {
+    let cursor: string | undefined = undefined;
+    while (true) {
+      const chunk: Prisma.SeoPageGetPayload<Prisma.SeoPageDefaultArgs>[] = await db.seoPage.findMany({
+        where: { inSitemap: true },
+        take: chunkSize,
+        skip: cursor ? 1 : 0,
+        ...(cursor ? { cursor: { id: cursor } } : {}),
+        orderBy: { id: 'asc' },
+      });
+      
+      if (chunk.length === 0) break;
+      
+      yield chunk;
+      cursor = chunk[chunk.length - 1].id;
+    }
   }
 
   static async getSitemapData(db: DbClient = prisma) {

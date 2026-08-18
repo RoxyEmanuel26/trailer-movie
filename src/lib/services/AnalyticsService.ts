@@ -1,7 +1,9 @@
 import { AnalyticsRepository } from '../repositories/AnalyticsRepository';
+import { requireAdmin } from '../auth/utils';
 
 export class AnalyticsService {
   static async getOverviewDashboard() {
+    await requireAdmin('read:analytics');
     const metrics = await AnalyticsRepository.getOverviewMetrics();
     
     // Get last 7 days of page views for a chart
@@ -24,10 +26,12 @@ export class AnalyticsService {
   }
 
   static async getMovieAnalytics(movieId: string) {
+    await requireAdmin('read:analytics');
     return AnalyticsRepository.getMovieAnalytics(movieId);
   }
 
   static async getSearchAnalytics() {
+    await requireAdmin('read:analytics');
     // Uses native PostgreSQL GROUP BY instead of loading 1000 rows into Node.js memory
     const topQueries = await AnalyticsRepository.getTopSearchQueries(20);
     const zeroResultRaw = await AnalyticsRepository.getZeroResultSearchQueries(20);
@@ -40,6 +44,8 @@ export class AnalyticsService {
   }
 
   static async listAdminActivity(skip: number, take: number) {
-    return AnalyticsRepository.listAdminActivity(skip, take);
+    await requireAdmin('read:analytics');
+    const safeTake = Math.min(Number(take) || 50, 100);
+    return AnalyticsRepository.listAdminActivity(skip, safeTake);
   }
 }

@@ -35,7 +35,52 @@ export class SyncService {
 
       const movieData = mapTmdbMovieToPrisma(tmdbMovie, lockedFields);
 
-      // Orchestrate standard Prisma transaction for atomicity
+      // To prevent deadlocks, we upsert standalone dictionaries (Genres, People) OUTSIDE the main transaction.
+      // We also sort them by ID to ensure deterministic lock ordering if they are upserted concurrently.
+      const dbGenres: { tmdbId: number; id: string }[] = [];
+      if (!lockedFields.includes('genres')) {
+        const sortedTmdbGenres = [...tmdbMovie.genres].sort((a, b) => a.id - b.id);
+        for (const tmdbGenre of sortedTmdbGenres) {
+          const genre = await GenreRepository.upsert(
+            tmdbGenre.id,
+            { name: tmdbGenre.name, slug: generateSlug(tmdbGenre.name), tmdbId: tmdbGenre.id },
+            { name: tmdbGenre.name }
+          );
+          dbGenres.push({ tmdbId: tmdbGenre.id, id: genre.id });
+        }
+      }
+
+      const dbCast: { personId: string; character: string; order: number }[] = [];
+      if (!lockedFields.includes('cast')) {
+        const topCast = credits.cast.slice(0, 10);
+        const sortedCast = [...topCast].sort((a, b) => a.id - b.id);
+        
+        for (const castMember of sortedCast) {
+          const headshotUrl = castMember.profile_path
+            ? `https://image.tmdb.org/t/p/w200${castMember.profile_path}`
+            : null;
+
+          const person = await PersonRepository.upsert(
+            castMember.id,
+            {
+              name: castMember.name,
+              slug: generateSlug(castMember.name),
+              tmdbId: castMember.id,
+              headshotUrl,
+            },
+            { name: castMember.name, headshotUrl }
+          );
+          
+          // Note: we still use the original character/order for linking
+          dbCast.push({
+            personId: person.id,
+            character: castMember.character,
+            order: castMember.order,
+          });
+        }
+      }
+
+      // Orchestrate standard Prisma transaction for atomicity of the MOVIE and its links
       const savedMovie = await TransactionManager.run(
         async (tx) => {
           const movie = await MovieRepository.upsert(
@@ -56,43 +101,21 @@ export class SyncService {
 
           if (!lockedFields.includes('genres')) {
             await GenreRepository.clearMovieGenres(movie.id, tx);
-            for (const tmdbGenre of tmdbMovie.genres) {
-              const genre = await GenreRepository.upsert(
-                tmdbGenre.id,
-                { name: tmdbGenre.name, slug: generateSlug(tmdbGenre.name), tmdbId: tmdbGenre.id },
-                { name: tmdbGenre.name },
-                tx
-              );
-              await GenreRepository.linkMovieGenre(movie.id, genre.id, tx);
+            for (const g of dbGenres) {
+              await GenreRepository.linkMovieGenre(movie.id, g.id, tx);
             }
           }
 
           if (!lockedFields.includes('cast')) {
             await PersonRepository.clearMovieRole(movie.id, PersonRoleType.ACTOR, tx);
-            const topCast = credits.cast.slice(0, 10);
-            for (const castMember of topCast) {
-              const headshotUrl = castMember.profile_path
-                ? `https://image.tmdb.org/t/p/w200${castMember.profile_path}`
-                : null;
-
-              const person = await PersonRepository.upsert(
-                castMember.id,
-                {
-                  name: castMember.name,
-                  slug: generateSlug(castMember.name),
-                  tmdbId: castMember.id,
-                  headshotUrl,
-                },
-                { name: castMember.name, headshotUrl },
-                tx
-              );
+            for (const c of dbCast) {
               await PersonRepository.linkMoviePerson(
                 {
                   movieId: movie.id,
-                  personId: person.id,
+                  personId: c.personId,
                   roleType: PersonRoleType.ACTOR,
-                  characterName: castMember.character,
-                  sortOrder: castMember.order,
+                  characterName: c.character,
+                  sortOrder: c.order,
                 },
                 tx
               );
@@ -101,7 +124,7 @@ export class SyncService {
 
           if (!lockedFields.includes('trailers')) {
             const trailers = videos.results.filter(
-              (v) => v.site === 'YouTube' && v.type === 'Trailer'
+              (v: any) => v.site === 'YouTube' && v.type === 'Trailer'
             );
             for (let i = 0; i < trailers.length; i++) {
               const video = trailers[i];
