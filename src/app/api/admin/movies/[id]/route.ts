@@ -8,7 +8,7 @@ import { MovieAdminUpdateSchema } from "@/lib/api/schemas";
 export const PATCH = apiHandler(async (request: NextRequest, { params }: any) => {
   await requireAdmin("update:movies");
   
-  const id = params.id as string;
+  const { id } = await params;
   const body = await request.json();
   const data = MovieAdminUpdateSchema.parse(body);
 
@@ -18,7 +18,7 @@ export const PATCH = apiHandler(async (request: NextRequest, { params }: any) =>
 
 export const DELETE = apiHandler(async (request: NextRequest, { params }: any) => {
   await requireAdmin("delete:movies");
-  const id = params.id as string;
+  const { id } = await params;
   await MovieService.deleteMovie(id);
   return successResponse({ deleted: true });
 });

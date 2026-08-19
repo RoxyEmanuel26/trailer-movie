@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth/utils";
 
 export const POST = apiHandler(async (request: NextRequest, { params }: any) => {
   await requireAdmin("create:imports");
-  const id = params.id as string;
+  const { id } = await params;
   
   // Logic to re-enqueue a failed job based on database history
   return successResponse({ retried: true, originalId: id });

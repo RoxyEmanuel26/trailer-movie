@@ -6,7 +6,7 @@ import { ImportManagerService } from "@/lib/services/ImportManagerService";
 
 export const GET = apiHandler(async (request: NextRequest, { params }: any) => {
   await requireAdmin("read:imports");
-  const id = params.id as string;
+  const { id } = await params;
   
   const job = await ImportManagerService.getJob(id);
   
@@ -15,7 +15,7 @@ export const GET = apiHandler(async (request: NextRequest, { params }: any) => {
 
 export const DELETE = apiHandler(async (request: NextRequest, { params }: any) => {
   await requireAdmin("delete:imports");
-  const id = params.id as string;
+  const { id } = await params;
   
   const result = await ImportManagerService.cancelJob(id);
   

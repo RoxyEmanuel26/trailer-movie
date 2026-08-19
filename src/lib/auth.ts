@@ -13,6 +13,7 @@ export const auth = betterAuth({
     cookiePrefix: 'trailer-movie',
     useSecureCookies: process.env.NODE_ENV === 'production',
   },
+  trustedOrigins: ['http://localhost:3000', 'http://192.168.100.7:3000'],
   // We can add OAuth providers here later
   /*
   socialProviders: {

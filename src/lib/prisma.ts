@@ -1,19 +1,30 @@
 import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import { PrismaNeon } from '@prisma/adapter-neon';
+// In bare Node.js environments (like tsx scripts), we might need the 'ws' polyfill.
+// We use a dynamic check and require to prevent Next.js Edge bundlers from complaining.
+if (typeof process !== 'undefined' && process.release?.name === 'node') {
+  try {
+    // @ts-ignore
+    const ws = require('ws');
+    neonConfig.webSocketConstructor = ws;
+  } catch (e) {
+    // Ignore if not found
+  }
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Create a pg pool and a Prisma driver adapter
-const connectionString = `${process.env.DATABASE_URL}`;
+// Ensure DATABASE_URL is safe
+const connectionString = process.env.DATABASE_URL || '';
 
-const pool = new Pool({
+const poolConfig = {
   connectionString,
-  max: process.env.DATABASE_MAX_CONNECTIONS ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10) : 10,
-});
-const adapter = new PrismaPg(pool);
+};
+
+const adapter = new PrismaNeon(poolConfig);
 
 export const prisma =
   globalForPrisma.prisma ??

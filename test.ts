@@ -1,0 +1,1 @@
+﻿import { prisma } from './src/lib/prisma'; async function main() { const m = await prisma.movie.findFirst({ where: { slug: 'spider-man-brand-new-day-969681' }, include: { trailers: true } }); console.log(JSON.stringify(m, null, 2)); } main().finally(() => process.exit(0));

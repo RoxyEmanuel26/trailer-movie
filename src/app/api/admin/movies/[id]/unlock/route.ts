@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth/utils";
 
 export const POST = apiHandler(async (request: NextRequest, { params }: any) => {
   await requireAdmin("update:movies");
-  const id = params.id as string;
+  const { id } = await params;
   const { fields } = await request.json();
   
   // Future: MovieService.unlockFields(id, fields);

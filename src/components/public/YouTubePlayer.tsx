@@ -25,6 +25,7 @@ export function YouTubePlayer({
   onEnd,
 }: YouTubePlayerProps) {
   const [isReady, setIsReady] = React.useState(false);
+  const [useFallback, setUseFallback] = React.useState(false);
 
   const opts: YouTubeProps['opts'] = {
     height: '100%',
@@ -73,6 +74,36 @@ export function YouTubePlayer({
     if (onEnd) onEnd();
   };
 
+  const handleError = (event: any) => {
+    console.error('YouTube Player Error:', event);
+    setUseFallback(true);
+  };
+
+  React.useEffect(() => {
+    // Safety net: if YouTube API is blocked by ad-blockers or fails to load within 3s,
+    // fallback to a standard HTML iframe to ensure the video can still be played.
+    const timer = setTimeout(() => {
+      if (!isReady) {
+        setUseFallback(true);
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isReady]);
+
+  if (useFallback) {
+    return (
+      <div className={cn("relative w-full aspect-video rounded-xl overflow-hidden bg-muted", className)}>
+        <iframe
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=${autoplay ? 1 : 0}&modestbranding=1&rel=0`}
+          className="absolute top-0 left-0 w-full h-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          title="Movie Trailer"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={cn("relative w-full aspect-video rounded-xl overflow-hidden bg-muted", className)}>
       {!isReady && (
@@ -84,6 +115,7 @@ export function YouTubePlayer({
         onReady={handleReady}
         onPlay={handlePlay}
         onEnd={handleEnd}
+        onError={handleError}
         className={cn(
           "absolute top-0 left-0 w-full h-full transition-opacity duration-500",
           isReady ? "opacity-100" : "opacity-0"

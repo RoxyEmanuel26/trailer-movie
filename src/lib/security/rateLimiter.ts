@@ -68,8 +68,11 @@ export async function enforceRateLimit(
   limit: number,
   path: string = 'unknown'
 ): Promise<void> {
-  // If we are completely offline and no Redis, the Upstash Ratelimit falls back to its ephemeralCache Map,
-  // which is exactly what we want for a graceful degradation.
+  // If we are completely offline and no Redis, bypass gracefully to avoid crashing Upstash
+  if (!redis) {
+    return;
+  }
+
   try {
     const limiter = getLimiter(limit);
     const { success, pending, limit: rateLimitLimit, remaining, reset } = await limiter.limit(identifier);

@@ -81,4 +81,33 @@ export class ImportRepository {
       recentJobs,
     };
   }
+
+  static async recoverStuckJobs(thresholdDate: Date, db: DbClient = prisma) {
+    return db.importJob.updateMany({
+      where: {
+        status: ImportJobStatus.IN_PROGRESS,
+        updatedAt: { lt: thresholdDate }
+      },
+      data: { status: ImportJobStatus.PENDING }
+    });
+  }
+
+  static async fetchJobsForProcessing(limit: number, db: DbClient = prisma) {
+    // Prisma doesn't natively support SKIP LOCKED in findMany, so we use queryRaw
+    return db.$queryRaw<{ id: string, tmdbId: number }[]>`
+      SELECT id, "tmdbId" 
+      FROM "import_jobs" 
+      WHERE status = 'PENDING' 
+      ORDER BY "createdAt" ASC 
+      LIMIT ${limit} 
+      FOR UPDATE SKIP LOCKED
+    `;
+  }
+
+  static async markJobsInProgress(jobIds: string[], db: DbClient = prisma) {
+    return db.importJob.updateMany({
+      where: { id: { in: jobIds } },
+      data: { status: ImportJobStatus.IN_PROGRESS }
+    });
+  }
 }

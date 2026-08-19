@@ -13,7 +13,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@opentelemetry/api": "^1.9.1",
+    "@prisma/adapter-neon": "^7.9.1",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@prisma/instrumentation": "^7.9.1",
@@ -33,6 +35,7 @@
     "@radix-ui/react-tooltip": "^1.2.16",
     "@sentry/nextjs": "^10.69.0",
     "@tanstack/react-table": "^8.21.3",
+    "@types/ws": "^8.18.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.2",
     "@vercel/otel": "^2.1.3",
@@ -54,6 +57,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "use-debounce": "^10.1.1",
+    "ws": "^8.21.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {

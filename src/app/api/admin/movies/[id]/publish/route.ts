@@ -6,7 +6,7 @@ import { MovieService } from "@/lib/services/MovieService";
 
 export const POST = apiHandler(async (request: NextRequest, { params }: any) => {
   await requireAdmin("update:movies");
-  const id = params.id as string;
+  const { id } = await params;
   
   const result = await MovieService.publishMovie(id);
   return successResponse({ published: true, id: result.id });

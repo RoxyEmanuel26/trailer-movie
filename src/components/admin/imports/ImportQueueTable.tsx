@@ -119,8 +119,19 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
     getCoreRowModel: getCoreRowModel(),
   })
 
+  const handleProcessQueue = async () => {
+    toast.promise(fetch('/api/admin/cron/process-imports', { method: 'POST' }), {
+      loading: 'Processing next batch...',
+      success: 'Queue batch processed',
+      error: 'Failed to process queue'
+    });
+  }
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={handleProcessQueue}>Process Next Batch</Button>
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
