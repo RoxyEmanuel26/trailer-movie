@@ -2,6 +2,7 @@ import * as React from "react"
 import { ImportManagerService } from "@/lib/services/ImportManagerService"
 import { ImportSearchPanel } from "@/components/admin/imports/ImportSearchPanel"
 import { ImportQueueTable } from "@/components/admin/imports/ImportQueueTable"
+import { BulkImportPanel } from "@/components/admin/imports/BulkImportPanel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default async function ImportsPage() {
@@ -16,14 +17,19 @@ export default async function ImportsPage() {
         <p className="text-muted-foreground">Search TMDB and manage background import jobs.</p>
       </div>
 
-      <Tabs defaultValue="search" className="w-full">
+      <Tabs defaultValue="bulk" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="search">Search TMDB</TabsTrigger>
+          <TabsTrigger value="bulk">Bulk Import</TabsTrigger>
           <TabsTrigger value="queue">Queue & History</TabsTrigger>
         </TabsList>
         
         <TabsContent value="search" className="mt-0 outline-none">
           <ImportSearchPanel />
+        </TabsContent>
+
+        <TabsContent value="bulk" className="mt-0 outline-none">
+          <BulkImportPanel />
         </TabsContent>
         
         <TabsContent value="queue" className="mt-0 outline-none">

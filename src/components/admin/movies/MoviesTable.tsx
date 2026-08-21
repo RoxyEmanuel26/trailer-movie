@@ -7,6 +7,8 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table"
+import Image from "next/image"
+import { Film, ChevronLeft, ChevronRight } from "lucide-react"
 
 import {
   Table,
@@ -21,7 +23,6 @@ import { MovieRowActions } from "./MovieRowActions"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ChevronLeft, ChevronRight } from "lucide-react"
 
 interface MoviesTableProps {
   data: any[]
@@ -39,9 +40,22 @@ export function MoviesTable({ data, total, skip, take, onEdit }: MoviesTableProp
     {
       accessorKey: "title",
       header: "Title",
-      cell: ({ row }) => (
-        <div className="font-medium">{row.getValue("title")}</div>
-      ),
+      cell: ({ row }) => {
+        const title = row.getValue("title") as string
+        const posterUrl = row.original.posterUrl as string | null
+        return (
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-10 h-14 bg-muted rounded overflow-hidden flex items-center justify-center border">
+              {posterUrl ? (
+                <Image src={posterUrl} alt={title} width={40} height={56} className="object-cover w-full h-full" />
+              ) : (
+                <Film className="w-5 h-5 text-muted-foreground opacity-50" />
+              )}
+            </div>
+            <div className="font-medium line-clamp-2">{title}</div>
+          </div>
+        )
+      },
     },
     {
       accessorKey: "releaseDate",

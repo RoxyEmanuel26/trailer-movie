@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import YouTube, { YouTubeProps } from 'react-youtube';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -20,107 +19,40 @@ export function YouTubePlayer({
   movieId,
   autoplay = false,
   className,
-  onReady,
-  onPlay,
-  onEnd,
 }: YouTubePlayerProps) {
   const [isReady, setIsReady] = React.useState(false);
-  const [useFallback, setUseFallback] = React.useState(false);
-
-  const opts: YouTubeProps['opts'] = {
-    height: '100%',
-    width: '100%',
-    playerVars: {
-      autoplay: autoplay ? 1 : 0,
-      modestbranding: 1,
-      rel: 0,
-    },
-  };
-
-  const handleReady = (event: any) => {
-    setIsReady(true);
-    if (onReady) onReady();
-  };
-
-  const handlePlay = (event: any) => {
-    if (movieId) {
-      fetch('/api/analytics/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventName: 'trailer_play',
-          entityId: movieId,
-          metadata: { trailerId: videoId },
-        }),
-        keepalive: true,
-      }).catch(console.error);
-    }
-    if (onPlay) onPlay();
-  };
-
-  const handleEnd = (event: any) => {
-    if (movieId) {
-      fetch('/api/analytics/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventName: 'trailer_complete',
-          entityId: movieId,
-          metadata: { trailerId: videoId },
-        }),
-        keepalive: true,
-      }).catch(console.error);
-    }
-    if (onEnd) onEnd();
-  };
-
-  const handleError = (event: any) => {
-    console.error('YouTube Player Error:', event);
-    setUseFallback(true);
-  };
 
   React.useEffect(() => {
-    // Safety net: if YouTube API is blocked by ad-blockers or fails to load within 3s,
-    // fallback to a standard HTML iframe to ensure the video can still be played.
-    const timer = setTimeout(() => {
-      if (!isReady) {
-        setUseFallback(true);
-      }
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [isReady]);
-
-  if (useFallback) {
-    return (
-      <div className={cn("relative w-full aspect-video rounded-xl overflow-hidden bg-muted", className)}>
-        <iframe
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=${autoplay ? 1 : 0}&modestbranding=1&rel=0`}
-          className="absolute top-0 left-0 w-full h-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          title="Movie Trailer"
-        />
-      </div>
-    );
-  }
+    // Record analytics event when the player is mounted
+    if (movieId) {
+      fetch('/api/analytics/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventName: 'trailer_view',
+          entityId: movieId,
+          metadata: { trailerId: videoId },
+        }),
+        keepalive: true,
+      }).catch(console.error);
+    }
+  }, [movieId, videoId]);
 
   return (
     <div className={cn("relative w-full aspect-video rounded-xl overflow-hidden bg-muted", className)}>
       {!isReady && (
         <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
       )}
-      <YouTube
-        videoId={videoId}
-        opts={opts}
-        onReady={handleReady}
-        onPlay={handlePlay}
-        onEnd={handleEnd}
-        onError={handleError}
+      <iframe
+        src={`https://www.youtube.com/embed/${videoId}?autoplay=${autoplay ? 1 : 0}&modestbranding=1&rel=0`}
         className={cn(
-          "absolute top-0 left-0 w-full h-full transition-opacity duration-500",
+          "absolute top-0 left-0 w-full h-full border-0 transition-opacity duration-500",
           isReady ? "opacity-100" : "opacity-0"
         )}
-        iframeClassName="w-full h-full"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        title="Movie Trailer"
+        onLoad={() => setIsReady(true)}
       />
     </div>
   );

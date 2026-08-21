@@ -200,7 +200,7 @@ model Movie {
   slug           String      @unique
   originalTitle  String?
   synopsis       String?     @db.Text
-  releaseDate    DateTime
+  releaseDate    DateTime?
   status         MovieStatus @default(DRAFT)
   runtimeMinutes Int?
   mpaaRating     String?

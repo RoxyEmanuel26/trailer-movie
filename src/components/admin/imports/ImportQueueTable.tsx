@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { toast } from "sonner"
-import { Eye, Trash } from "lucide-react"
+import { Eye, Trash, Loader2 } from "lucide-react"
 
 import {
   Table,
@@ -20,6 +20,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { StatusBadge } from "@/components/admin/StatusBadge"
 import { ConfirmationDialog } from "@/components/admin/global/ConfirmationDialog"
 import { ImportJobDetailsDialog } from "./ImportJobDetailsDialog"
@@ -32,26 +34,70 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
   const [jobs, setJobs] = React.useState(initialJobs)
   const [selectedJob, setSelectedJob] = React.useState<any | null>(null)
   const [deletingJobId, setDeletingJobId] = React.useState<string | null>(null)
+  
+  // Auto Processing State
+  const [isAutoProcessing, setIsAutoProcessing] = React.useState(true)
+  const [isCurrentlyFetching, setIsCurrentlyFetching] = React.useState(false)
 
-  // Auto-refresh the jobs queue every 5 seconds if there are pending/in_progress jobs
-  React.useEffect(() => {
-    const hasActiveJobs = jobs.some(j => j.status === 'PENDING' || j.status === 'IN_PROGRESS')
-    if (!hasActiveJobs) return
+  // Use a ref to strictly avoid overlapping loops across re-renders
+  const autoProcessorRef = React.useRef({ isRunning: false, isCancelled: false })
 
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch('/api/admin/imports')
-        if (res.ok) {
-          const data = await res.json()
-          setJobs(data.data.data) // data -> successResponse.data -> paginated.data
-        }
-      } catch (e) {
-        // ignore
+  // Data fetching effect
+  const fetchLatestJobs = async () => {
+    try {
+      const res = await fetch('/api/admin/imports')
+      if (res.ok) {
+        const data = await res.json()
+        setJobs(data.data.data)
+        return data.data.data
       }
-    }, 5000)
+    } catch (e) {
+      // ignore
+    }
+    return null
+  }
 
-    return () => clearInterval(interval)
-  }, [jobs])
+  // The continuous background processor loop
+  React.useEffect(() => {
+    autoProcessorRef.current.isCancelled = !isAutoProcessing;
+    if (!isAutoProcessing) return;
+    if (autoProcessorRef.current.isRunning) return;
+
+    autoProcessorRef.current.isRunning = true;
+    
+    const runProcessor = async () => {
+      while (!autoProcessorRef.current.isCancelled) {
+        const currentJobs = await fetchLatestJobs() || jobs;
+        const pendingCount = currentJobs.filter((j: any) => j.status === 'PENDING').length;
+
+        if (pendingCount > 0) {
+          setIsCurrentlyFetching(true);
+          try {
+            // Process a batch (runs the worker silently in the background)
+            await fetch('/api/admin/cron/process-imports', { method: 'POST' });
+            await fetchLatestJobs(); // Update UI immediately after batch finishes
+          } catch (e) {
+            // Error, back off
+            await new Promise(r => setTimeout(r, 5000));
+          } finally {
+            setIsCurrentlyFetching(false);
+          }
+          // Small delay before next batch to relieve DB pressure
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          // No pending jobs, poll less frequently
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      }
+      autoProcessorRef.current.isRunning = false;
+    };
+
+    runProcessor();
+
+    return () => {
+      autoProcessorRef.current.isCancelled = true;
+    };
+  }, [isAutoProcessing]);
 
   const handleDelete = async () => {
     if (!deletingJobId) return
@@ -120,7 +166,7 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
   })
 
   const handleProcessQueue = async () => {
-    toast.promise(fetch('/api/admin/cron/process-imports', { method: 'POST' }), {
+    toast.promise(fetch('/api/admin/cron/process-imports', { method: 'POST' }).then(() => fetchLatestJobs()), {
       loading: 'Processing next batch...',
       success: 'Queue batch processed',
       error: 'Failed to process queue'
@@ -129,9 +175,25 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={handleProcessQueue}>Process Next Batch</Button>
+      <div className="flex justify-between items-center bg-muted/50 p-4 rounded-lg border">
+        <div className="flex items-center space-x-3">
+          <Switch 
+            id="auto-process" 
+            checked={isAutoProcessing} 
+            onCheckedChange={setIsAutoProcessing} 
+          />
+          <Label htmlFor="auto-process" className="flex items-center gap-2 font-medium cursor-pointer">
+            Auto-Process Queue
+            {isAutoProcessing && isCurrentlyFetching && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+          </Label>
+        </div>
+        <Button onClick={handleProcessQueue} variant="outline" disabled={isAutoProcessing}>
+          Process Next Batch (Manual)
+        </Button>
       </div>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -189,3 +251,4 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
     </div>
   )
 }
+

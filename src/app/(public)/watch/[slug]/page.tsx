@@ -108,33 +108,37 @@ export default async function MovieDetailPage({ params }: PageProps) {
               )}
             </div>
             
-            <div className="mt-6 flex flex-col gap-4 bg-muted/30 p-6 rounded-xl border">
-              <div>
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Info</h3>
-                <dl className="space-y-2 text-sm">
-                  {movie.originalTitle && movie.originalTitle !== movie.title && (
-                    <div className="flex flex-col">
-                      <dt className="text-muted-foreground">Original Title</dt>
-                      <dd className="font-medium">{movie.originalTitle}</dd>
-                    </div>
-                  )}
-                  {movie.mpaaRating && (
-                    <div className="flex flex-col">
-                      <dt className="text-muted-foreground">Rating</dt>
-                      <dd className="font-medium">{movie.mpaaRating}</dd>
-                    </div>
-                  )}
-                  {movie.companies.length > 0 && (
-                    <div className="flex flex-col mt-2">
-                      <dt className="text-muted-foreground">Studios</dt>
-                      <dd className="font-medium">
-                        {movie.companies.map((c) => c.company.name).join(', ')}
-                      </dd>
-                    </div>
-                  )}
-                </dl>
+            {((movie.originalTitle && movie.originalTitle !== movie.title) || 
+              movie.mpaaRating || 
+              movie.companies.length > 0) && (
+              <div className="mt-6 flex flex-col gap-4 bg-muted/30 p-6 rounded-xl border">
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Info</h3>
+                  <dl className="space-y-2 text-sm">
+                    {movie.originalTitle && movie.originalTitle !== movie.title && (
+                      <div className="flex flex-col">
+                        <dt className="text-muted-foreground">Original Title</dt>
+                        <dd className="font-medium">{movie.originalTitle}</dd>
+                      </div>
+                    )}
+                    {movie.mpaaRating && (
+                      <div className="flex flex-col">
+                        <dt className="text-muted-foreground">Rating</dt>
+                        <dd className="font-medium">{movie.mpaaRating}</dd>
+                      </div>
+                    )}
+                    {movie.companies.length > 0 && (
+                      <div className="flex flex-col mt-2">
+                        <dt className="text-muted-foreground">Studios</dt>
+                        <dd className="font-medium">
+                          {movie.companies.map((c) => c.company.name).join(', ')}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Main Content */}
