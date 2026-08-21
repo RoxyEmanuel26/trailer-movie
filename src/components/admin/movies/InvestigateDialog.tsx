@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 
 interface InvestigateDialogProps {
   open: boolean
@@ -21,14 +22,18 @@ interface InvestigateDialogProps {
 export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps) {
   const [stage, setStage] = React.useState<'idle' | 'scanning' | 'ready' | 'processing' | 'done'>('idle')
   const [missingMovies, setMissingMovies] = React.useState<any[]>([])
-  const [results, setResults] = React.useState<any>(null)
+  
+  // Progress tracking
+  const [progressCount, setProgressCount] = React.useState(0)
+  const [results, setResults] = React.useState({ success: 0, skipped: 0, failed: 0 })
 
   // Reset state when opened
   React.useEffect(() => {
     if (open) {
       setStage('idle')
       setMissingMovies([])
-      setResults(null)
+      setResults({ success: 0, skipped: 0, failed: 0 })
+      setProgressCount(0)
     }
   }, [open])
 
@@ -51,24 +56,41 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
 
   const handleFix = async () => {
     setStage('processing')
-    try {
-      const res = await fetch('/api/admin/movies/investigate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tmdbIds: missingMovies.map(m => m.tmdbId) })
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setResults(data.data)
-        setStage('done')
-        toast.success("Investigation complete!")
-      } else {
-        throw new Error(data.error)
+    setProgressCount(0)
+    
+    let currentResults = { success: 0, skipped: 0, failed: 0 }
+    
+    // Process in chunks of 5 to prevent server timeouts and show real-time progress
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < missingMovies.length; i += CHUNK_SIZE) {
+      const chunk = missingMovies.slice(i, i + CHUNK_SIZE);
+      const tmdbIds = chunk.map(m => m.tmdbId);
+      
+      try {
+        const res = await fetch('/api/admin/movies/investigate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds })
+        })
+        const data = await res.json()
+        
+        if (res.ok) {
+          currentResults.success += data.data.success;
+          currentResults.skipped += data.data.skipped;
+          currentResults.failed += data.data.failed;
+        } else {
+          currentResults.failed += chunk.length;
+        }
+      } catch (e: any) {
+        currentResults.failed += chunk.length;
       }
-    } catch (e: any) {
-      toast.error(e.message || "Failed to process missing data")
-      setStage('ready')
+      
+      setResults({ ...currentResults })
+      setProgressCount(Math.min(i + CHUNK_SIZE, missingMovies.length))
     }
+    
+    setStage('done')
+    toast.success("Investigation complete!")
   }
 
   return (
@@ -133,14 +155,22 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
           {stage === 'processing' && (
             <>
               <Loader2 className="w-12 h-12 animate-spin text-primary" />
-              <p className="text-sm font-medium">Investigating & Resyncing...</p>
-              <p className="text-xs text-muted-foreground">
-                Querying TMDB API and double-checking responses. This may take a while.
-              </p>
+              <div className="w-full space-y-2">
+                <div className="flex justify-between text-sm font-medium">
+                  <span>Investigating...</span>
+                  <span>{progressCount} / {missingMovies.length}</span>
+                </div>
+                <Progress value={(progressCount / missingMovies.length) * 100} />
+              </div>
+              <div className="flex justify-between w-full text-xs text-muted-foreground px-2">
+                <span className="text-green-600">Updated: {results.success}</span>
+                <span className="text-yellow-600">No Data: {results.skipped}</span>
+                <span className="text-red-600">Failed: {results.failed}</span>
+              </div>
             </>
           )}
 
-          {stage === 'done' && results && (
+          {stage === 'done' && (
             <>
               <CheckCircle2 className="w-12 h-12 text-green-500" />
               <p className="text-sm font-medium">Investigation Complete</p>
@@ -175,3 +205,4 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
     </Dialog>
   )
 }
+

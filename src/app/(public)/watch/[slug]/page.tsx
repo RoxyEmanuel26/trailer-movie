@@ -80,7 +80,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
           ) : (
             <div className="w-full aspect-video bg-muted flex flex-col items-center justify-center rounded-lg border border-border">
               <Film className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
-              <p className="text-muted-foreground font-medium">Trailer not available</p>
+              <p className="text-muted-foreground font-medium">Coming Soon Trailer</p>
             </div>
           )}
         </div>

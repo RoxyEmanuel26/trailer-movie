@@ -1,25 +1,28 @@
 import { NextResponse } from 'next/server';
 import { importQueueWorker } from '@/lib/jobs/ImportQueueWorker';
 import { logger } from '@/lib/logger';
+import { requireAdmin } from '@/lib/auth/utils';
 
-// This endpoint is meant to be called by Cloudflare Cron Triggers or an external cron service
+// This endpoint is meant to be called by Cloudflare Cron Triggers, OR manually by an Admin via the UI
 export const POST = async (request: Request) => {
   try {
     const authHeader = request.headers.get('authorization');
     const expectedToken = process.env.CRON_SECRET;
     
-    if (process.env.NODE_ENV === 'production') {
-      if (!expectedToken) {
-        logger.error('[CRON_ERROR] CRON_SECRET is not set in production!');
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-      }
-      if (authHeader !== `Bearer ${expectedToken}`) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    } else {
-      // In development, we still check it if provided
-      if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    let isAuthorizedByCron = false;
+
+    if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+      isAuthorizedByCron = true;
+    }
+
+    // If not authorized by CRON_SECRET, fallback to checking if it's a logged-in Admin
+    if (!isAuthorizedByCron) {
+      try {
+        await requireAdmin('write:imports');
+      } catch (authError) {
+        if (process.env.NODE_ENV === 'production') {
+          return NextResponse.json({ error: 'Unauthorized. Invalid Cron Secret or missing Admin Session.' }, { status: 401 });
+        }
       }
     }
 

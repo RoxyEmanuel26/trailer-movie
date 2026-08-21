@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["fullTextSearchPostgres", "tracing"]
 }
 
@@ -195,20 +195,20 @@ model AuditLog {
 // -----------------------------------------------------------------------------
 
 model Movie {
-  id             String      @id @default(cuid())
-  title          String
-  slug           String      @unique
-  originalTitle  String?
-  synopsis       String?     @db.Text
-  releaseDate    DateTime?
-  status         MovieStatus @default(DRAFT)
-  runtimeMinutes Int?
-  mpaaRating     String?
-  posterUrl      String?
-  backdropUrl    String?
-  tmdbId         Int?        @unique
+  id               String      @id @default(cuid())
+  title            String
+  slug             String      @unique
+  originalTitle    String?
+  synopsis         String?     @db.Text
+  releaseDate      DateTime?
+  status           MovieStatus @default(DRAFT)
+  runtimeMinutes   Int?
+  mpaaRating       String?
+  posterUrl        String?
+  backdropUrl      String?
+  tmdbId           Int?        @unique
   youtubeTrailerId String?
-  lockedFields   Json?       @default("[]") // Array of strings protecting fields from sync
+  lockedFields     Json?       @default("[]") // Array of strings protecting fields from sync
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -426,12 +426,12 @@ model MovieCompany {
 // -----------------------------------------------------------------------------
 
 model Collection {
-  id          String  @id @default(cuid())
-  title       String
-  slug        String  @unique
-  description String? @db.Text
-  isActive    Boolean @default(false)
-  isFeatured  Boolean @default(false)
+  id            String  @id @default(cuid())
+  title         String
+  slug          String  @unique
+  description   String? @db.Text
+  isActive      Boolean @default(false)
+  isFeatured    Boolean @default(false)
   coverImageUrl String?
 
   movies   CollectionMovie[]
@@ -577,6 +577,7 @@ model ImportJob {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tmdbId, entityType])
   @@map("import_jobs")
 }
 
@@ -596,8 +597,8 @@ model UserFavorite {
 model DailyMetrics {
   id         String   @id @default(cuid())
   date       DateTime @db.Date
-  metric     String   // e.g., 'page_view', 'trailer_play', 'error'
-  entityType String?  // e.g., 'Movie', 'Genre'
+  metric     String // e.g., 'page_view', 'trailer_play', 'error'
+  entityType String? // e.g., 'Movie', 'Genre'
   entityId   String?
   value      Int      @default(0)
 
