@@ -109,8 +109,10 @@ export class MovieRepository {
     status?: import('@prisma/client').MovieStatus; 
     orderBy?: any;
     genreSlug?: string;
+    genreIds?: string[];
     collectionSlug?: string;
     tagSlug?: string;
+    excludeId?: string;
   }, db: DbClient = prisma) {
     const where: Prisma.MovieWhereInput = { deletedAt: null };
     
@@ -128,7 +130,17 @@ export class MovieRepository {
       where.status = params.status;
     }
 
-    if (params.genreSlug) {
+    if (params.excludeId) {
+      where.id = { not: params.excludeId };
+    }
+
+    if (params.genreIds && params.genreIds.length > 0) {
+      where.genres = {
+        some: {
+          genreId: { in: params.genreIds }
+        }
+      };
+    } else if (params.genreSlug) {
       where.genres = {
         some: {
           genre: { slug: params.genreSlug }

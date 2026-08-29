@@ -3,9 +3,11 @@ import Image from "next/image"
 import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 
-export default async function PersonPage({ params }: { params: { id: string } }) {
+export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  
   const person = await prisma.person.findUnique({
-    where: { id: params.id }
+    where: { id }
   });
 
   if (!person) return notFound();
@@ -110,9 +112,11 @@ export default async function PersonPage({ params }: { params: { id: string } })
   )
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<import("next").Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<import("next").Metadata> {
+  const { id } = await params;
   const person = await prisma.person.findUnique({
-    where: { id: params.id }
+    where: { id },
+    select: { name: true, biography: true, headshotUrl: true }
   });
   if (!person) return { title: 'Not Found' };
   return {

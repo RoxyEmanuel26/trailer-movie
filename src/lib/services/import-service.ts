@@ -256,4 +256,109 @@ export class SyncService {
       throw error;
     }
   }
+
+  /**
+   * Smart patch that ONLY fetches getMovieExtra and updates missing DB fields.
+   * Skips fetching heavy Credits (Actors) and Videos (Trailers) entirely.
+   * Speeds up the "Investigate Missing Data" process by ~20x.
+   */
+  static async patchMissingData(tmdbId: number) {
+    try {
+      const existingMovie = await MovieRepository.findByTmdbId(tmdbId);
+      if (!existingMovie) {
+        throw new Error('Movie not found in database');
+      }
+
+      // 1 API call only
+      const tmdbMovie = await getMovieExtra(tmdbId);
+      const lockedFields: string[] = Array.isArray(existingMovie.lockedFields) 
+        ? (existingMovie.lockedFields as string[]) 
+        : [];
+        
+      const movieData = mapTmdbMovieToPrisma(tmdbMovie, lockedFields);
+
+      // Extract fields that we care about patching
+      const patchData: any = {};
+      if (!existingMovie.posterUrl && movieData.posterUrl) patchData.posterUrl = movieData.posterUrl;
+      if (!existingMovie.synopsis && movieData.synopsis) patchData.synopsis = movieData.synopsis;
+      if (!existingMovie.releaseDate && movieData.releaseDate) patchData.releaseDate = movieData.releaseDate;
+      if (existingMovie.budget === null && movieData.budget) patchData.budget = movieData.budget;
+      if (existingMovie.revenue === null && movieData.revenue) patchData.revenue = movieData.revenue;
+      if (!existingMovie.ageRating && movieData.ageRating) patchData.ageRating = movieData.ageRating;
+      
+      // JSON fields might be Prisma.DbNull or actual null in JS depending on query, check safely
+      if (!existingMovie.watchProviders && movieData.watchProviders) patchData.watchProviders = movieData.watchProviders;
+      if (!existingMovie.reviews && movieData.reviews) patchData.reviews = movieData.reviews;
+
+      // 2. Prepare Companies if missing
+      const companiesToLink = [];
+      if (tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
+        const existingCompanies = await prisma.movieCompany.count({ where: { movieId: existingMovie.id } });
+        if (existingCompanies === 0) {
+          for (const pc of tmdbMovie.production_companies) {
+            const comp = await prisma.productionCompany.upsert({
+              where: { tmdbId: pc.id },
+              create: {
+                name: pc.name,
+                slug: generateSlug(pc.name),
+                tmdbId: pc.id,
+                logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
+              },
+              update: {
+                name: pc.name,
+                logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
+              }
+            });
+            companiesToLink.push(comp.id);
+          }
+        }
+      }
+
+      // 3. Prepare Keywords if missing
+      const keywordsToLink = [];
+      const extra = tmdbMovie as any;
+      if (extra.keywords && extra.keywords.keywords) {
+        const existingKeywords = await prisma.movieKeyword.count({ where: { movieId: existingMovie.id } });
+        if (existingKeywords === 0) {
+          for (const kw of extra.keywords.keywords) {
+            const word = await prisma.keyword.upsert({
+              where: { tmdbId: kw.id },
+              create: { name: kw.name, tmdbId: kw.id },
+              update: { name: kw.name }
+            });
+            keywordsToLink.push(word.id);
+          }
+        }
+      }
+
+      await TransactionManager.run(async (tx) => {
+        // 1. Update basic and JSON fields
+        if (Object.keys(patchData).length > 0) {
+          await tx.movie.update({
+            where: { id: existingMovie.id },
+            data: patchData
+          });
+        }
+
+        // 2. Link Companies
+        for (const companyId of companiesToLink) {
+          await tx.movieCompany.create({
+            data: { movieId: existingMovie.id, companyId }
+          });
+        }
+
+        // 3. Link Keywords
+        for (const keywordId of keywordsToLink) {
+          await tx.movieKeyword.create({
+            data: { movieId: existingMovie.id, keywordId }
+          });
+        }
+      }, { timeout: 15000 });
+      
+      return { success: true };
+    } catch (error) {
+      console.error(`Failed to patch TMDB movie ${tmdbId}`, error);
+      throw error;
+    }
+  }
 }

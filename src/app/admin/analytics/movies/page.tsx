@@ -10,9 +10,10 @@ export const dynamic = 'force-dynamic';
 export default async function MovieAnalyticsPage({
   searchParams,
 }: {
-  searchParams: { movieId?: string };
+  searchParams: Promise<{ movieId?: string }>;
 }) {
-  const movieId = searchParams.movieId;
+  const resolvedSearchParams = await searchParams;
+  const movieId = resolvedSearchParams.movieId;
 
   // If no movie is selected, show a list of movies to select from
   if (!movieId) {

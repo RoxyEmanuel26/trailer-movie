@@ -60,8 +60,8 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
     
     let currentResults = { success: 0, skipped: 0, failed: 0 }
     
-    // Process in chunks of 5 to prevent server timeouts and show real-time progress
-    const CHUNK_SIZE = 5;
+    // Process in chunks of 25 to prevent server timeouts while maintaining fast real-time progress
+    const CHUNK_SIZE = 25;
     for (let i = 0; i < missingMovies.length; i += CHUNK_SIZE) {
       const chunk = missingMovies.slice(i, i + CHUNK_SIZE);
       const tmdbIds = chunk.map(m => m.tmdbId);

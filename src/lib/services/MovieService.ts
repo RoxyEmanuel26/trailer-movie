@@ -21,6 +21,16 @@ export class MovieService {
   });
 
   static async getRelatedMovies(movieId: string, genreIds: string[]) {
+    if (genreIds && genreIds.length > 0) {
+      const { data } = await MovieRepository.search({
+        status: 'PUBLISHED',
+        take: 5,
+        excludeId: movieId,
+        genreIds,
+      });
+      if (data.length > 0) return data;
+    }
+    // Fallback: return recently added movies if no genre match
     const { data } = await MovieRepository.list({
       status: 'PUBLISHED',
       take: 5,

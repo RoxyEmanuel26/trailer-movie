@@ -10,9 +10,10 @@ export const dynamic = 'force-dynamic';
 export default async function ActivityAnalyticsPage({
   searchParams,
 }: {
-  searchParams: { page?: string };
+  searchParams: Promise<{ page?: string }>;
 }) {
-  const page = parseInt(searchParams.page || '1', 10);
+  const resolvedSearchParams = await searchParams;
+  const page = parseInt(resolvedSearchParams.page || '1', 10);
   const limit = 20;
   const skip = (page - 1) * limit;
 
