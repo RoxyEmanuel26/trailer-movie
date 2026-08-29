@@ -1,4 +1,4 @@
-import { getMovie, getMovieCredits, getMovieVideos } from '../tmdb/api';
+import { getMovieExtra, getMovieCredits, getMovieVideos, getPerson, getPersonCombinedCredits } from '../tmdb/api';
 import { mapTmdbMovieToPrisma, generateSlug } from '../tmdb/mapping';
 import { PersonRoleType, TrailerSource, TrailerType } from '@prisma/client';
 
@@ -12,7 +12,7 @@ export class SyncService {
   static async importMovie(tmdbId: number) {
     try {
       const [tmdbMovie, credits, videos] = await Promise.all([
-        getMovie(tmdbId),
+        getMovieExtra(tmdbId),
         getMovieCredits(tmdbId),
         getMovieVideos(tmdbId),
       ]);
@@ -60,18 +60,47 @@ export class SyncService {
             ? `https://image.tmdb.org/t/p/w200${castMember.profile_path}`
             : null;
 
+          let personDetails = null;
+          let personCredits = null;
+          try {
+            const [pDetails, pCredits] = await Promise.all([
+              getPerson(castMember.id),
+              getPersonCombinedCredits(castMember.id)
+            ]);
+            personDetails = pDetails;
+            personCredits = pCredits;
+          } catch (e) {
+            console.error(`Failed to fetch deep profile for actor ${castMember.id}`);
+          }
+
+          let topMovies: any = [];
+          if (personCredits && personCredits.cast) {
+            topMovies = personCredits.cast
+              .filter((m: any) => m.media_type === 'movie' && m.poster_path)
+              .sort((a: any, b: any) => b.popularity - a.popularity)
+              .slice(0, 15);
+          }
+
+          const personData = {
+            name: castMember.name,
+            slug: generateSlug(castMember.name),
+            tmdbId: castMember.id,
+            headshotUrl,
+            biography: personDetails?.biography || null,
+            birthday: personDetails?.birthday ? new Date(personDetails.birthday) : null,
+            deathday: personDetails?.deathday ? new Date(personDetails.deathday) : null,
+            placeOfBirth: personDetails?.place_of_birth || null,
+            gender: personDetails?.gender || null,
+            knownForDepartment: personDetails?.known_for_department || null,
+            topMovies: topMovies.length > 0 ? topMovies : null,
+          };
+
           const person = await PersonRepository.upsert(
             castMember.id,
-            {
-              name: castMember.name,
-              slug: generateSlug(castMember.name),
-              tmdbId: castMember.id,
-              headshotUrl,
-            },
-            { name: castMember.name, headshotUrl }
+            personData as any,
+            personData as any
           );
           
-          // Note: we still use the original character/order for linking
           dbCast.push({
             personId: person.id,
             character: castMember.character,
@@ -150,6 +179,70 @@ export class SyncService {
                 );
               }
             }
+          }
+          
+          // --- NEW DATA (Companies, Keywords, Collections) ---
+          
+          // Companies
+          if (tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
+            await tx.movieCompany.deleteMany({ where: { movieId: movie.id } });
+            for (const pc of tmdbMovie.production_companies) {
+              const comp = await tx.productionCompany.upsert({
+                where: { tmdbId: pc.id },
+                create: {
+                  name: pc.name,
+                  slug: generateSlug(pc.name),
+                  tmdbId: pc.id,
+                  logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
+                },
+                update: {
+                  name: pc.name,
+                  logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
+                }
+              });
+              await tx.movieCompany.create({
+                data: { movieId: movie.id, companyId: comp.id }
+              });
+            }
+          }
+
+          // Keywords
+          const extra = tmdbMovie as any;
+          if (extra.keywords && extra.keywords.keywords) {
+            await tx.movieKeyword.deleteMany({ where: { movieId: movie.id } });
+            for (const kw of extra.keywords.keywords) {
+              const word = await tx.keyword.upsert({
+                where: { tmdbId: kw.id },
+                create: { name: kw.name, tmdbId: kw.id },
+                update: { name: kw.name }
+              });
+              await tx.movieKeyword.create({
+                data: { movieId: movie.id, keywordId: word.id }
+              });
+            }
+          }
+
+          // Collections (Franchise)
+          if (tmdbMovie.belongs_to_collection) {
+            const bc = tmdbMovie.belongs_to_collection;
+            await tx.collectionMovie.deleteMany({ where: { movieId: movie.id } });
+            const coll = await tx.collection.upsert({
+              where: { slug: generateSlug(bc.name) },
+              create: {
+                title: bc.name,
+                slug: generateSlug(bc.name),
+                posterUrl: bc.poster_path ? `https://image.tmdb.org/t/p/w500${bc.poster_path}` : null,
+                backdropUrl: bc.backdrop_path ? `https://image.tmdb.org/t/p/w1280${bc.backdrop_path}` : null,
+              },
+              update: {
+                title: bc.name,
+                posterUrl: bc.poster_path ? `https://image.tmdb.org/t/p/w500${bc.poster_path}` : null,
+                backdropUrl: bc.backdrop_path ? `https://image.tmdb.org/t/p/w1280${bc.backdrop_path}` : null,
+              }
+            });
+            await tx.collectionMovie.create({
+              data: { collectionId: coll.id, movieId: movie.id, sortOrder: 0 }
+            });
           }
 
           return movie;

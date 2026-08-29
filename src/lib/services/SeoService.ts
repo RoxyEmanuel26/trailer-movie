@@ -152,6 +152,7 @@ export class SeoService {
       const schema: any = {
         '@context': 'https://schema.org',
         '@type': 'Movie',
+        '@id': `${APP_URL}${data.path}`,
         name: data.title,
         description: data.description,
         image: data.image,

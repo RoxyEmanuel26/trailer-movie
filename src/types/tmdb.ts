@@ -63,6 +63,11 @@ export interface TmdbPerson {
   name: string;
   biography: string;
   profile_path: string | null;
+  known_for_department?: string;
+  gender?: number;
+  birthday?: string | null;
+  deathday?: string | null;
+  place_of_birth?: string | null;
 }
 
 export interface TmdbVideos {

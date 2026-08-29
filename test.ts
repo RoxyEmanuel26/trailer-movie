@@ -1,1 +1,19 @@
-﻿import { prisma } from './src/lib/prisma'; async function main() { const m = await prisma.movie.findFirst({ where: { slug: 'spider-man-brand-new-day-969681' }, include: { trailers: true } }); console.log(JSON.stringify(m, null, 2)); } main().finally(() => process.exit(0));
+import { prisma } from './src/lib/prisma';
+async function main() {
+  try {
+    const movie = await prisma.movie.create({
+      data: {
+        title: "Test Movie",
+        slug: "test-movie-1234",
+        budget: 1000,
+        revenue: 2000
+      }
+    });
+    console.log("Success:", movie.id);
+  } catch (e) {
+    console.error("Error:", e);
+  } finally {
+    await prisma.();
+  }
+}
+main();

@@ -26,6 +26,19 @@ export class PersonRepository {
     data: Prisma.MoviePersonUncheckedCreateInput,
     db: DbClient = prisma
   ) {
-    return db.moviePerson.create({ data });
+    return db.moviePerson.upsert({
+      where: {
+        movieId_personId_roleType: {
+          movieId: data.movieId as string,
+          personId: data.personId as string,
+          roleType: data.roleType as PersonRoleType,
+        },
+      },
+      create: data,
+      update: {
+        characterName: data.characterName,
+        sortOrder: data.sortOrder,
+      },
+    });
   }
 }

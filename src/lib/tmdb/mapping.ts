@@ -63,5 +63,29 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
 
   assignIfNotLocked('status', mapTmdbStatus(tmdbMovie.status));
 
+  // Extra fields
+  const extra = tmdbMovie as any;
+  if (extra.budget) assignIfNotLocked('budget', extra.budget);
+  if (extra.revenue) assignIfNotLocked('revenue', extra.revenue);
+  
+  if (extra.release_dates && extra.release_dates.results) {
+    const usRelease = extra.release_dates.results.find((r: any) => r.iso_3166_1 === "US");
+    if (usRelease && usRelease.release_dates && usRelease.release_dates.length > 0) {
+      const cert = usRelease.release_dates.find((r: any) => r.certification !== "");
+      if (cert) assignIfNotLocked('ageRating', cert.certification);
+    }
+  }
+
+  if (extra['watch/providers'] && extra['watch/providers'].results) {
+    const usProviders = extra['watch/providers'].results.US || extra['watch/providers'].results.ID || null;
+    if (usProviders) {
+      assignIfNotLocked('watchProviders', usProviders);
+    }
+  }
+
+  if (extra.reviews && extra.reviews.results) {
+    assignIfNotLocked('reviews', extra.reviews.results);
+  }
+
   return mapped;
 }

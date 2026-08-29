@@ -210,6 +210,12 @@ model Movie {
   youtubeTrailerId String?
   lockedFields     Json?       @default("[]") // Array of strings protecting fields from sync
 
+  budget         BigInt?
+  revenue        BigInt?
+  ageRating      String?
+  watchProviders Json? // e.g. { US: { flatrate: [], rent: [] } }
+  reviews        Json? // Array of reviews
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime? // Soft delete
@@ -217,6 +223,7 @@ model Movie {
   trailers    Trailer[]
   people      MoviePerson[]
   genres      MovieGenre[]
+  keywords    MovieKeyword[]
   tags        MovieTag[]
   countries   MovieCountry[]
   languages   MovieLanguage[]
@@ -260,12 +267,18 @@ model Trailer {
 // -----------------------------------------------------------------------------
 
 model Person {
-  id          String  @id @default(cuid())
-  name        String
-  slug        String  @unique
-  biography   String? @db.Text
-  headshotUrl String?
-  tmdbId      Int?    @unique
+  id                 String    @id @default(cuid())
+  name               String
+  slug               String    @unique
+  biography          String?   @db.Text
+  headshotUrl        String?
+  tmdbId             Int?      @unique
+  birthday           DateTime?
+  deathday           DateTime?
+  placeOfBirth       String?
+  gender             Int?
+  knownForDepartment String?
+  topMovies          Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -427,12 +440,18 @@ model MovieCompany {
 
 model Collection {
   id            String  @id @default(cuid())
+  tmdbId        Int?    @unique
   title         String
   slug          String  @unique
   description   String? @db.Text
+  posterUrl     String?
+  backdropUrl   String?
   isActive      Boolean @default(false)
   isFeatured    Boolean @default(false)
   coverImageUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   movies   CollectionMovie[]
   sections HomepageSection[]
@@ -605,4 +624,29 @@ model DailyMetrics {
   @@unique([date, metric, entityType, entityId])
   @@index([date, metric])
   @@map("daily_metrics")
+}
+
+model Keyword {
+  id     String @id @default(cuid())
+  tmdbId Int    @unique
+  name   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MovieKeyword[]
+
+  @@map("keywords")
+}
+
+model MovieKeyword {
+  movieId   String
+  keywordId String
+
+  movie   Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, keywordId])
+  @@index([keywordId])
+  @@map("movie_keywords")
 }

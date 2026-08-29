@@ -34,8 +34,8 @@ export function MovieCard({ movie, className = '', priority = false }: MovieCard
             priority={priority}
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-muted text-muted-foreground">
-            No Image
+          <div className="flex h-full items-center justify-center bg-muted text-muted-foreground text-sm font-medium">
+            Coming Soon
           </div>
         )}
         

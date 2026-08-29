@@ -16,8 +16,8 @@ export function MovieCard({ title, posterPath, releaseYear, rating, genres }: Mo
         {posterPath ? (
           <img src={posterPath} alt={title} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            No Image
+          <div className="flex h-full items-center justify-center text-muted-foreground text-sm font-medium">
+            Coming Soon
           </div>
         )}
       </div>

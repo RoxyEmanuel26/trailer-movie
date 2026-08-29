@@ -8,6 +8,9 @@ import { MovieService } from '@/lib/services/MovieService';
 import { SeoService } from '@/lib/services/SeoService';
 import { YouTubePlayer } from '@/components/public/YouTubePlayer';
 import { MovieCard } from '@/components/public/MovieCard';
+import { WatchProviders } from "@/components/movie/dynamic/WatchProviders"
+import { MovieReviews } from "@/components/movie/dynamic/MovieReviews"
+import { MovieExtraInfo } from "@/components/movie/dynamic/MovieExtraInfo"
 import { badgeVariants } from '@/components/ui/badge';
 
 interface PageProps {
@@ -139,6 +142,19 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 </div>
               </div>
             )}
+            
+            {movie.watchProviders && (
+              <WatchProviders providers={movie.watchProviders} movieSlug={movie.slug} />
+            )}
+
+            <MovieExtraInfo 
+              budget={movie.budget} 
+              revenue={movie.revenue} 
+              ageRating={movie.ageRating}
+              companies={movie.companies}
+              keywords={movie.keywords}
+              movieSlug={movie.slug} 
+            />
           </div>
 
           {/* Main Content */}
@@ -181,7 +197,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 <h2 className="text-xl font-semibold mb-3">Directed By</h2>
                 <div className="flex flex-wrap gap-4">
                   {directors.map((d) => (
-                    <div key={d.personId} className="flex items-center gap-3 bg-card border rounded-full pl-1 pr-4 py-1">
+                    <Link href={`/person/${d.personId}`} key={d.personId} className="flex items-center gap-3 bg-card border rounded-full pl-1 pr-4 py-1 hover:bg-muted/50 transition-colors">
                       {d.person.headshotUrl ? (
                         <Image src={d.person.headshotUrl} alt={d.person.name} width={32} height={32} className="rounded-full object-cover w-8 h-8" />
                       ) : (
@@ -190,7 +206,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                         </div>
                       )}
                       <span className="text-sm font-medium">{d.person.name}</span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -201,7 +217,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 <h2 className="text-xl font-semibold mb-3">Top Cast</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {cast.map((c) => (
-                    <div key={c.personId} className="flex items-center gap-3 p-2 rounded-lg border bg-card">
+                    <Link href={`/person/${c.personId}`} key={c.personId} className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
                       {c.person.headshotUrl ? (
                         <Image src={c.person.headshotUrl} alt={c.person.name} width={48} height={48} className="rounded-md object-cover w-12 h-12" />
                       ) : (
@@ -213,7 +229,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                         <span className="text-sm font-bold truncate">{c.person.name}</span>
                         <span className="text-xs text-muted-foreground truncate">{c.characterName}</span>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -230,6 +246,10 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   ))}
                 </div>
               </div>
+            )}
+            
+            {movie.reviews && (
+              <MovieReviews reviews={movie.reviews as any[]} movieSlug={movie.slug} />
             )}
           </div>
         </div>

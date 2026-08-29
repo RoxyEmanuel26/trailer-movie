@@ -67,3 +67,59 @@ export async function searchMovies(
     },
   });
 }
+
+/**
+ * Fetches watch providers for a movie
+ */
+export async function getMovieWatchProviders(id: number): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}/watch/providers`);
+}
+
+/**
+ * Fetches movie reviews
+ */
+export async function getMovieReviews(id: number, page = 1): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}/reviews`, { params: { language: 'en-US', page } });
+}
+
+/**
+ * Fetches recommended movies
+ */
+export async function getMovieRecommendations(id: number, page = 1): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}/recommendations`, { params: { language: 'en-US', page } });
+}
+
+/**
+ * Fetches release dates and certifications
+ */
+export async function getMovieReleaseDates(id: number): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}/release_dates`);
+}
+
+/**
+ * Fetches movie keywords
+ */
+export async function getMovieKeywords(id: number): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}/keywords`);
+}
+
+/**
+ * Fetches collection details
+ */
+export async function getCollection(id: number): Promise<any> {
+  return tmdbFetch<any>(`/collection/${id}`, { params: { language: 'en-US' } });
+}
+
+/**
+ * Fetches movie extra info (budget, revenue, keywords, release dates, watch/providers, reviews)
+ */
+export async function getMovieExtra(id: number): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}`, { params: { language: 'en-US', append_to_response: 'keywords,release_dates,watch/providers,reviews' } });
+}
+
+/**
+ * Fetches combined credits for a person
+ */
+export async function getPersonCombinedCredits(id: number): Promise<any> {
+  return tmdbFetch<any>(`/person/${id}/combined_credits`, { params: { language: 'en-US' } });
+}

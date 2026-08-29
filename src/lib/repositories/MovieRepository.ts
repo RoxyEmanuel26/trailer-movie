@@ -24,6 +24,7 @@ export class MovieRepository {
         collections: { include: { collection: true } },
         tags: { include: { tag: true } },
         companies: { include: { company: true } },
+        keywords: { include: { keyword: true } },
       },
     });
   }
