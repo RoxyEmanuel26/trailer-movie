@@ -23,7 +23,10 @@ export class ImportRepository {
       where: { id },
       data: {
         status,
-        logs: logs ? (logs as any) : Prisma.DbNull,
+        // If logs is explicitly undefined (not passed), skip the field entirely to preserve existing DB value.
+        // If logs is null, explicitly clear it (Prisma.DbNull).
+        // If logs is an object, save it.
+        ...(logs !== undefined && { logs: logs !== null ? (logs as any) : Prisma.DbNull }),
       },
     });
   }
@@ -31,6 +34,15 @@ export class ImportRepository {
   static async findById(id: string, db: DbClient = prisma) {
     return db.importJob.findUnique({
       where: { id },
+    });
+  }
+
+  static async findActivJobByTmdbId(tmdbId: number, db: DbClient = prisma) {
+    return db.importJob.findFirst({
+      where: {
+        tmdbId,
+        status: { in: [ImportJobStatus.PENDING, ImportJobStatus.IN_PROGRESS] }
+      }
     });
   }
 
@@ -94,13 +106,19 @@ export class ImportRepository {
 
   static async fetchJobsForProcessing(limit: number, db: DbClient = prisma) {
     // Prisma doesn't natively support SKIP LOCKED in findMany, so we use queryRaw
+    // We combine SELECT and UPDATE into a single query to ensure locks are held atomically
     return db.$queryRaw<{ id: string, tmdbId: number }[]>`
-      SELECT id, "tmdbId" 
-      FROM "import_jobs" 
-      WHERE status = 'PENDING' 
-      ORDER BY "createdAt" ASC 
-      LIMIT ${limit} 
-      FOR UPDATE SKIP LOCKED
+      UPDATE "import_jobs"
+      SET status = 'IN_PROGRESS'
+      WHERE id IN (
+        SELECT id 
+        FROM "import_jobs" 
+        WHERE status = 'PENDING' 
+        ORDER BY "createdAt" ASC 
+        LIMIT ${limit} 
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id, "tmdbId"
     `;
   }
 

@@ -25,7 +25,8 @@ export abstract class BaseWorker<T = any> {
   async run(data: T): Promise<void> {
     let currentAttempt = 0;
 
-    await ImportRepository.updateStatus(this.jobId, ImportJobStatus.IN_PROGRESS);
+    // Status is already set to IN_PROGRESS atomically by fetchJobsForProcessing.
+    // No need to call updateStatus here again.
 
     while (currentAttempt <= this.maxRetries) {
       try {

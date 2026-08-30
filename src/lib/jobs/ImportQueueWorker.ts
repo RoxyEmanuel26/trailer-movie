@@ -6,28 +6,25 @@ export class ImportQueueWorker {
   private CONCURRENCY_LIMIT = 5;
   private isProcessing = false;
 
-  async processNextBatch() {
+  async processNextBatch(): Promise<number> {
     // Avoid overlapping polls within the same instance/request
-    if (this.isProcessing) return;
+    if (this.isProcessing) return 0;
     this.isProcessing = true;
 
     try {
-      // 1. Recover stuck jobs (IN_PROGRESS for > 1 hour)
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      await ImportRepository.recoverStuckJobs(oneHourAgo);
+      // 1. Recover stuck jobs (IN_PROGRESS for > 10 min — aligned with maxDuration=300s + buffer)
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      await ImportRepository.recoverStuckJobs(tenMinutesAgo);
 
       // 2. Fetch up to CONCURRENCY_LIMIT jobs atomically using FOR UPDATE SKIP LOCKED
       const jobs = await ImportRepository.fetchJobsForProcessing(this.CONCURRENCY_LIMIT);
 
       if (jobs.length === 0) {
-        return;
+        return 0;
       }
 
-      // 3. Mark them as IN_PROGRESS immediately in a single transaction
-      const jobIds = jobs.map(j => j.id);
-      await ImportRepository.markJobsInProgress(jobIds);
-
-      console.log(`[ImportQueueWorker] Processing ${jobs.length} jobs:`, jobIds);
+      // 3. Mark them as IN_PROGRESS immediately in a single transaction (Now handled atomically in fetchJobsForProcessing)
+      logger.info({ jobIds: jobs.map(j => j.id) }, `[ImportQueueWorker] Processing ${jobs.length} jobs`);
 
       // 4. Process them concurrently up to the limit
       await Promise.allSettled(
@@ -35,12 +32,15 @@ export class ImportQueueWorker {
           try {
             await new MovieImportPipeline(job.id).run({ tmdbId: job.tmdbId });
           } catch (error) {
-            console.error(`[ImportQueueWorker] Job ${job.id} failed fundamentally:`, error);
+            logger.error({ err: error, jobId: job.id }, `[ImportQueueWorker] Job ${job.id} failed fundamentally`);
           }
         })
       );
+      
+      return jobs.length;
     } catch (error) {
-      console.error('[ImportQueueWorker] Critical error during polling:', error);
+      logger.error({ err: error }, '[ImportQueueWorker] Critical error during polling');
+      return 0;
     } finally {
       this.isProcessing = false;
     }

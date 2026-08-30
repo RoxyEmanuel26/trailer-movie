@@ -33,6 +33,7 @@ export class ProgressTracker {
   }
 
   error(message: string) {
+    this.state.retryCount++;
     this.state.logs.push(`[${new Date().toISOString()}] [ERROR] ${message}`);
   }
 

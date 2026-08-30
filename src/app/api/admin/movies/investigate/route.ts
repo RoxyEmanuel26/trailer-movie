@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { SyncService } from '@/lib/services/import-service';
 import { requireAdmin } from '@/lib/auth/utils';
 
+export const maxDuration = 300;
+
 export async function GET() {
   try {
     await requireAdmin('read:movies');
@@ -11,6 +13,8 @@ export async function GET() {
     const missingDataMovies = await prisma.movie.findMany({
       where: {
         deletedAt: null,
+        // Cooldown: Only investigate movies that haven't been checked/updated in the last 7 days
+        updatedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
         OR: [
           // Basic fields
           { posterUrl: null },
@@ -85,6 +89,17 @@ export async function POST(req: Request) {
 
     if (!Array.isArray(tmdbIds) || tmdbIds.length === 0) {
       return NextResponse.json({ error: 'Invalid payload: tmdbIds must be a non-empty array' }, { status: 400 });
+    }
+
+    const MAX_BATCH = 100;
+    if (tmdbIds.length > MAX_BATCH) {
+      return NextResponse.json({ error: `Too many IDs. Maximum is ${MAX_BATCH} per request.` }, { status: 400 });
+    }
+
+    // Validate every element is a positive integer (TMDB IDs are always positive integers)
+    const invalidIds = tmdbIds.filter((id: any) => !Number.isInteger(id) || id <= 0);
+    if (invalidIds.length > 0) {
+      return NextResponse.json({ error: `Invalid tmdbIds: ${invalidIds.slice(0, 5).join(', ')}. All IDs must be positive integers.` }, { status: 400 });
     }
 
     const results = {

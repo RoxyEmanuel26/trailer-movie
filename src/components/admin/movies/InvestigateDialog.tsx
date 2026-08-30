@@ -22,14 +22,15 @@ interface InvestigateDialogProps {
 export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps) {
   const [stage, setStage] = React.useState<'idle' | 'scanning' | 'ready' | 'processing' | 'done'>('idle')
   const [missingMovies, setMissingMovies] = React.useState<any[]>([])
+  const cancelRef = React.useRef(false)
   
   // Progress tracking
   const [progressCount, setProgressCount] = React.useState(0)
   const [results, setResults] = React.useState({ success: 0, skipped: 0, failed: 0 })
 
-  // Reset state when opened
   React.useEffect(() => {
     if (open) {
+      cancelRef.current = false
       setStage('idle')
       setMissingMovies([])
       setResults({ success: 0, skipped: 0, failed: 0 })
@@ -63,6 +64,11 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
     // Process in chunks of 25 to prevent server timeouts while maintaining fast real-time progress
     const CHUNK_SIZE = 25;
     for (let i = 0; i < missingMovies.length; i += CHUNK_SIZE) {
+      if (cancelRef.current) {
+        toast.info("Investigasi dibatalkan.");
+        break;
+      }
+      
       const chunk = missingMovies.slice(i, i + CHUNK_SIZE);
       const tmdbIds = chunk.map(m => m.tmdbId);
       
@@ -94,8 +100,28 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog 
+      open={open} 
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          cancelRef.current = true;
+        }
+        onOpenChange(isOpen);
+      }}
+    >
+      <DialogContent 
+        className="sm:max-w-[500px]"
+        onInteractOutside={(e) => {
+          if (stage === 'scanning' || stage === 'processing') {
+            e.preventDefault()
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          if (stage === 'scanning' || stage === 'processing') {
+            e.preventDefault()
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Investigate Missing Data</DialogTitle>
           <DialogDescription>

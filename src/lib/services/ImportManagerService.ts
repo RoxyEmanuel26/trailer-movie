@@ -1,5 +1,4 @@
 import { ImportRepository } from '../repositories/ImportRepository';
-import { MovieImportPipeline } from '../jobs/pipelines/MovieImportPipeline';
 import { ImportJobStatus } from '@prisma/client';
 import { ValidationError, NotFoundError } from '../errors';
 import { requireAdmin } from '../auth/utils';
@@ -11,21 +10,11 @@ export class ImportManagerService {
    */
   static async enqueueMovieImport(tmdbId: number) {
     await requireAdmin('write:imports');
-    // Basic duplication check to avoid spamming the same job
-    const existingJobs = await ImportRepository.list({
-      status: ImportJobStatus.PENDING,
-    });
-    const duplicate = existingJobs.data.find((j) => j.tmdbId === tmdbId);
-    if (duplicate) {
-      return duplicate;
-    }
-
-    const inProgressJobs = await ImportRepository.list({
-      status: ImportJobStatus.IN_PROGRESS,
-    });
-    const duplicateInProgress = inProgressJobs.data.find((j) => j.tmdbId === tmdbId);
-    if (duplicateInProgress) {
-      return duplicateInProgress;
+    // Targeted duplication check: find any active job (PENDING or IN_PROGRESS) for this TMDB ID.
+    // This is a single O(1) indexed lookup - faster and reliable regardless of queue size.
+    const activeJob = await ImportRepository.findActivJobByTmdbId(tmdbId);
+    if (activeJob) {
+      return activeJob;
     }
 
     // Create the persistent job record

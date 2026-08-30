@@ -2,16 +2,33 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { tmdbFetch } from '@/lib/tmdb/client';
 import { requireAdmin } from '@/lib/auth/utils';
+import { logger } from '@/lib/logger';
+
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function POST(req: Request) {
   try {
     await requireAdmin('write:imports');
     
     const body = await req.json();
-    const { page = 1, startDate, endDate } = body;
+    const { page: rawPage = 1, startDate, endDate } = body;
+    const page = parseInt(String(rawPage), 10);
+
+    if (!Number.isInteger(page) || page < 1 || page > 500) {
+      return NextResponse.json({ error: 'Invalid page. Must be a number between 1 and 500.' }, { status: 400 });
+    }
 
     if (!startDate || !endDate) {
       return NextResponse.json({ error: 'Missing startDate or endDate' }, { status: 400 });
+    }
+
+    // Validate date format (YYYY-MM-DD)
+    if (!ISO_DATE_REGEX.test(startDate) || !ISO_DATE_REGEX.test(endDate)) {
+      return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD.' }, { status: 400 });
+    }
+
+    if (new Date(startDate) > new Date(endDate)) {
+      return NextResponse.json({ error: 'startDate must be before or equal to endDate.' }, { status: 400 });
     }
 
     // Fetch page from TMDB
@@ -85,7 +102,7 @@ export async function POST(req: Request) {
       currentPage: page,
     });
   } catch (error: any) {
-    console.error('Bulk Import Error:', error);
+    logger.error({ err: error }, '[BulkImport] Bulk Import Error');
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

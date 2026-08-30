@@ -7,6 +7,8 @@ import { GenreRepository } from '../repositories/GenreRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { TrailerRepository } from '../repositories/TrailerRepository';
 import { TransactionManager } from '../repositories/TransactionManager';
+import { prisma } from '../prisma';
+import { logger } from '../logger';
 
 export class SyncService {
   static async importMovie(tmdbId: number) {
@@ -39,7 +41,8 @@ export class SyncService {
       // We also sort them by ID to ensure deterministic lock ordering if they are upserted concurrently.
       const dbGenres: { tmdbId: number; id: string }[] = [];
       if (!lockedFields.includes('genres')) {
-        const sortedTmdbGenres = [...tmdbMovie.genres].sort((a, b) => a.id - b.id);
+        const genresList = tmdbMovie.genres || [];
+        const sortedTmdbGenres = [...genresList].sort((a, b) => a.id - b.id);
         for (const tmdbGenre of sortedTmdbGenres) {
           const genre = await GenreRepository.upsert(
             tmdbGenre.id,
@@ -52,7 +55,8 @@ export class SyncService {
 
       const dbCast: { personId: string; character: string; order: number }[] = [];
       if (!lockedFields.includes('cast')) {
-        const topCast = credits.cast.slice(0, 10);
+        const castList = credits?.cast || [];
+        const topCast = castList.slice(0, 10);
         const sortedCast = [...topCast].sort((a, b) => a.id - b.id);
         
         for (const castMember of sortedCast) {
@@ -70,7 +74,7 @@ export class SyncService {
             personDetails = pDetails;
             personCredits = pCredits;
           } catch (e) {
-            console.error(`Failed to fetch deep profile for actor ${castMember.id}`);
+            logger.warn({ actorId: castMember.id }, `[importMovie] Failed to fetch deep profile for actor ${castMember.id}, using basic data`);
           }
 
           let topMovies: any = [];
@@ -83,7 +87,7 @@ export class SyncService {
 
           const personData = {
             name: castMember.name,
-            slug: generateSlug(castMember.name),
+            slug: `${generateSlug(castMember.name)}-${castMember.id}`,
             tmdbId: castMember.id,
             headshotUrl,
             biography: personDetails?.biography || null,
@@ -152,7 +156,8 @@ export class SyncService {
           }
 
           if (!lockedFields.includes('trailers')) {
-            const trailers = videos.results.filter(
+            const videoResults = videos?.results || [];
+            const trailers = videoResults.filter(
               (v: any) => v.site === 'YouTube' && v.type === 'Trailer'
             );
             for (let i = 0; i < trailers.length; i++) {
@@ -167,12 +172,12 @@ export class SyncService {
                 await TrailerRepository.create(
                   {
                     movieId: movie.id,
-                    title: video.name,
+                    title: video.name || 'Trailer',
                     sourceType: TrailerSource.YOUTUBE,
                     sourceId: video.key,
                     videoType: TrailerType.TRAILER,
                     isPrimary: i === 0,
-                    publishedDate: new Date(video.published_at),
+                    publishedDate: video.published_at ? new Date(video.published_at) : new Date(),
                     thumbnailUrl: `https://img.youtube.com/vi/${video.key}/maxresdefault.jpg`,
                   },
                   tx
@@ -186,12 +191,13 @@ export class SyncService {
           // Companies
           if (tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
             await tx.movieCompany.deleteMany({ where: { movieId: movie.id } });
+            const companyIds: string[] = [];
             for (const pc of tmdbMovie.production_companies) {
               const comp = await tx.productionCompany.upsert({
                 where: { tmdbId: pc.id },
                 create: {
                   name: pc.name,
-                  slug: generateSlug(pc.name),
+                  slug: `${generateSlug(pc.name)}-${pc.id}`,
                   tmdbId: pc.id,
                   logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
                 },
@@ -200,8 +206,12 @@ export class SyncService {
                   logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
                 }
               });
-              await tx.movieCompany.create({
-                data: { movieId: movie.id, companyId: comp.id }
+              companyIds.push(comp.id);
+            }
+            if (companyIds.length > 0) {
+              await tx.movieCompany.createMany({
+                data: companyIds.map(companyId => ({ movieId: movie.id, companyId })),
+                skipDuplicates: true
               });
             }
           }
@@ -210,14 +220,19 @@ export class SyncService {
           const extra = tmdbMovie as any;
           if (extra.keywords && extra.keywords.keywords) {
             await tx.movieKeyword.deleteMany({ where: { movieId: movie.id } });
+            const keywordIds: string[] = [];
             for (const kw of extra.keywords.keywords) {
               const word = await tx.keyword.upsert({
                 where: { tmdbId: kw.id },
                 create: { name: kw.name, tmdbId: kw.id },
                 update: { name: kw.name }
               });
-              await tx.movieKeyword.create({
-                data: { movieId: movie.id, keywordId: word.id }
+              keywordIds.push(word.id);
+            }
+            if (keywordIds.length > 0) {
+              await tx.movieKeyword.createMany({
+                data: keywordIds.map(keywordId => ({ movieId: movie.id, keywordId })),
+                skipDuplicates: true
               });
             }
           }
@@ -241,18 +256,18 @@ export class SyncService {
               }
             });
             await tx.collectionMovie.create({
-              data: { collectionId: coll.id, movieId: movie.id, sortOrder: 0 }
+              data: { collectionId: coll.id, movieId: movie.id, sortOrder: bc.part_number ?? 0 }
             });
           }
 
           return movie;
         },
-        { timeout: 10000 }
+        { timeout: 25000 }
       );
 
       return savedMovie;
     } catch (error) {
-      console.error(`Failed to import TMDB movie ${tmdbId}`, error);
+      logger.error({ err: error, tmdbId }, `[importMovie] Failed to import TMDB movie ${tmdbId}`);
       throw error;
     }
   }
@@ -291,7 +306,7 @@ export class SyncService {
       if (!existingMovie.reviews && movieData.reviews) patchData.reviews = movieData.reviews;
 
       // 2. Prepare Companies if missing
-      const companiesToLink = [];
+      const companiesToLink: string[] = [];
       if (tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
         const existingCompanies = await prisma.movieCompany.count({ where: { movieId: existingMovie.id } });
         if (existingCompanies === 0) {
@@ -300,7 +315,7 @@ export class SyncService {
               where: { tmdbId: pc.id },
               create: {
                 name: pc.name,
-                slug: generateSlug(pc.name),
+                slug: `${generateSlug(pc.name)}-${pc.id}`,
                 tmdbId: pc.id,
                 logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
               },
@@ -315,7 +330,7 @@ export class SyncService {
       }
 
       // 3. Prepare Keywords if missing
-      const keywordsToLink = [];
+      const keywordsToLink: string[] = [];
       const extra = tmdbMovie as any;
       if (extra.keywords && extra.keywords.keywords) {
         const existingKeywords = await prisma.movieKeyword.count({ where: { movieId: existingMovie.id } });
@@ -332,33 +347,56 @@ export class SyncService {
       }
 
       await TransactionManager.run(async (tx) => {
-        // 1. Update basic and JSON fields
-        if (Object.keys(patchData).length > 0) {
-          await tx.movie.update({
-            where: { id: existingMovie.id },
-            data: patchData
-          });
-        }
+        // 1. Force update to bump `updatedAt` timestamp, preventing infinite re-checks
+        await tx.movie.update({
+          where: { id: existingMovie.id },
+          data: {
+            ...patchData,
+            updatedAt: new Date()
+          }
+        });
 
         // 2. Link Companies
-        for (const companyId of companiesToLink) {
-          await tx.movieCompany.create({
-            data: { movieId: existingMovie.id, companyId }
+        if (companiesToLink.length > 0) {
+          await tx.movieCompany.createMany({
+            data: companiesToLink.map(companyId => ({ movieId: existingMovie.id, companyId })),
+            skipDuplicates: true
           });
         }
 
         // 3. Link Keywords
-        for (const keywordId of keywordsToLink) {
-          await tx.movieKeyword.create({
-            data: { movieId: existingMovie.id, keywordId }
+        if (keywordsToLink.length > 0) {
+          await tx.movieKeyword.createMany({
+            data: keywordsToLink.map(keywordId => ({ movieId: existingMovie.id, keywordId })),
+            skipDuplicates: true
           });
         }
       }, { timeout: 15000 });
       
       return { success: true };
-    } catch (error) {
-      console.error(`Failed to patch TMDB movie ${tmdbId}`, error);
+    } catch (error: any) {
+      const is404 = error?.status === 404 || error?.message?.includes('404');
+      
+      if (!is404) {
+        logger.error({ err: error, tmdbId }, `[patchMissingData] Failed to patch TMDB movie ${tmdbId}`);
+      }
+      
+      // If TMDB deleted the movie (404), bump our local timestamp so we don't infinitely retry checking it
+      if (is404) {
+        try {
+          await prisma.movie.updateMany({
+            where: { tmdbId },
+            data: { updatedAt: new Date() }
+          });
+        } catch (e) {
+          // ignore error if update fails
+        }
+      }
+      
       throw error;
     }
   }
 }
+
+// Trigger HMR update
+

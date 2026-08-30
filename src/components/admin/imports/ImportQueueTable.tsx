@@ -59,34 +59,46 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
 
   // The continuous background processor loop
   React.useEffect(() => {
-    autoProcessorRef.current.isCancelled = !isAutoProcessing;
-    if (!isAutoProcessing) return;
+    if (!isAutoProcessing) {
+      autoProcessorRef.current.isCancelled = true;
+      return;
+    }
+
+    // Reset cancellation flag and start a fresh loop
+    autoProcessorRef.current.isCancelled = false;
+
+    // Guard: if a previous loop is still mid-fetch, let it exit naturally first
     if (autoProcessorRef.current.isRunning) return;
 
     autoProcessorRef.current.isRunning = true;
-    
+
     const runProcessor = async () => {
       while (!autoProcessorRef.current.isCancelled) {
-        const currentJobs = await fetchLatestJobs() || jobs;
-        const pendingCount = currentJobs.filter((j: any) => j.status === 'PENDING').length;
-
-        if (pendingCount > 0) {
-          setIsCurrentlyFetching(true);
-          try {
-            // Process a batch (runs the worker silently in the background)
-            await fetch('/api/admin/cron/process-imports', { method: 'POST' });
-            await fetchLatestJobs(); // Update UI immediately after batch finishes
-          } catch (e) {
-            // Error, back off
-            await new Promise(r => setTimeout(r, 5000));
-          } finally {
-            setIsCurrentlyFetching(false);
+        setIsCurrentlyFetching(true);
+        let processedCount = 0;
+        try {
+          // Hit the backend to process the queue. It will return the number of processed jobs.
+          const res = await fetch('/api/admin/cron/process-imports', { method: 'POST' });
+          if (res.ok) {
+            const result = await res.json();
+            processedCount = result.processed || 0;
           }
-          // Small delay before next batch to relieve DB pressure
+          await fetchLatestJobs(); // Update UI immediately after batch finishes
+        } catch (e) {
+          // Error, back off
+          processedCount = 0;
+        } finally {
+          setIsCurrentlyFetching(false);
+        }
+
+        if (autoProcessorRef.current.isCancelled) break;
+
+        if (processedCount > 0) {
+          // Processed something, there might be more, wait a bit and poll again
           await new Promise(r => setTimeout(r, 2000));
         } else {
-          // No pending jobs, poll less frequently
-          await new Promise(r => setTimeout(r, 5000));
+          // No pending jobs found anywhere in the DB, sleep longer
+          await new Promise(r => setTimeout(r, 10000));
         }
       }
       autoProcessorRef.current.isRunning = false;
@@ -106,7 +118,9 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
       if (!res.ok) throw new Error()
       
       toast.success("Job removed successfully")
-      setJobs(jobs.filter(j => j.id !== deletingJobId))
+      // Use functional update to avoid stale closure — jobs may have been refreshed
+      // by the background polling loop while the confirmation dialog was open.
+      setJobs(prev => prev.filter(j => j.id !== deletingJobId))
     } catch (error) {
       toast.error("Failed to remove job")
     } finally {

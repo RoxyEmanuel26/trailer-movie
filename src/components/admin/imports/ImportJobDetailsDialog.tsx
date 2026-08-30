@@ -23,12 +23,14 @@ export function ImportJobDetailsDialog({
 }: ImportJobDetailsDialogProps) {
   if (!job) return null
 
-  // The tracker saves state in the 'logs' field as a JSON object
+  // The tracker saves ProgressState in the 'logs' field as a JSON object.
+  // Shape: { stage, progress, logs: string[], retryCount, startedAt, finishedAt, durationMs }
   const state = job.logs as any
-  const percentage = state?.percentage || 0
-  const steps = state?.steps || []
-  const currentStep = state?.currentStep || "Initializing"
-  const error = state?.error
+  const percentage = state?.progress || 0
+  const steps = Array.isArray(state?.logs) ? state.logs : []
+  const currentStep = state?.stage || 'Initializing'
+  const retryCount = state?.retryCount || 0
+  const durationMs = state?.durationMs
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -60,28 +62,23 @@ export function ImportJobDetailsDialog({
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">{currentStep}</span>
-              <span className="text-muted-foreground">{percentage}%</span>
+              <div className="flex gap-3 text-muted-foreground">
+                {retryCount > 0 && <span>Retries: {retryCount}</span>}
+                {durationMs && <span>{(durationMs / 1000).toFixed(1)}s</span>}
+                <span>{percentage}%</span>
+              </div>
             </div>
             <Progress value={percentage} className="h-2" />
           </div>
-
-          {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive rounded-md text-destructive text-sm font-mono">
-              {error}
-            </div>
-          )}
 
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Execution Log</h4>
             <ScrollArea className="h-[200px] w-full rounded-md border bg-muted/50 p-4 font-mono text-xs">
               {steps.length > 0 ? (
                 <ul className="space-y-1">
-                  {steps.map((step: any, i: number) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-muted-foreground whitespace-nowrap">
-                        [{new Date(step.timestamp).toISOString().split('T')[1].slice(0, -1)}]
-                      </span>
-                      <span>{step.message}</span>
+                  {steps.map((logLine: string, i: number) => (
+                    <li key={i} className="leading-relaxed">
+                      {logLine}
                     </li>
                   ))}
                 </ul>
