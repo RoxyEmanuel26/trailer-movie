@@ -109,7 +109,7 @@ export class ImportRepository {
     // We combine SELECT and UPDATE into a single query to ensure locks are held atomically
     return db.$queryRaw<{ id: string, tmdbId: number }[]>`
       UPDATE "import_jobs"
-      SET status = 'IN_PROGRESS'
+      SET status = 'IN_PROGRESS', "updatedAt" = CURRENT_TIMESTAMP
       WHERE id IN (
         SELECT id 
         FROM "import_jobs" 

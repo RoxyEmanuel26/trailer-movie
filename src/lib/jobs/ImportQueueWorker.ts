@@ -3,49 +3,52 @@ import { MovieImportPipeline } from './pipelines/MovieImportPipeline';
 import { logger } from '@/lib/logger';
 
 export class ImportQueueWorker {
-  private CONCURRENCY_LIMIT = 5;
   private isProcessing = false;
 
   async processNextBatch(): Promise<number> {
-    // Avoid overlapping polls within the same instance/request
     if (this.isProcessing) return 0;
     this.isProcessing = true;
 
+    const startTime = Date.now();
+    const MAX_EXECUTION_TIME_MS = 270 * 1000;
+    let totalProcessed = 0;
+
     try {
-      // 1. Recover stuck jobs (IN_PROGRESS for > 10 min — aligned with maxDuration=300s + buffer)
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
       await ImportRepository.recoverStuckJobs(tenMinutesAgo);
 
-      // 2. Fetch up to CONCURRENCY_LIMIT jobs atomically using FOR UPDATE SKIP LOCKED
-      const jobs = await ImportRepository.fetchJobsForProcessing(this.CONCURRENCY_LIMIT);
+      while (Date.now() - startTime < MAX_EXECUTION_TIME_MS) {
+        const jobs = await ImportRepository.fetchJobsForProcessing(2);
 
-      if (jobs.length === 0) {
-        return 0;
+        if (jobs.length === 0) {
+          break;
+        }
+
+        logger.info({ jobIds: jobs.map(j => j.id) }, '[ImportQueueWorker] Processing ' + jobs.length + ' jobs');
+
+        await Promise.allSettled(
+          jobs.map(async (job) => {
+            try {
+              await new MovieImportPipeline(job.id).run({ tmdbId: job.tmdbId });
+            } catch (error) {
+              logger.error({ err: error, jobId: job.id }, '[ImportQueueWorker] Job ' + job.id + ' failed fundamentally');
+            }
+          })
+        );
+        
+        totalProcessed += jobs.length;
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
-
-      // 3. Mark them as IN_PROGRESS immediately in a single transaction (Now handled atomically in fetchJobsForProcessing)
-      logger.info({ jobIds: jobs.map(j => j.id) }, `[ImportQueueWorker] Processing ${jobs.length} jobs`);
-
-      // 4. Process them concurrently up to the limit
-      await Promise.allSettled(
-        jobs.map(async (job) => {
-          try {
-            await new MovieImportPipeline(job.id).run({ tmdbId: job.tmdbId });
-          } catch (error) {
-            logger.error({ err: error, jobId: job.id }, `[ImportQueueWorker] Job ${job.id} failed fundamentally`);
-          }
-        })
-      );
       
-      return jobs.length;
+      return totalProcessed;
     } catch (error) {
       logger.error({ err: error }, '[ImportQueueWorker] Critical error during polling');
-      return 0;
+      return totalProcessed;
     } finally {
       this.isProcessing = false;
     }
   }
 }
 
-// Singleton instance
 export const importQueueWorker = new ImportQueueWorker();

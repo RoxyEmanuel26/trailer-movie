@@ -13,14 +13,12 @@ export async function GET() {
     const missingDataMovies = await prisma.movie.findMany({
       where: {
         deletedAt: null,
-        // Cooldown: Only investigate movies that haven't been checked/updated in the last 7 days
-        updatedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
         OR: [
-          // Basic fields
+          // Basic fields missing
           { posterUrl: null },
           { synopsis: null },
           { releaseDate: null },
-          // Financial fields (added after migration)
+          // Financial fields
           { budget: null },
           { revenue: null },
           // Certification
@@ -28,9 +26,16 @@ export async function GET() {
           // JSON fields (null means never populated)
           { watchProviders: { equals: Prisma.DbNull } },
           { reviews: { equals: Prisma.DbNull } },
-          // Relational fields — no linked records at all
+          // Relational fields - no linked records at all
           { keywords: { none: {} } },
           { companies: { none: {} } },
+          { countries: { none: {} } },
+          { languages: { none: {} } },
+          { people: { none: {} } },
+          // "Coming Soon" exception (if database has temporary coming soon text)
+          { synopsis: { contains: 'coming soon', mode: 'insensitive' } },
+          { posterUrl: { contains: 'coming soon', mode: 'insensitive' } },
+          { youtubeTrailerId: { contains: 'coming soon', mode: 'insensitive' } }
         ]
       },
       select: {
@@ -43,12 +48,16 @@ export async function GET() {
         budget: true,
         revenue: true,
         ageRating: true,
+        youtubeTrailerId: true,
         watchProviders: true,
         reviews: true,
         _count: {
           select: {
             keywords: true,
             companies: true,
+            countries: true,
+            languages: true,
+            people: true,
           }
         }
       },
@@ -71,6 +80,12 @@ export async function GET() {
         m.reviews === null && 'reviews',
         m._count.keywords === 0 && 'keywords',
         m._count.companies === 0 && 'companies',
+        m._count.countries === 0 && 'countries',
+        m._count.languages === 0 && 'languages',
+        m._count.people === 0 && 'people',
+        (m.synopsis?.toLowerCase().includes('coming soon')) && 'synopsis (coming soon)',
+        (m.posterUrl?.toLowerCase().includes('coming soon')) && 'posterUrl (coming soon)',
+        (m.youtubeTrailerId?.toLowerCase().includes('coming soon')) && 'youtubeTrailerId (coming soon)'
       ].filter(Boolean),
     }));
 

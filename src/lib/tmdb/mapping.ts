@@ -72,7 +72,10 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
     const usRelease = extra.release_dates.results.find((r: any) => r.iso_3166_1 === "US");
     if (usRelease && usRelease.release_dates && usRelease.release_dates.length > 0) {
       const cert = usRelease.release_dates.find((r: any) => r.certification !== "");
-      if (cert) assignIfNotLocked('ageRating', cert.certification);
+      if (cert) {
+        assignIfNotLocked('ageRating', cert.certification);
+        assignIfNotLocked('mpaaRating', cert.certification);
+      }
     }
   }
 

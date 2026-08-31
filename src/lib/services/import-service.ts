@@ -53,62 +53,77 @@ export class SyncService {
         }
       }
 
-      const dbCast: { personId: string; character: string; order: number }[] = [];
+      const dbPeopleLinks: { personId: string; roleType: PersonRoleType; character: string | null; order: number }[] = [];
       if (!lockedFields.includes('cast')) {
         const castList = credits?.cast || [];
-        const topCast = castList.slice(0, 10);
-        const sortedCast = [...topCast].sort((a, b) => a.id - b.id);
+        const topCast = castList.slice(0, 10).map((c: any) => ({ ...c, mappedRole: PersonRoleType.ACTOR }));
         
-        for (const castMember of sortedCast) {
-          const headshotUrl = castMember.profile_path
-            ? `https://image.tmdb.org/t/p/w200${castMember.profile_path}`
-            : null;
+        const crewList = credits?.crew || [];
+        const directors = crewList.filter((c: any) => c.job === 'Director').slice(0, 3).map((c: any) => ({ ...c, mappedRole: PersonRoleType.DIRECTOR }));
+        const writers = crewList.filter((c: any) => ['Screenplay', 'Writer', 'Story'].includes(c.job)).slice(0, 3).map((c: any) => ({ ...c, mappedRole: PersonRoleType.WRITER }));
+        const producers = crewList.filter((c: any) => c.job === 'Producer').slice(0, 3).map((c: any) => ({ ...c, mappedRole: PersonRoleType.PRODUCER }));
 
-          let personDetails = null;
-          let personCredits = null;
-          try {
-            const [pDetails, pCredits] = await Promise.all([
-              getPerson(castMember.id),
-              getPersonCombinedCredits(castMember.id)
-            ]);
-            personDetails = pDetails;
-            personCredits = pCredits;
-          } catch (e) {
-            logger.warn({ actorId: castMember.id }, `[importMovie] Failed to fetch deep profile for actor ${castMember.id}, using basic data`);
+        const allPeople = [...topCast, ...directors, ...writers, ...producers];
+        const sortedPeople = [...allPeople].sort((a, b) => a.id - b.id);
+        const processedPersons = new Map<number, string>(); // tmdbId -> prisma person.id
+
+        for (const personItem of sortedPeople) {
+          let personId = processedPersons.get(personItem.id);
+
+          if (!personId) {
+            const headshotUrl = personItem.profile_path
+              ? `https://image.tmdb.org/t/p/w200${personItem.profile_path}`
+              : null;
+
+            let personDetails = null;
+            let personCredits = null;
+            try {
+              const [pDetails, pCredits] = await Promise.all([
+                getPerson(personItem.id),
+                getPersonCombinedCredits(personItem.id)
+              ]);
+              personDetails = pDetails;
+              personCredits = pCredits;
+            } catch (e) {
+              logger.warn({ personId: personItem.id }, `[importMovie] Failed to fetch deep profile for person ${personItem.id}, using basic data`);
+            }
+
+            let topMovies: any = [];
+            if (personCredits && personCredits.cast) {
+              topMovies = personCredits.cast
+                .filter((m: any) => m.media_type === 'movie' && m.poster_path)
+                .sort((a: any, b: any) => b.popularity - a.popularity)
+                .slice(0, 15);
+            }
+
+            const personData = {
+              name: personItem.name,
+              slug: `${generateSlug(personItem.name)}-${personItem.id}`,
+              tmdbId: personItem.id,
+              headshotUrl,
+              biography: personDetails?.biography || null,
+              birthday: personDetails?.birthday ? new Date(personDetails.birthday) : null,
+              deathday: personDetails?.deathday ? new Date(personDetails.deathday) : null,
+              placeOfBirth: personDetails?.place_of_birth || null,
+              gender: personDetails?.gender || null,
+              knownForDepartment: personDetails?.known_for_department || null,
+              topMovies: topMovies.length > 0 ? topMovies : null,
+            };
+
+            const person = await PersonRepository.upsert(
+              personItem.id,
+              personData as any,
+              personData as any
+            );
+            personId = person.id;
+            processedPersons.set(personItem.id, personId);
           }
-
-          let topMovies: any = [];
-          if (personCredits && personCredits.cast) {
-            topMovies = personCredits.cast
-              .filter((m: any) => m.media_type === 'movie' && m.poster_path)
-              .sort((a: any, b: any) => b.popularity - a.popularity)
-              .slice(0, 15);
-          }
-
-          const personData = {
-            name: castMember.name,
-            slug: `${generateSlug(castMember.name)}-${castMember.id}`,
-            tmdbId: castMember.id,
-            headshotUrl,
-            biography: personDetails?.biography || null,
-            birthday: personDetails?.birthday ? new Date(personDetails.birthday) : null,
-            deathday: personDetails?.deathday ? new Date(personDetails.deathday) : null,
-            placeOfBirth: personDetails?.place_of_birth || null,
-            gender: personDetails?.gender || null,
-            knownForDepartment: personDetails?.known_for_department || null,
-            topMovies: topMovies.length > 0 ? topMovies : null,
-          };
-
-          const person = await PersonRepository.upsert(
-            castMember.id,
-            personData as any,
-            personData as any
-          );
           
-          dbCast.push({
-            personId: person.id,
-            character: castMember.character,
-            order: castMember.order,
+          dbPeopleLinks.push({
+            personId: personId,
+            roleType: personItem.mappedRole,
+            character: personItem.character || null,
+            order: personItem.order || 0,
           });
         }
       }
@@ -140,15 +155,23 @@ export class SyncService {
           }
 
           if (!lockedFields.includes('cast')) {
-            await PersonRepository.clearMovieRole(movie.id, PersonRoleType.ACTOR, tx);
-            for (const c of dbCast) {
+            await tx.moviePerson.deleteMany({ where: { movieId: movie.id } }); // Clear ALL roles (Actor, Director, etc) to start fresh.
+            
+            // Deduplicate links in case a person has same role twice in TMDB
+            const uniqueLinks = new Map();
+            for (const link of dbPeopleLinks) {
+              const key = `${link.personId}-${link.roleType}`;
+              if (!uniqueLinks.has(key)) uniqueLinks.set(key, link);
+            }
+
+            for (const link of uniqueLinks.values()) {
               await PersonRepository.linkMoviePerson(
                 {
                   movieId: movie.id,
-                  personId: c.personId,
-                  roleType: PersonRoleType.ACTOR,
-                  characterName: c.character,
-                  sortOrder: c.order,
+                  personId: link.personId,
+                  roleType: link.roleType,
+                  characterName: link.character,
+                  sortOrder: link.order,
                 },
                 tx
               );
@@ -192,7 +215,8 @@ export class SyncService {
           if (tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
             await tx.movieCompany.deleteMany({ where: { movieId: movie.id } });
             const companyIds: string[] = [];
-            for (const pc of tmdbMovie.production_companies) {
+            const sortedCompanies = [...tmdbMovie.production_companies].sort((a, b) => a.id - b.id);
+            for (const pc of sortedCompanies) {
               const comp = await tx.productionCompany.upsert({
                 where: { tmdbId: pc.id },
                 create: {
@@ -232,6 +256,50 @@ export class SyncService {
             if (keywordIds.length > 0) {
               await tx.movieKeyword.createMany({
                 data: keywordIds.map(keywordId => ({ movieId: movie.id, keywordId })),
+                skipDuplicates: true
+              });
+            }
+          }
+
+          // Countries
+          if (tmdbMovie.production_countries && tmdbMovie.production_countries.length > 0) {
+            await tx.movieCountry.deleteMany({ where: { movieId: movie.id } });
+            const countryIds: string[] = [];
+            const sortedCountries = [...tmdbMovie.production_countries].sort((a, b) => (a.iso_3166_1 || '').localeCompare(b.iso_3166_1 || ''));
+            for (const pc of sortedCountries) {
+              if (!pc.iso_3166_1) continue;
+              const country = await tx.country.upsert({
+                where: { isoCode: pc.iso_3166_1 },
+                create: { isoCode: pc.iso_3166_1, name: pc.name },
+                update: { name: pc.name }
+              });
+              countryIds.push(country.id);
+            }
+            if (countryIds.length > 0) {
+              await tx.movieCountry.createMany({
+                data: countryIds.map(countryId => ({ movieId: movie.id, countryId })),
+                skipDuplicates: true
+              });
+            }
+          }
+
+          // Languages
+          if (tmdbMovie.spoken_languages && tmdbMovie.spoken_languages.length > 0) {
+            await tx.movieLanguage.deleteMany({ where: { movieId: movie.id } });
+            const langIds: string[] = [];
+            const sortedLangs = [...tmdbMovie.spoken_languages].sort((a, b) => (a.iso_639_1 || '').localeCompare(b.iso_639_1 || ''));
+            for (const lang of sortedLangs) {
+              if (!lang.iso_639_1) continue;
+              const language = await tx.language.upsert({
+                where: { isoCode: lang.iso_639_1 },
+                create: { isoCode: lang.iso_639_1, name: lang.name },
+                update: { name: lang.name }
+              });
+              langIds.push(language.id);
+            }
+            if (langIds.length > 0) {
+              await tx.movieLanguage.createMany({
+                data: langIds.map(languageId => ({ movieId: movie.id, languageId })),
                 skipDuplicates: true
               });
             }
@@ -294,12 +362,23 @@ export class SyncService {
 
       // Extract fields that we care about patching
       const patchData: any = {};
-      if (!existingMovie.posterUrl && movieData.posterUrl) patchData.posterUrl = movieData.posterUrl;
-      if (!existingMovie.synopsis && movieData.synopsis) patchData.synopsis = movieData.synopsis;
+      const isPosterMissing = !existingMovie.posterUrl || existingMovie.posterUrl.toLowerCase().includes('coming soon');
+      const isSynopsisMissing = !existingMovie.synopsis || existingMovie.synopsis.toLowerCase().includes('coming soon');
+      const isTrailerMissing = !existingMovie.youtubeTrailerId || existingMovie.youtubeTrailerId.toLowerCase().includes('coming soon');
+      
+      if (isPosterMissing && movieData.posterUrl) patchData.posterUrl = movieData.posterUrl;
+      if (isSynopsisMissing && movieData.synopsis) patchData.synopsis = movieData.synopsis;
+      
+      if (isTrailerMissing && tmdbMovie.videos && tmdbMovie.videos.results) {
+        const trailers = tmdbMovie.videos.results.filter((v: any) => v.site === 'YouTube' && v.type === 'Trailer');
+        if (trailers.length > 0) patchData.youtubeTrailerId = trailers[0].key;
+      }
+      
       if (!existingMovie.releaseDate && movieData.releaseDate) patchData.releaseDate = movieData.releaseDate;
       if (existingMovie.budget === null && movieData.budget) patchData.budget = movieData.budget;
       if (existingMovie.revenue === null && movieData.revenue) patchData.revenue = movieData.revenue;
       if (!existingMovie.ageRating && movieData.ageRating) patchData.ageRating = movieData.ageRating;
+      if (!existingMovie.mpaaRating && movieData.mpaaRating) patchData.mpaaRating = movieData.mpaaRating;
       
       // JSON fields might be Prisma.DbNull or actual null in JS depending on query, check safely
       if (!existingMovie.watchProviders && movieData.watchProviders) patchData.watchProviders = movieData.watchProviders;
@@ -310,14 +389,15 @@ export class SyncService {
       if (tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
         const existingCompanies = await prisma.movieCompany.count({ where: { movieId: existingMovie.id } });
         if (existingCompanies === 0) {
-          for (const pc of tmdbMovie.production_companies) {
+          const sortedComps = [...tmdbMovie.production_companies].sort((a, b) => a.id - b.id);
+          for (const pc of sortedComps) {
             const comp = await prisma.productionCompany.upsert({
               where: { tmdbId: pc.id },
               create: {
                 name: pc.name,
                 slug: `${generateSlug(pc.name)}-${pc.id}`,
-                tmdbId: pc.id,
                 logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
+                tmdbId: pc.id
               },
               update: {
                 name: pc.name,
@@ -335,7 +415,8 @@ export class SyncService {
       if (extra.keywords && extra.keywords.keywords) {
         const existingKeywords = await prisma.movieKeyword.count({ where: { movieId: existingMovie.id } });
         if (existingKeywords === 0) {
-          for (const kw of extra.keywords.keywords) {
+          const sortedKw = [...extra.keywords.keywords].sort((a: any, b: any) => a.id - b.id);
+          for (const kw of sortedKw) {
             const word = await prisma.keyword.upsert({
               where: { tmdbId: kw.id },
               create: { name: kw.name, tmdbId: kw.id },
@@ -343,6 +424,88 @@ export class SyncService {
             });
             keywordsToLink.push(word.id);
           }
+        }
+      }
+
+      // 4. Prepare Countries if missing
+      const countriesToLink: string[] = [];
+      if (tmdbMovie.production_countries && tmdbMovie.production_countries.length > 0) {
+        const existingCountries = await prisma.movieCountry.count({ where: { movieId: existingMovie.id } });
+        if (existingCountries === 0) {
+          const sorted = [...tmdbMovie.production_countries].sort((a, b) => (a.iso_3166_1 || '').localeCompare(b.iso_3166_1 || ''));
+          for (const pc of sorted) {
+            if (!pc.iso_3166_1) continue;
+            const country = await prisma.country.upsert({
+              where: { isoCode: pc.iso_3166_1 },
+              create: { isoCode: pc.iso_3166_1, name: pc.name },
+              update: { name: pc.name }
+            });
+            countriesToLink.push(country.id);
+          }
+        }
+      }
+
+      // 5. Prepare Languages if missing
+      const languagesToLink: string[] = [];
+      if (tmdbMovie.spoken_languages && tmdbMovie.spoken_languages.length > 0) {
+        const existingLangs = await prisma.movieLanguage.count({ where: { movieId: existingMovie.id } });
+        if (existingLangs === 0) {
+          const sorted = [...tmdbMovie.spoken_languages].sort((a, b) => (a.iso_639_1 || '').localeCompare(b.iso_639_1 || ''));
+          for (const lang of sorted) {
+            if (!lang.iso_639_1) continue;
+            const language = await prisma.language.upsert({
+              where: { isoCode: lang.iso_639_1 },
+              create: { isoCode: lang.iso_639_1, name: lang.name },
+              update: { name: lang.name }
+            });
+            languagesToLink.push(language.id);
+          }
+        }
+      }
+
+      // 6. Prepare People (Crew/Cast) if missing
+      const peopleToLink: any[] = [];
+      const existingPeople = await prisma.moviePerson.count({ where: { movieId: existingMovie.id } });
+      if (existingPeople === 0) {
+        try {
+          const credits = await getMovieCredits(tmdbId);
+          const targetJobs = ['Director', 'Writer', 'Screenplay', 'Producer'];
+          const relevantCrew = (credits.crew || []).filter((c: any) => targetJobs.includes(c.job));
+          const topCast = (credits.cast || []).slice(0, 15);
+          
+          const allPeopleToProcess: any[] = [...relevantCrew, ...topCast];
+          
+          for (const p of allPeopleToProcess) {
+            let roleType = 'ACTOR';
+            if (p.job === 'Director') roleType = 'DIRECTOR';
+            else if (p.job === 'Writer' || p.job === 'Screenplay') roleType = 'WRITER';
+            else if (p.job === 'Producer') roleType = 'PRODUCER';
+            
+            const person = await prisma.person.upsert({
+              where: { tmdbId: p.id },
+              create: {
+                tmdbId: p.id,
+                name: p.name,
+                slug: `${generateSlug(p.name)}-${p.id}`,
+                headshotUrl: p.profile_path ? `https://image.tmdb.org/t/p/w300${p.profile_path}` : null,
+                gender: p.gender,
+                knownForDepartment: p.known_for_department
+              },
+              update: {
+                name: p.name,
+                headshotUrl: p.profile_path ? `https://image.tmdb.org/t/p/w300${p.profile_path}` : null,
+              }
+            });
+            
+            peopleToLink.push({
+              personId: person.id,
+              roleType,
+              characterName: p.character || null,
+              sortOrder: p.order || 0
+            });
+          }
+        } catch (err) {
+          logger.error({ err, tmdbId }, 'Failed to fetch credits during patch');
         }
       }
 
@@ -368,6 +531,30 @@ export class SyncService {
         if (keywordsToLink.length > 0) {
           await tx.movieKeyword.createMany({
             data: keywordsToLink.map(keywordId => ({ movieId: existingMovie.id, keywordId })),
+            skipDuplicates: true
+          });
+        }
+
+        // 4. Link Countries
+        if (countriesToLink.length > 0) {
+          await tx.movieCountry.createMany({
+            data: countriesToLink.map(countryId => ({ movieId: existingMovie.id, countryId })),
+            skipDuplicates: true
+          });
+        }
+
+        // 5. Link Languages
+        if (languagesToLink.length > 0) {
+          await tx.movieLanguage.createMany({
+            data: languagesToLink.map(languageId => ({ movieId: existingMovie.id, languageId })),
+            skipDuplicates: true
+          });
+        }
+        
+        // 6. Link People
+        if (peopleToLink.length > 0) {
+          await tx.moviePerson.createMany({
+            data: peopleToLink.map(p => ({ ...p, movieId: existingMovie.id })),
             skipDuplicates: true
           });
         }

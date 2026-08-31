@@ -33,11 +33,8 @@ export abstract class BaseWorker<T = any> {
         await this.execute(data);
 
         this.tracker.finish();
-        await ImportRepository.updateStatus(
-          this.jobId,
-          ImportJobStatus.COMPLETED,
-          this.tracker.getState()
-        );
+        // Remove successfully completed jobs immediately to prevent UI clutter
+        await ImportRepository.delete(this.jobId);
         return; // Success
       } catch (error: any) {
         currentAttempt++;

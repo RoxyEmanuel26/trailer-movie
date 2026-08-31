@@ -1,12 +1,13 @@
 import { TmdbError, TmdbRateLimitError } from './errors';
 import { secureFetch } from '../security/fetcher';
+import { logger } from '../logger';
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;
   retries?: number;
 }
 
-const DEFAULT_RETRIES = 3;
+const DEFAULT_RETRIES = 15;
 const TIMEOUT_MS = 10000;
 
 export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
@@ -46,7 +47,7 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
       if (response.status === 429) {
         const retryAfter = parseInt(response.headers.get('retry-after') || '1', 10);
         if (retries > 0) {
-          console.warn(
+          logger.warn(
             `TMDB Rate limited. Retrying after ${retryAfter}s... (${retries} retries left)`
           );
           await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
@@ -58,7 +59,7 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
       // Handle 5xx errors with standard exponential backoff
       if (response.status >= 500 && retries > 0) {
         const backoff = (DEFAULT_RETRIES - retries + 1) * 1000; // 1s, 2s, 3s
-        console.warn(`TMDB Server Error ${response.status}. Retrying in ${backoff}ms...`);
+        logger.warn(`TMDB Server Error ${response.status}. Retrying in ${backoff}ms...`);
         await new Promise((resolve) => setTimeout(resolve, backoff));
         return tmdbFetch<T>(endpoint, { ...options, retries: retries - 1 });
       }

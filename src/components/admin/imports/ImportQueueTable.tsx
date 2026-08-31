@@ -48,7 +48,9 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
       const res = await fetch('/api/admin/imports')
       if (res.ok) {
         const data = await res.json()
-        setJobs(data.data.data)
+        if (!autoProcessorRef.current.isCancelled) {
+          setJobs(data.data.data)
+        }
         return data.data.data
       }
     } catch (e) {

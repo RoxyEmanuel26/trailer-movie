@@ -36,7 +36,8 @@ export class MovieImportPipeline extends BaseWorker<MovieImportPayload> {
         throw new NonRetryableJobError(`Movie ${data.tmdbId} not found on TMDB`);
       }
       // Otherwise assume retryable (e.g. 502 Bad Gateway)
-      throw new RetryableJobError(error.message);
+      const errMessage = error?.message || String(error);
+      throw new RetryableJobError(errMessage);
     }
   }
 }

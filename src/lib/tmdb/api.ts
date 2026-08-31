@@ -114,7 +114,7 @@ export async function getCollection(id: number): Promise<any> {
  * Fetches movie extra info (budget, revenue, keywords, release dates, watch/providers, reviews)
  */
 export async function getMovieExtra(id: number): Promise<any> {
-  return tmdbFetch<any>(`/movie/${id}`, { params: { language: 'en-US', append_to_response: 'keywords,release_dates,watch/providers,reviews' } });
+  return tmdbFetch<any>(`/movie/${id}`, { params: { language: 'en-US', append_to_response: 'keywords,release_dates,watch/providers,reviews,videos' } });
 }
 
 /**
