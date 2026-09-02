@@ -10,6 +10,62 @@ import { TransactionManager } from '../repositories/TransactionManager';
 import { prisma } from '../prisma';
 import { logger } from '../logger';
 
+// Helpers to prevent P2002 Unique Constraint errors on concurrent batch imports 
+// without relying on try-catch, which breaks SQL transactions in Prisma.
+async function safeUpsertKeyword(tx: any, kw: { id: number; name: string }) {
+  let word = await tx.keyword.findUnique({ where: { tmdbId: kw.id } });
+  if (word) {
+    if (word.name !== kw.name) {
+      // Check if new name is already taken to avoid Transaction Abort
+      const conflict = await tx.keyword.findFirst({ where: { name: { equals: kw.name, mode: 'insensitive' } } });
+      if (!conflict) {
+        word = await tx.keyword.update({ where: { id: word.id }, data: { name: kw.name } });
+      }
+    }
+    return word;
+  }
+  
+  word = await tx.keyword.findFirst({ where: { name: { equals: kw.name, mode: 'insensitive' } } });
+  if (word) {
+    if (word.tmdbId !== kw.id) {
+      word = await tx.keyword.update({ where: { id: word.id }, data: { tmdbId: kw.id } });
+    }
+    return word;
+  }
+  
+  // If a race condition happens here, P2002 will safely abort the transaction 
+  // and the queue will retry the job later. This is correct behavior.
+  return await tx.keyword.create({ data: { name: kw.name, tmdbId: kw.id } });
+}
+
+async function safeUpsertCompany(tx: any, pc: { id: number; name: string; logo_path?: string }) {
+  const logoUrl = pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null;
+  const slug = `${generateSlug(pc.name)}-${pc.id}`;
+  
+  let comp = await tx.productionCompany.findUnique({ where: { tmdbId: pc.id } });
+  if (comp) {
+    if (comp.name !== pc.name || comp.logoUrl !== logoUrl) {
+      comp = await tx.productionCompany.update({ where: { id: comp.id }, data: { name: pc.name, logoUrl } });
+    }
+    return comp;
+  }
+  
+  comp = await tx.productionCompany.findFirst({ where: { name: { equals: pc.name, mode: 'insensitive' } } });
+  if (comp) {
+    if (comp.tmdbId !== pc.id) {
+      const conflict = await tx.productionCompany.findUnique({ where: { slug } });
+      if (!conflict) {
+        comp = await tx.productionCompany.update({ where: { id: comp.id }, data: { tmdbId: pc.id, logoUrl, slug } });
+      } else {
+        comp = await tx.productionCompany.update({ where: { id: comp.id }, data: { tmdbId: pc.id, logoUrl } });
+      }
+    }
+    return comp;
+  }
+  
+  return await tx.productionCompany.create({ data: { name: pc.name, tmdbId: pc.id, logoUrl, slug } });
+}
+
 export class SyncService {
   static async importMovie(tmdbId: number) {
     try {
@@ -217,19 +273,7 @@ export class SyncService {
             const companyIds: string[] = [];
             const sortedCompanies = [...tmdbMovie.production_companies].sort((a, b) => a.id - b.id);
             for (const pc of sortedCompanies) {
-              const comp = await tx.productionCompany.upsert({
-                where: { tmdbId: pc.id },
-                create: {
-                  name: pc.name,
-                  slug: `${generateSlug(pc.name)}-${pc.id}`,
-                  tmdbId: pc.id,
-                  logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
-                },
-                update: {
-                  name: pc.name,
-                  logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
-                }
-              });
+              const comp = await safeUpsertCompany(tx, pc);
               companyIds.push(comp.id);
             }
             if (companyIds.length > 0) {
@@ -246,11 +290,7 @@ export class SyncService {
             await tx.movieKeyword.deleteMany({ where: { movieId: movie.id } });
             const keywordIds: string[] = [];
             for (const kw of extra.keywords.keywords) {
-              const word = await tx.keyword.upsert({
-                where: { tmdbId: kw.id },
-                create: { name: kw.name, tmdbId: kw.id },
-                update: { name: kw.name }
-              });
+              const word = await safeUpsertKeyword(tx, kw);
               keywordIds.push(word.id);
             }
             if (keywordIds.length > 0) {
@@ -391,19 +431,7 @@ export class SyncService {
         if (existingCompanies === 0) {
           const sortedComps = [...tmdbMovie.production_companies].sort((a, b) => a.id - b.id);
           for (const pc of sortedComps) {
-            const comp = await prisma.productionCompany.upsert({
-              where: { tmdbId: pc.id },
-              create: {
-                name: pc.name,
-                slug: `${generateSlug(pc.name)}-${pc.id}`,
-                logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
-                tmdbId: pc.id
-              },
-              update: {
-                name: pc.name,
-                logoUrl: pc.logo_path ? `https://image.tmdb.org/t/p/w200${pc.logo_path}` : null,
-              }
-            });
+            const comp = await safeUpsertCompany(prisma, pc);
             companiesToLink.push(comp.id);
           }
         }
@@ -417,11 +445,7 @@ export class SyncService {
         if (existingKeywords === 0) {
           const sortedKw = [...extra.keywords.keywords].sort((a: any, b: any) => a.id - b.id);
           for (const kw of sortedKw) {
-            const word = await prisma.keyword.upsert({
-              where: { tmdbId: kw.id },
-              create: { name: kw.name, tmdbId: kw.id },
-              update: { name: kw.name }
-            });
+            const word = await safeUpsertKeyword(prisma, kw);
             keywordsToLink.push(word.id);
           }
         }

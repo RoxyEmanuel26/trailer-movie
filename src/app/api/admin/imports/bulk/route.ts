@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     await requireAdmin('write:imports');
     
     const body = await req.json();
-    const { page: rawPage = 1, startDate, endDate } = body;
+    const { page: rawPage = 1, startDate, endDate, country } = body;
     const page = parseInt(String(rawPage), 10);
 
     if (!Number.isInteger(page) || page < 1 || page > 500) {
@@ -31,17 +31,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'startDate must be before or equal to endDate.' }, { status: 400 });
     }
 
+    // Prepare params
+    const params: Record<string, any> = {
+      'primary_release_date.gte': startDate,
+      'primary_release_date.lte': endDate,
+      'sort_by': 'primary_release_date.desc',
+      page: page,
+      language: 'en-US',
+    };
+
+    if (country) {
+      // Validasi keamanan: Pastikan hanya berisi 2 huruf kapital (ISO 3166-1 alpha-2)
+      if (typeof country !== 'string' || !/^[A-Z]{2}$/.test(country)) {
+        return NextResponse.json({ error: 'Invalid country format. Must be a 2-letter ISO code.' }, { status: 400 });
+      }
+      params['with_origin_country'] = country;
+    }
+
     // Fetch page from TMDB
     let response;
     try {
       response = await tmdbFetch<any>('/discover/movie', {
-        params: {
-          'primary_release_date.gte': startDate,
-          'primary_release_date.lte': endDate,
-          'sort_by': 'primary_release_date.desc',
-          page: page,
-          language: 'en-US',
-        },
+        params,
       });
     } catch (tmdbError: any) {
       if (tmdbError.name === 'TmdbRateLimitError' || tmdbError.message?.includes('Rate limit') || tmdbError.status === 429) {

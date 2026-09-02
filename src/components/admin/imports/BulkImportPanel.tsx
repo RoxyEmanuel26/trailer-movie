@@ -10,6 +10,7 @@ import { Play, Pause, AlertTriangle, RefreshCcw } from 'lucide-react';
 export function BulkImportPanel() {
   const [startDate, setStartDate] = React.useState('2022-01-01');
   const [endDate, setEndDate] = React.useState(() => new Date().toISOString().split('T')[0]);
+  const [country, setCountry] = React.useState(''); // Empty means 'All'
   const [status, setStatus] = React.useState<'IDLE' | 'RUNNING' | 'PAUSED' | 'RATE_LIMITED' | 'DONE'>('IDLE');
   
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -35,22 +36,32 @@ export function BulkImportPanel() {
         const parsed = JSON.parse(saved);
         setStartDate(parsed.startDate);
         setEndDate(parsed.endDate);
+        if (parsed.country !== undefined) setCountry(parsed.country);
         setCurrentPage(parsed.currentPage);
         setTotalPages(parsed.totalPages || 0);
         setStats(parsed.stats || { queued: 0, skipped: 0 });
-        setStatus(parsed.currentPage > 1 && parsed.currentPage < parsed.totalPages ? 'PAUSED' : 'IDLE');
+        
+        let restoredStatus: 'IDLE' | 'PAUSED' | 'DONE' = 'IDLE';
+        if (parsed.totalPages > 0 && parsed.currentPage >= parsed.totalPages) {
+          restoredStatus = 'DONE';
+        } else if (parsed.currentPage > 1) {
+          restoredStatus = 'PAUSED';
+        }
+        setStatus(restoredStatus);
       } catch (e) {}
     }
   }, []);
 
   // Save state on change
   React.useEffect(() => {
-    if (currentPage > 1 || status !== 'IDLE') {
+    if (status === 'DONE') {
+      localStorage.removeItem('trailerTube_bulk_state');
+    } else if (currentPage > 1 || status !== 'IDLE') {
       localStorage.setItem('trailerTube_bulk_state', JSON.stringify({
-        startDate, endDate, currentPage, totalPages, stats
+        startDate, endDate, country, currentPage, totalPages, stats
       }));
     }
-  }, [startDate, endDate, currentPage, totalPages, stats, status]);
+  }, [startDate, endDate, country, currentPage, totalPages, stats, status]);
 
   const processNextPage = async (pageToProcess: number) => {
     if (!isRunningRef.current) return;
@@ -59,7 +70,7 @@ export function BulkImportPanel() {
       const res = await fetch('/api/admin/imports/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page: pageToProcess, startDate, endDate }),
+        body: JSON.stringify({ page: pageToProcess, startDate, endDate, country: country || undefined }),
       });
 
       if (res.status === 429) {
@@ -84,7 +95,6 @@ export function BulkImportPanel() {
       if (pageToProcess >= data.totalPages) {
         setStatus('DONE');
         isRunningRef.current = false;
-        localStorage.removeItem('trailerTube_bulk_state');
         return;
       }
 
@@ -106,6 +116,8 @@ export function BulkImportPanel() {
   };
 
   const handleStart = () => {
+    if (isRunningRef.current) return; // Mencegah bug double-click (Race Condition)
+    
     setError('');
     setStatus('RUNNING');
     isRunningRef.current = true;
@@ -145,7 +157,7 @@ export function BulkImportPanel() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="space-y-2">
           <Label>Start Date (Release)</Label>
           <Input 
@@ -163,6 +175,26 @@ export function BulkImportPanel() {
             onChange={(e) => setEndDate(e.target.value)} 
             disabled={status === 'RUNNING' || (status === 'PAUSED' && currentPage > 1)}
           />
+        </div>
+        <div className="space-y-2">
+          <Label>Origin Country</Label>
+          <select 
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            disabled={status === 'RUNNING' || (status === 'PAUSED' && currentPage > 1)}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">All Countries (Global)</option>
+            <option value="US">United States (US)</option>
+            <option value="KR">South Korea (KR)</option>
+            <option value="JP">Japan (JP)</option>
+            <option value="CN">China (CN)</option>
+            <option value="ID">Indonesia (ID)</option>
+            <option value="GB">United Kingdom (GB)</option>
+            <option value="FR">France (FR)</option>
+            <option value="IN">India (IN)</option>
+            <option value="TH">Thailand (TH)</option>
+          </select>
         </div>
       </div>
 
