@@ -14,18 +14,11 @@ export async function GET() {
       where: {
         deletedAt: null,
         OR: [
-          // Basic fields missing
+          // Basic critical fields missing
           { posterUrl: null },
           { synopsis: null },
           { releaseDate: null },
-          // Financial fields
-          { budget: null },
-          { revenue: null },
-          // Certification
-          { ageRating: null },
-          // JSON fields (null means never populated)
-          { watchProviders: { equals: Prisma.DbNull } },
-          { reviews: { equals: Prisma.DbNull } },
+          
           // Relational fields - no linked records at all
           { keywords: { none: {} } },
           { companies: { none: {} } },
@@ -73,11 +66,6 @@ export async function GET() {
         !m.posterUrl && 'posterUrl',
         !m.synopsis && 'synopsis',
         !m.releaseDate && 'releaseDate',
-        m.budget === null && 'budget',
-        m.revenue === null && 'revenue',
-        !m.ageRating && 'ageRating',
-        m.watchProviders === null && 'watchProviders',
-        m.reviews === null && 'reviews',
         m._count.keywords === 0 && 'keywords',
         m._count.companies === 0 && 'companies',
         m._count.countries === 0 && 'countries',

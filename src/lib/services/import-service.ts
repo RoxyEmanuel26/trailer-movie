@@ -212,7 +212,7 @@ export class SyncService {
           // --- NEW DATA (Companies, Keywords, Collections) ---
           
           // Companies
-          if (tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
+          if (!lockedFields.includes('production_companies') && tmdbMovie.production_companies && tmdbMovie.production_companies.length > 0) {
             await tx.movieCompany.deleteMany({ where: { movieId: movie.id } });
             const companyIds: string[] = [];
             const sortedCompanies = [...tmdbMovie.production_companies].sort((a, b) => a.id - b.id);
@@ -242,7 +242,7 @@ export class SyncService {
 
           // Keywords
           const extra = tmdbMovie as any;
-          if (extra.keywords && extra.keywords.keywords) {
+          if (!lockedFields.includes('keywords') && extra.keywords && extra.keywords.keywords) {
             await tx.movieKeyword.deleteMany({ where: { movieId: movie.id } });
             const keywordIds: string[] = [];
             for (const kw of extra.keywords.keywords) {
@@ -262,7 +262,7 @@ export class SyncService {
           }
 
           // Countries
-          if (tmdbMovie.production_countries && tmdbMovie.production_countries.length > 0) {
+          if (!lockedFields.includes('countries') && tmdbMovie.production_countries && tmdbMovie.production_countries.length > 0) {
             await tx.movieCountry.deleteMany({ where: { movieId: movie.id } });
             const countryIds: string[] = [];
             const sortedCountries = [...tmdbMovie.production_countries].sort((a, b) => (a.iso_3166_1 || '').localeCompare(b.iso_3166_1 || ''));
@@ -284,7 +284,7 @@ export class SyncService {
           }
 
           // Languages
-          if (tmdbMovie.spoken_languages && tmdbMovie.spoken_languages.length > 0) {
+          if (!lockedFields.includes('languages') && tmdbMovie.spoken_languages && tmdbMovie.spoken_languages.length > 0) {
             await tx.movieLanguage.deleteMany({ where: { movieId: movie.id } });
             const langIds: string[] = [];
             const sortedLangs = [...tmdbMovie.spoken_languages].sort((a, b) => (a.iso_639_1 || '').localeCompare(b.iso_639_1 || ''));

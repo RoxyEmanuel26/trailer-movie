@@ -145,6 +145,21 @@ model Verification {
   @@map("verifications")
 }
 
+
+enum DataSource {
+  TMDB
+  AI_ENRICHED
+  MANUAL
+}
+
+enum AiEnrichmentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  NOT_FOUND
+}
+
 model Role {
   id          String           @id @default(cuid())
   name        String           @unique
@@ -210,6 +225,12 @@ model Movie {
   youtubeTrailerId String?
   lockedFields     Json?       @default("[]") // Array of strings protecting fields from sync
 
+  // AI Enrichment tracking
+  synopsisSource          DataSource          @default(TMDB)
+  aiEnrichmentStatus      AiEnrichmentStatus? @default(PENDING)
+  aiEnrichmentAttemptedAt DateTime?
+
+  // JSON objects (for arrays, ratings, watch providers)
   budget         BigInt?
   revenue        BigInt?
   ageRating      String?
@@ -361,9 +382,10 @@ model MovieTag {
 }
 
 model Country {
-  id      String @id @default(cuid())
-  isoCode String @unique
+  id      String     @id @default(cuid())
+  isoCode String     @unique
   name    String
+  source  DataSource @default(TMDB)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -385,9 +407,10 @@ model MovieCountry {
 }
 
 model Language {
-  id      String @id @default(cuid())
-  isoCode String @unique
+  id      String     @id @default(cuid())
+  isoCode String     @unique
   name    String
+  source  DataSource @default(TMDB)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -409,11 +432,12 @@ model MovieLanguage {
 }
 
 model ProductionCompany {
-  id      String  @id @default(cuid())
+  id      String     @id @default(cuid())
   name    String
-  slug    String  @unique
+  slug    String     @unique
   logoUrl String?
-  tmdbId  Int?    @unique
+  tmdbId  Int?       @unique
+  source  DataSource @default(TMDB)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -627,9 +651,10 @@ model DailyMetrics {
 }
 
 model Keyword {
-  id     String @id @default(cuid())
-  tmdbId Int    @unique
-  name   String
+  id     String     @id @default(cuid())
+  tmdbId Int?       @unique
+  name   String     @unique
+  source DataSource @default(TMDB)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
