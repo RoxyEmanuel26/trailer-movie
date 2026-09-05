@@ -44,9 +44,22 @@ async function downloadFullDatabase() {
   const stats: { table: string; count: number }[] = [];
   let totalRows = 0;
 
+  const now = new Date();
+  const daysIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const dayName = daysIndo[now.getDay()];
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+
+  const readableTime = `${dayName}, ${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`;
+  const timestampStr = `${dayName}_${dd}-${mm}-${yyyy}_pukul_${hh}.${min}.${ss}`;
+
   const sqlStatements: string[] = [
     `-- Neon PostgreSQL Database Full Backup`,
-    `-- Exported At: ${new Date().toISOString()}`,
+    `-- Hari & Waktu Backup: ${readableTime}`,
     `-- Total Tables: ${tables.length}`,
     `SET statement_timeout = 0;`,
     `SET lock_timeout = 0;`,
@@ -90,9 +103,8 @@ async function downloadFullDatabase() {
   const backupDir = path.join(process.cwd(), 'backup');
   await fs.mkdir(backupDir, { recursive: true });
 
-  const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
-  const jsonFileName = `full_database_backup_${dateStr}.json`;
-  const sqlFileName = `full_database_backup_${dateStr}.sql`;
+  const jsonFileName = `neondb_backup_${timestampStr}.json`;
+  const sqlFileName = `neondb_backup_${timestampStr}.sql`;
   
   const jsonFilePath = path.join(backupDir, jsonFileName);
   const sqlFilePath = path.join(backupDir, sqlFileName);

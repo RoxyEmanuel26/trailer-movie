@@ -79,8 +79,8 @@ export default async function SearchPage({ searchParams }: PageProps) {
           {movies.length > 0 ? (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-12">
-                {movies.map((movie) => (
-                  <MovieCard key={movie.id} movie={movie} />
+                {movies.map((movie, index) => (
+                  <MovieCard key={movie.id} movie={movie} priority={index < 4} />
                 ))}
               </div>
               

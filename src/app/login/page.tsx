@@ -17,11 +17,14 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (loading) return;
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await authClient.signIn.email({
-        email,
+        email: normalizedEmail,
         password,
       });
 
@@ -55,7 +58,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+        <form method="POST" action="#" className="mt-8 space-y-6" onSubmit={handleLogin}>
           <div className="space-y-4 rounded-md shadow-sm">
             <div>
               <Label htmlFor="email" className="sr-only">

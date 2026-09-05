@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint",
     "import:bulk": "npx tsx --env-file=.env scripts/bulk-discover.ts",
-    "enrich:backfill": "npx tsx scripts/backfill-enriched-data.ts"
+    "enrich:backfill": "npx tsx scripts/backfill-enriched-data.ts",
+    "db:backup": "npx tsx scripts/download-full-database.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
