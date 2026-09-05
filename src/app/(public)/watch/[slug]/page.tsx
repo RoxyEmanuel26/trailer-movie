@@ -47,9 +47,46 @@ export default async function MovieDetailPage({ params }: PageProps) {
   const genreIds = movie.genres.map((g) => g.genreId);
   const relatedMovies = await MovieService.getRelatedMovies(movie.id, genreIds);
 
-  const directors = movie.people.filter((p) => p.roleType === 'DIRECTOR');
-  const cast = movie.people.filter((p) => p.roleType === 'ACTOR');
-  const otherCrew = movie.people.filter((p) => ['WRITER', 'COMPOSER', 'CINEMATOGRAPHER', 'EDITOR'].includes(p.roleType));
+  // Deduplicate and group crew members by personId to prevent duplicate React keys
+  const directorMap = new Map<string, (typeof movie.people)[0]>();
+  for (const d of movie.people) {
+    if (d.roleType === 'DIRECTOR' && !directorMap.has(d.personId)) {
+      directorMap.set(d.personId, d);
+    }
+  }
+  const directors = Array.from(directorMap.values());
+
+  const castMap = new Map<string, (typeof movie.people)[0]>();
+  for (const c of movie.people) {
+    if (c.roleType === 'ACTOR' && !castMap.has(c.personId)) {
+      castMap.set(c.personId, c);
+    }
+  }
+  const cast = Array.from(castMap.values());
+
+  const crewMap = new Map<string, {
+    personId: string;
+    person: (typeof movie.people)[0]['person'];
+    roles: string[];
+  }>();
+  for (const p of movie.people) {
+    if (['WRITER', 'COMPOSER', 'CINEMATOGRAPHER', 'EDITOR'].includes(p.roleType)) {
+      const roleLabel = p.roleType.toLowerCase().replace('_', ' ');
+      const existing = crewMap.get(p.personId);
+      if (existing) {
+        if (!existing.roles.includes(roleLabel)) {
+          existing.roles.push(roleLabel);
+        }
+      } else {
+        crewMap.set(p.personId, {
+          personId: p.personId,
+          person: p.person,
+          roles: [roleLabel],
+        });
+      }
+    }
+  }
+  const otherCrew = Array.from(crewMap.values());
 
   const jsonLd = SeoService.generateStructuredData('Movie', {
     title: movie.title,
@@ -162,6 +199,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 providers={movie.watchProviders} 
                 links={movie.watchProviderLinks as any} 
                 movieSlug={movie.slug} 
+                movieTitle={movie.title}
               />
             )}
 
@@ -285,7 +323,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                       <div className="flex flex-col min-w-0">
                         <span className="text-sm font-bold truncate">{c.person.name}</span>
                         <span className="text-xs text-muted-foreground capitalize truncate">
-                          {c.roleType.toLowerCase().replace('_', ' ')}
+                          {c.roles.join(', ')}
                         </span>
                       </div>
                     </Link>

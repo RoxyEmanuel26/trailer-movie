@@ -68,10 +68,10 @@ export function MovieExtraInfo({
         <div className="bg-card p-6 rounded-xl border shadow-sm">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Studios</h3>
           <div className="flex flex-col gap-4">
-            {companies.map((mc: any) => {
+            {companies.map((mc: any, idx: number) => {
               const company = mc.company || mc;
               return (
-                <div key={company.id || company.name} className="flex items-center gap-3">
+                <div key={company.id ? `${company.id}-${idx}` : (company.name ? `${company.name}-${idx}` : idx)} className="flex items-center gap-3">
                   {company.logoUrl || company.logo_path ? (
                     <div className="relative w-10 h-10 bg-white rounded-md p-1 border">
                        <Image src={company.logoUrl || `https://image.tmdb.org/t/p/w92${company.logo_path}`} alt={company.name} fill className="object-contain p-1" />
@@ -93,10 +93,10 @@ export function MovieExtraInfo({
         <div className="bg-card p-6 rounded-xl border shadow-sm">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Keywords</h3>
           <div className="flex flex-wrap gap-2">
-            {keywords.map((mk: any) => {
+            {keywords.map((mk: any, idx: number) => {
               const k = mk.keyword || mk;
               return (
-                <Badge key={k.id || k.name} variant="secondary" className="font-normal text-xs">{k.name}</Badge>
+                <Badge key={k.id ? `${k.id}-${idx}` : (k.name ? `${k.name}-${idx}` : idx)} variant="secondary" className="font-normal text-xs">{k.name}</Badge>
               );
             })}
           </div>

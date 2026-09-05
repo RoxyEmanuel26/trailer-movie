@@ -37,13 +37,13 @@ export function MovieReviews({ reviews, movieSlug }: { reviews: any[], movieSlug
       {jsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />}
       <h2 className="text-xl font-semibold mb-4">User Reviews</h2>
       <div className="flex flex-col gap-4">
-        {reviews.slice(0, 5).map((review: any) => {
+        {reviews.slice(0, 5).map((review: any, idx: number) => {
           const rating = typeof review.rating === 'number' ? review.rating : review.author_details?.rating;
           const avatar = review.authorAvatar || (review.author_details?.avatar_path ? (review.author_details.avatar_path.startsWith('http') ? review.author_details.avatar_path : `https://image.tmdb.org/t/p/w200${review.author_details.avatar_path}`) : null);
           const date = review.createdAt || review.created_at;
 
           return (
-            <div key={review.id || review.tmdbId} className="p-4 rounded-xl border bg-card">
+            <div key={review.id ? `${review.id}-${idx}` : (review.tmdbId ? `${review.tmdbId}-${idx}` : idx)} className="p-4 rounded-xl border bg-card">
               <div className="flex items-center gap-3 mb-3">
                 <div className="relative w-10 h-10 rounded-full bg-muted overflow-hidden flex items-center justify-center shrink-0 border">
                   {avatar ? (

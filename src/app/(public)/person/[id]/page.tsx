@@ -38,7 +38,32 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
 
   // Top movies stored in JSON field during import (fallback/extended)
   const topMovies = Array.isArray(person.topMovies) ? person.topMovies : [];
-  const catalogMovies = person.movies || [];
+  const rawCatalogMovies = person.movies || [];
+
+  // Group by movie ID so a person with multiple roles in a single movie doesn't create duplicate cards or React keys
+  const catalogMovieMap = new Map<string, {
+    movie: (typeof rawCatalogMovies)[0]['movie'];
+    roles: string[];
+  }>();
+
+  for (const m of rawCatalogMovies) {
+    const existing = catalogMovieMap.get(m.movie.id);
+    const roleLabel = m.roleType === 'ACTOR' && m.characterName
+      ? m.characterName
+      : m.roleType.toLowerCase().replace('_', ' ');
+
+    if (existing) {
+      if (!existing.roles.includes(roleLabel)) {
+        existing.roles.push(roleLabel);
+      }
+    } else {
+      catalogMovieMap.set(m.movie.id, {
+        movie: m.movie,
+        roles: [roleLabel],
+      });
+    }
+  }
+  const catalogMovies = Array.from(catalogMovieMap.values());
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -150,7 +175,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {catalogMovies.map(({ movie, roleType, characterName }) => {
+                {catalogMovies.map(({ movie, roles }) => {
                   const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
                   return (
                     <Link 
@@ -186,10 +211,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                           {movie.title}
                         </h3>
                         <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                          <span className="line-clamp-1">
-                            {roleType === 'ACTOR' && characterName 
-                              ? characterName 
-                              : roleType.toLowerCase().replace('_', ' ')}
+                          <span className="line-clamp-1 capitalize">
+                            {roles.join(', ')}
                           </span>
                           {year && <span>{year}</span>}
                         </div>
@@ -206,8 +229,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             <div className="mt-8">
               <h2 className="text-xl font-semibold mb-6">Known For (Movies)</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                {topMovies.map((m: any) => (
-                  <div key={m.id} className="group relative flex flex-col gap-2 overflow-hidden">
+                {topMovies.map((m: any, idx: number) => (
+                  <div key={m.id ? `${m.id}-${idx}` : idx} className="group relative flex flex-col gap-2 overflow-hidden">
                     <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted">
                       <Image src={`https://image.tmdb.org/t/p/w500${m.poster_path}`} alt={m.title} fill className="object-cover transition-transform duration-300 group-hover:scale-105" />
                     </div>
