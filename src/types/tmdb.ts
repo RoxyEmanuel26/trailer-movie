@@ -12,6 +12,14 @@ export interface TmdbMovie {
   production_countries: TmdbCountry[];
   spoken_languages: TmdbLanguage[];
   production_companies: TmdbProductionCompany[];
+  vote_average?: number;
+  vote_count?: number;
+  popularity?: number;
+  tagline?: string;
+  original_language?: string;
+  imdb_id?: string;
+  homepage?: string;
+  adult?: boolean;
 }
 
 export interface TmdbGenre {
@@ -68,6 +76,8 @@ export interface TmdbPerson {
   birthday?: string | null;
   deathday?: string | null;
   place_of_birth?: string | null;
+  imdb_id?: string | null;
+  popularity?: number;
 }
 
 export interface TmdbVideos {

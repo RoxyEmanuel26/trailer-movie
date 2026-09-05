@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { toast } from "sonner"
-import { Eye, Trash, Loader2 } from "lucide-react"
+import { Eye, Trash, Loader2, RotateCcw } from "lucide-react"
 
 import {
   Table,
@@ -34,10 +34,52 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
   const [jobs, setJobs] = React.useState(initialJobs)
   const [selectedJob, setSelectedJob] = React.useState<any | null>(null)
   const [deletingJobId, setDeletingJobId] = React.useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = React.useState(false)
   
   // Auto Processing State
   const [isAutoProcessing, setIsAutoProcessing] = React.useState(true)
   const [isCurrentlyFetching, setIsCurrentlyFetching] = React.useState(false)
+  const [retryingJobIds, setRetryingJobIds] = React.useState<Set<string>>(new Set())
+  const [isRetryingAll, setIsRetryingAll] = React.useState(false)
+
+  const failedJobsCount = React.useMemo(() => {
+    return jobs.filter((j: any) => j.status === 'FAILED').length
+  }, [jobs])
+
+  const handleRetrySingle = async (id: string) => {
+    setRetryingJobIds(prev => new Set(prev).add(id))
+    try {
+      const res = await fetch(`/api/admin/imports/${id}/retry`, { method: 'POST' })
+      if (!res.ok) throw new Error('Failed to retry')
+      toast.success("Job queued for retry")
+      setJobs(prev => prev.map(j => j.id === id ? { ...j, status: 'PENDING' } : j))
+      await fetchLatestJobs()
+    } catch (e) {
+      toast.error("Failed to retry job")
+    } finally {
+      setRetryingJobIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
+  }
+
+  const handleRetryAll = async () => {
+    setIsRetryingAll(true)
+    try {
+      const res = await fetch('/api/admin/imports/retry-all', { method: 'POST' })
+      if (!res.ok) throw new Error('Failed to retry all')
+      const data = await res.json()
+      toast.success(data?.data?.message || "All failed jobs queued for retry")
+      setJobs(prev => prev.map(j => j.status === 'FAILED' ? { ...j, status: 'PENDING' } : j))
+      await fetchLatestJobs()
+    } catch (e) {
+      toast.error("Failed to retry all failed jobs")
+    } finally {
+      setIsRetryingAll(false)
+    }
+  }
 
   // Use a ref to strictly avoid overlapping loops across re-renders
   const autoProcessorRef = React.useRef({ isRunning: false, isCancelled: false })
@@ -114,18 +156,21 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
   }, [isAutoProcessing]);
 
   const handleDelete = async () => {
-    if (!deletingJobId) return
+    if (!deletingJobId || isDeleting) return
+    setIsDeleting(true)
+    const targetId = deletingJobId
     try {
-      const res = await fetch(`/api/admin/imports/${deletingJobId}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error()
+      const res = await fetch(`/api/admin/imports/${targetId}`, { method: 'DELETE' })
+      if (!res.ok && res.status !== 404) throw new Error()
       
       toast.success("Job removed successfully")
       // Use functional update to avoid stale closure — jobs may have been refreshed
       // by the background polling loop while the confirmation dialog was open.
-      setJobs(prev => prev.filter(j => j.id !== deletingJobId))
+      setJobs(prev => prev.filter(j => j.id !== targetId))
     } catch (error) {
       toast.error("Failed to remove job")
     } finally {
+      setIsDeleting(false)
       setDeletingJobId(null)
     }
   }
@@ -151,9 +196,27 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
       cell: ({ row }) => {
         const job = row.original
         const canDelete = job.status !== "IN_PROGRESS"
+        const isFailed = job.status === "FAILED"
+        const isRetrying = retryingJobIds.has(job.id)
 
         return (
           <div className="flex items-center justify-end gap-2">
+            {isFailed && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                onClick={() => handleRetrySingle(job.id)}
+                disabled={isRetrying}
+              >
+                {isRetrying ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                )}
+                Retry
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => setSelectedJob(job)}>
               <Eye className="h-4 w-4 mr-2" />
               Details
@@ -205,9 +268,26 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
             )}
           </Label>
         </div>
-        <Button onClick={handleProcessQueue} variant="outline" disabled={isAutoProcessing}>
-          Process Next Batch (Manual)
-        </Button>
+        <div className="flex items-center gap-2">
+          {failedJobsCount > 0 && (
+            <Button 
+              onClick={handleRetryAll} 
+              variant="outline" 
+              className="text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+              disabled={isRetryingAll}
+            >
+              {isRetryingAll ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4 mr-2" />
+              )}
+              Retry Failed ({failedJobsCount})
+            </Button>
+          )}
+          <Button onClick={handleProcessQueue} variant="outline" disabled={isAutoProcessing}>
+            Process Next Batch (Manual)
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border">
@@ -254,14 +334,20 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
         job={selectedJob}
         open={!!selectedJob}
         onOpenChange={(open) => !open && setSelectedJob(null)}
+        onRetry={handleRetrySingle}
       />
 
       <ConfirmationDialog
         open={!!deletingJobId}
-        onOpenChange={(open) => !open && setDeletingJobId(null)}
+        onOpenChange={(open) => {
+          if (!isDeleting) {
+            setDeletingJobId(null)
+          }
+        }}
         title="Remove Job"
         description="Are you sure you want to remove this job record? This action cannot be undone."
         onConfirm={handleDelete}
+        isLoading={isDeleting}
         isDestructive
       />
     </div>

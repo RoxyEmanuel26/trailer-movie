@@ -63,10 +63,47 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
 
   assignIfNotLocked('status', mapTmdbStatus(tmdbMovie.status));
 
+  // New enriched TMDB fields (Additive)
+  if (typeof tmdbMovie.vote_average === 'number') {
+    assignIfNotLocked('voteAverage', tmdbMovie.vote_average);
+  }
+  if (typeof tmdbMovie.vote_count === 'number') {
+    assignIfNotLocked('voteCount', tmdbMovie.vote_count);
+  }
+  if (typeof tmdbMovie.popularity === 'number') {
+    assignIfNotLocked('popularity', tmdbMovie.popularity);
+  }
+  if (tmdbMovie.tagline) {
+    assignIfNotLocked('tagline', tmdbMovie.tagline);
+  }
+  if (tmdbMovie.original_language) {
+    assignIfNotLocked('originalLanguage', tmdbMovie.original_language);
+  }
+  if (tmdbMovie.imdb_id) {
+    assignIfNotLocked('imdbId', tmdbMovie.imdb_id);
+  }
+  if (tmdbMovie.homepage) {
+    assignIfNotLocked('homepage', tmdbMovie.homepage);
+  }
+  if (tmdbMovie.status) {
+    assignIfNotLocked('productionStatus', tmdbMovie.status);
+  }
+  if (typeof tmdbMovie.adult === 'boolean') {
+    assignIfNotLocked('adult', tmdbMovie.adult);
+  }
+
   // Extra fields
   const extra = tmdbMovie as any;
   if (extra.budget) assignIfNotLocked('budget', extra.budget);
   if (extra.revenue) assignIfNotLocked('revenue', extra.revenue);
+
+  // Logo URL from images if present
+  if (extra.images && extra.images.logos && Array.isArray(extra.images.logos) && extra.images.logos.length > 0) {
+    const enLogo = extra.images.logos.find((l: any) => l.iso_639_1 === 'en') || extra.images.logos[0];
+    if (enLogo && enLogo.file_path) {
+      assignIfNotLocked('logoUrl', `https://image.tmdb.org/t/p/original${enLogo.file_path}`);
+    }
+  }
   
   if (extra.release_dates && extra.release_dates.results) {
     const usRelease = extra.release_dates.results.find((r: any) => r.iso_3166_1 === "US");

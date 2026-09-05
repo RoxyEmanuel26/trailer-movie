@@ -13,6 +13,7 @@ interface MovieCardProps {
     runtimeMinutes?: number | null;
     mpaaRating?: string | null;
     rating?: number | null;
+    voteAverage?: number | null;
   };
   className?: string;
   priority?: boolean;
@@ -20,6 +21,9 @@ interface MovieCardProps {
 
 export function MovieCard({ movie, className = '', priority = false }: MovieCardProps) {
   const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
+  const displayRating = movie.voteAverage 
+    ? movie.voteAverage.toFixed(1) 
+    : (movie.rating ? (movie.rating / 10).toFixed(1) : null);
 
   return (
     <Link href={`/watch/${movie.slug}`} className={`group relative flex flex-col gap-2 overflow-hidden ${className}`}>
@@ -47,10 +51,10 @@ export function MovieCard({ movie, className = '', priority = false }: MovieCard
         </div>
 
         {/* Rating Badge */}
-        {movie.rating ? (
+        {displayRating ? (
           <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-xs font-semibold text-white backdrop-blur-md">
             <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
-            {(movie.rating / 10).toFixed(1)}
+            {displayRating}
           </div>
         ) : null}
       </div>

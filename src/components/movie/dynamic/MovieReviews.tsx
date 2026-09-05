@@ -1,4 +1,5 @@
 import * as React from "react"
+import Image from "next/image"
 import { Star, User } from "lucide-react"
 
 export function MovieReviews({ reviews, movieSlug }: { reviews: any[], movieSlug?: string }) {
@@ -21,11 +22,11 @@ export function MovieReviews({ reviews, movieSlug }: { reviews: any[], movieSlug
     "review": reviews.map((r: any) => ({
       "@type": "Review",
       "author": { "@type": "Person", "name": r.author },
-      "datePublished": r.created_at,
+      "datePublished": r.createdAt || r.created_at,
       "reviewBody": r.content,
-      "reviewRating": r.author_details?.rating ? {
+      "reviewRating": (r.rating || r.author_details?.rating) ? {
         "@type": "Rating",
-        "ratingValue": r.author_details.rating,
+        "ratingValue": r.rating || r.author_details?.rating,
         "bestRating": "10"
       } : undefined
     }))
@@ -36,28 +37,38 @@ export function MovieReviews({ reviews, movieSlug }: { reviews: any[], movieSlug
       {jsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />}
       <h2 className="text-xl font-semibold mb-4">User Reviews</h2>
       <div className="flex flex-col gap-4">
-        {reviews.slice(0, 3).map((review: any) => (
-          <div key={review.id} className="p-4 rounded-xl border bg-card">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                <User className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="font-medium text-sm">{review.author}</p>
-                <div className="flex items-center text-xs text-muted-foreground gap-2">
-                  {review.author_details?.rating && (
-                    <span className="flex items-center text-yellow-500 font-medium">
-                      <Star className="w-3 h-3 mr-1 fill-yellow-500" />
-                      {review.author_details.rating.toFixed(1)}
-                    </span>
+        {reviews.slice(0, 5).map((review: any) => {
+          const rating = typeof review.rating === 'number' ? review.rating : review.author_details?.rating;
+          const avatar = review.authorAvatar || (review.author_details?.avatar_path ? (review.author_details.avatar_path.startsWith('http') ? review.author_details.avatar_path : `https://image.tmdb.org/t/p/w200${review.author_details.avatar_path}`) : null);
+          const date = review.createdAt || review.created_at;
+
+          return (
+            <div key={review.id || review.tmdbId} className="p-4 rounded-xl border bg-card">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="relative w-10 h-10 rounded-full bg-muted overflow-hidden flex items-center justify-center shrink-0 border">
+                  {avatar ? (
+                    <Image src={avatar} alt={review.author} fill className="object-cover" />
+                  ) : (
+                    <User className="w-5 h-5 text-muted-foreground" />
                   )}
-                  <span>{new Date(review.created_at).toLocaleDateString()}</span>
+                </div>
+                <div>
+                  <p className="font-medium text-sm">{review.author}</p>
+                  <div className="flex items-center text-xs text-muted-foreground gap-2">
+                    {rating && (
+                      <span className="flex items-center text-yellow-500 font-medium">
+                        <Star className="w-3 h-3 mr-1 fill-yellow-500" />
+                        {rating.toFixed(1)}
+                      </span>
+                    )}
+                    {date && <span>{new Date(date).toLocaleDateString()}</span>}
+                  </div>
                 </div>
               </div>
+              <p className="text-sm text-muted-foreground line-clamp-4">{review.content}</p>
             </div>
-            <p className="text-sm text-muted-foreground line-clamp-4">{review.content}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   )

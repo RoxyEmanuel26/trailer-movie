@@ -118,8 +118,35 @@ export async function getMovieExtra(id: number): Promise<any> {
 }
 
 /**
+ * Fetches movie images (posters, backdrops, logos)
+ */
+export async function getMovieImages(id: number): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}/images`);
+}
+
+/**
+ * Fetches movie alternative titles
+ */
+export async function getMovieAlternativeTitles(id: number): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}/alternative_titles`);
+}
+
+/**
+ * Fetches movie with all enriched metadata in a single HTTP request (credits, videos, images, recommendations, alternative_titles, watch/providers, reviews, release_dates, keywords)
+ */
+export async function getMovieEnriched(id: number): Promise<any> {
+  return tmdbFetch<any>(`/movie/${id}`, {
+    params: {
+      language: 'en-US',
+      append_to_response: 'credits,videos,images,recommendations,alternative_titles,release_dates,watch/providers,reviews,keywords',
+    },
+  });
+}
+
+/**
  * Fetches combined credits for a person
  */
 export async function getPersonCombinedCredits(id: number): Promise<any> {
   return tmdbFetch<any>(`/person/${id}/combined_credits`, { params: { language: 'en-US' } });
 }
+

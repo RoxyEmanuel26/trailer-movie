@@ -2,6 +2,7 @@ import { MovieRepository } from '../repositories/MovieRepository';
 import { NotFoundError, ValidationError } from '../errors';
 import { cache } from 'react';
 import { requireAdmin } from '../auth/utils';
+import { prisma } from '../prisma';
 
 export class MovieService {
   static getMovie = cache(async (id: string) => {
@@ -21,6 +22,70 @@ export class MovieService {
   });
 
   static async getRelatedMovies(movieId: string, genreIds: string[]) {
+    // 1. Primary: Curated TMDB recommendations from local DB
+    try {
+      const recs = await prisma.movieRecommendation.findMany({
+        where: {
+          sourceMovieId: movieId,
+          targetMovie: { status: 'PUBLISHED', deletedAt: null },
+        },
+        orderBy: { sortOrder: 'asc' },
+        take: 5,
+        include: {
+          targetMovie: {
+            include: {
+              genres: { include: { genre: true } },
+            },
+          },
+        },
+      });
+
+      const recommendedMovies = recs.map((r) => r.targetMovie);
+      if (recommendedMovies.length >= 5) {
+        return recommendedMovies;
+      }
+
+      // If we have fewer than 5 curated recommendations, supplement with genre matches
+      const excludeIds = new Set([movieId, ...recommendedMovies.map((m) => m.id)]);
+      const needed = 5 - recommendedMovies.length;
+
+      if (genreIds && genreIds.length > 0) {
+        const { data } = await MovieRepository.search({
+          status: 'PUBLISHED',
+          take: needed + 3,
+          excludeId: movieId,
+          genreIds,
+        });
+        for (const m of data) {
+          if (!excludeIds.has(m.id)) {
+            recommendedMovies.push(m);
+            excludeIds.add(m.id);
+            if (recommendedMovies.length >= 5) break;
+          }
+        }
+      }
+
+      if (recommendedMovies.length < 5) {
+        const { data } = await MovieRepository.list({
+          status: 'PUBLISHED',
+          take: 5 - recommendedMovies.length + 3,
+          excludeId: movieId,
+        });
+        for (const m of data) {
+          if (!excludeIds.has(m.id)) {
+            recommendedMovies.push(m);
+            excludeIds.add(m.id);
+            if (recommendedMovies.length >= 5) break;
+          }
+        }
+      }
+
+      return recommendedMovies;
+    } catch (e) {
+      // Fallback silently if table query encounters any issue
+    }
+
+    // 2. Secondary: Same-genre matches
     if (genreIds && genreIds.length > 0) {
       const { data } = await MovieRepository.search({
         status: 'PUBLISHED',
@@ -30,7 +95,8 @@ export class MovieService {
       });
       if (data.length > 0) return data;
     }
-    // Fallback: return recently added movies if no genre match
+
+    // 3. Fallback: Recently added movies
     const { data } = await MovieRepository.list({
       status: 'PUBLISHED',
       take: 5,

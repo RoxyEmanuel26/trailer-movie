@@ -83,7 +83,12 @@ export class SeoRepository {
 
   static async getSitemapData(db: DbClient = prisma) {
     const [movies, genres, collections] = await Promise.all([
-      db.movie.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true }, take: 1000 }),
+      db.movie.findMany({ 
+        where: { status: 'PUBLISHED', deletedAt: null }, 
+        select: { slug: true, updatedAt: true }, 
+        orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+        take: 1000 
+      }),
       db.genre.findMany({ select: { slug: true, updatedAt: true }, take: 100 }),
       db.collection.findMany({ where: { isActive: true }, select: { slug: true }, take: 100 }),
     ]);

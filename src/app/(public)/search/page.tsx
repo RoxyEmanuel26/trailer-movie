@@ -30,6 +30,8 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const skip = (page - 1) * itemsPerPage;
 
   let orderBy: any = { createdAt: 'desc' };
+  if (sort === 'popularity_desc') orderBy = { popularity: 'desc' };
+  if (sort === 'voteAverage_desc') orderBy = [{ voteAverage: 'desc' }, { voteCount: 'desc' }];
   if (sort === 'releaseDate_desc') orderBy = { releaseDate: 'desc' };
   if (sort === 'releaseDate_asc') orderBy = { releaseDate: 'asc' };
   if (sort === 'title_asc') orderBy = { title: 'asc' };
@@ -62,6 +64,8 @@ export default async function SearchPage({ searchParams }: PageProps) {
           <div>
             <h3 className="font-semibold mb-3 text-sm uppercase tracking-wider">Sort By</h3>
             <div className="flex flex-col space-y-2 text-sm">
+              <a href={`?${new URLSearchParams({ ...resolvedParams as Record<string, string>, sort: 'popularity_desc' })}`} className={sort === 'popularity_desc' ? 'font-bold text-primary' : 'hover:underline'}>Most Popular</a>
+              <a href={`?${new URLSearchParams({ ...resolvedParams as Record<string, string>, sort: 'voteAverage_desc' })}`} className={sort === 'voteAverage_desc' ? 'font-bold text-primary' : 'hover:underline'}>Top Rated</a>
               <a href={`?${new URLSearchParams({ ...resolvedParams as Record<string, string>, sort: 'createdAt_desc' })}`} className={sort === 'createdAt_desc' ? 'font-bold text-primary' : 'hover:underline'}>Recently Added</a>
               <a href={`?${new URLSearchParams({ ...resolvedParams as Record<string, string>, sort: 'releaseDate_desc' })}`} className={sort === 'releaseDate_desc' ? 'font-bold text-primary' : 'hover:underline'}>Newest Release</a>
               <a href={`?${new URLSearchParams({ ...resolvedParams as Record<string, string>, sort: 'releaseDate_asc' })}`} className={sort === 'releaseDate_asc' ? 'font-bold text-primary' : 'hover:underline'}>Oldest Release</a>

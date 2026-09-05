@@ -1,19 +1,44 @@
 import * as React from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
+import { Star, Film } from "lucide-react"
 
 export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
   const person = await prisma.person.findUnique({
-    where: { id }
+    where: { id },
+    include: {
+      movies: {
+        where: {
+          movie: {
+            deletedAt: null,
+            status: 'PUBLISHED',
+          },
+        },
+        include: {
+          movie: {
+            include: {
+              genres: { include: { genre: true } },
+            },
+          },
+        },
+        orderBy: {
+          movie: {
+            releaseDate: 'desc',
+          },
+        },
+      },
+    },
   });
 
   if (!person) return notFound();
 
-  // Top movies stored in JSON field during import
-  const movies = Array.isArray(person.topMovies) ? person.topMovies : [];
+  // Top movies stored in JSON field during import (fallback/extended)
+  const topMovies = Array.isArray(person.topMovies) ? person.topMovies : [];
+  const catalogMovies = person.movies || [];
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -26,7 +51,9 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     "deathDate": person.deathday ? person.deathday.toISOString().split('T')[0] : undefined,
     "birthPlace": person.placeOfBirth,
     "jobTitle": person.knownForDepartment,
-    "knowsAbout": movies.map((m: any) => m.title),
+    "knowsAbout": catalogMovies.length > 0 
+      ? catalogMovies.map((m) => m.movie.title) 
+      : topMovies.map((m: any) => m.title),
   };
 
   return (
@@ -73,6 +100,27 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                   <dd className="font-semibold">{person.placeOfBirth}</dd>
                 </div>
               )}
+              {person.popularity && (
+                <div className="flex flex-col">
+                  <dt className="text-muted-foreground font-medium">Popularity Score</dt>
+                  <dd className="font-semibold">{person.popularity.toFixed(1)}</dd>
+                </div>
+              )}
+              {person.imdbId && (
+                <div className="flex flex-col">
+                  <dt className="text-muted-foreground font-medium">IMDb</dt>
+                  <dd className="font-semibold">
+                    <a
+                      href={`https://www.imdb.com/name/${person.imdbId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline text-xs"
+                    >
+                      View IMDb Profile &rarr;
+                    </a>
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
         </div>
@@ -90,11 +138,75 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             </div>
           )}
 
-          {movies.length > 0 && (
+          {/* Movies in Catalog (Clickable to our site's watch page) */}
+          {catalogMovies.length > 0 && (
+            <div className="mt-8">
+              <div className="flex items-center gap-2 mb-6">
+                <Film className="w-5 h-5 text-primary" />
+                <h2 className="text-xl font-semibold tracking-tight">Movies in Catalog</h2>
+                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
+                  {catalogMovies.length}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {catalogMovies.map(({ movie, roleType, characterName }) => {
+                  const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
+                  return (
+                    <Link 
+                      key={movie.id} 
+                      href={`/watch/${movie.slug}`} 
+                      className="group relative flex flex-col gap-2 overflow-hidden rounded-xl border bg-card p-2 hover:shadow-md transition-all duration-300 hover:scale-[1.02]"
+                    >
+                      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted">
+                        {movie.posterUrl ? (
+                          <Image 
+                            src={movie.posterUrl} 
+                            alt={movie.title} 
+                            fill 
+                            className="object-cover transition-transform duration-300 group-hover:scale-105" 
+                            sizes="(max-width: 640px) 50vw, 25vw"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-muted-foreground">
+                            <Film className="w-8 h-8 opacity-40" />
+                          </div>
+                        )}
+
+                        {movie.voteAverage ? (
+                          <div className="absolute top-2 right-2 flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-semibold text-yellow-400 backdrop-blur-sm">
+                            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                            <span>{movie.voteAverage.toFixed(1)}</span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="flex flex-col min-w-0">
+                        <h3 className="line-clamp-1 font-semibold text-sm leading-tight group-hover:text-primary transition-colors">
+                          {movie.title}
+                        </h3>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                          <span className="line-clamp-1">
+                            {roleType === 'ACTOR' && characterName 
+                              ? characterName 
+                              : roleType.toLowerCase().replace('_', ' ')}
+                          </span>
+                          {year && <span>{year}</span>}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* External Notable Works (if catalog movies is empty or for extra context) */}
+          {catalogMovies.length === 0 && topMovies.length > 0 && (
             <div className="mt-8">
               <h2 className="text-xl font-semibold mb-6">Known For (Movies)</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                {movies.map((m: any) => (
+                {topMovies.map((m: any) => (
                   <div key={m.id} className="group relative flex flex-col gap-2 overflow-hidden">
                     <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted">
                       <Image src={`https://image.tmdb.org/t/p/w500${m.poster_path}`} alt={m.title} fill className="object-cover transition-transform duration-300 group-hover:scale-105" />

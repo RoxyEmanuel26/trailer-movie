@@ -4,8 +4,12 @@ import { DbClient } from './base.types';
 export class TransactionManager {
   static async run<T>(
     fn: (tx: DbClient) => Promise<T>,
-    options?: { timeout?: number }
+    options?: { timeout?: number, maxWait?: number }
   ): Promise<T> {
-    return prisma.$transaction(fn, options);
+    const finalOptions = {
+      maxWait: options?.maxWait || 15000,
+      timeout: options?.timeout || 120000,
+    };
+    return prisma.$transaction(fn, finalOptions);
   }
 }

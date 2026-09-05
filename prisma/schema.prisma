@@ -31,6 +31,8 @@ enum TrailerType {
   TRAILER
   FEATURETTE
   CLIP
+  BEHIND_THE_SCENES
+  BLOOPERS
 }
 
 enum TrailerStatus {
@@ -43,6 +45,23 @@ enum PersonRoleType {
   ACTOR
   WRITER
   PRODUCER
+  COMPOSER
+  CINEMATOGRAPHER
+  EDITOR
+}
+
+enum ImageType {
+  BACKDROP
+  POSTER
+  LOGO
+}
+
+enum ProviderAccessType {
+  FLATRATE
+  RENT
+  BUY
+  FREE
+  ADS
 }
 
 enum HomepageSectionType {
@@ -230,6 +249,18 @@ model Movie {
   aiEnrichmentStatus      AiEnrichmentStatus? @default(PENDING)
   aiEnrichmentAttemptedAt DateTime?
 
+  // Additional TMDB fields (Additive, Non-breaking)
+  voteAverage      Float?
+  voteCount        Int?
+  popularity       Float?
+  tagline          String?             @db.Text
+  logoUrl          String?
+  originalLanguage String?
+  imdbId           String?
+  homepage         String?
+  productionStatus String?
+  adult            Boolean             @default(false)
+
   // JSON objects (for arrays, ratings, watch providers)
   budget         BigInt?
   revenue        BigInt?
@@ -241,22 +272,30 @@ model Movie {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime? // Soft delete
 
-  trailers    Trailer[]
-  people      MoviePerson[]
-  genres      MovieGenre[]
-  keywords    MovieKeyword[]
-  tags        MovieTag[]
-  countries   MovieCountry[]
-  languages   MovieLanguage[]
-  companies   MovieCompany[]
-  collections CollectionMovie[]
-  favorites   UserFavorite[]
-  featuredIn  FeaturedItem[]
+  trailers            Trailer[]
+  people              MoviePerson[]
+  genres              MovieGenre[]
+  keywords            MovieKeyword[]
+  tags                MovieTag[]
+  countries           MovieCountry[]
+  languages           MovieLanguage[]
+  companies           MovieCompany[]
+  collections         CollectionMovie[]
+  favorites           UserFavorite[]
+  featuredIn          FeaturedItem[]
+  recommendationsFrom MovieRecommendation[]    @relation("MovieRecommendationsSource")
+  recommendationsTo   MovieRecommendation[]    @relation("MovieRecommendationsTarget")
+  images              MovieImage[]
+  alternativeTitles   MovieAlternativeTitle[]
+  watchProviderLinks  MovieWatchProviderLink[]
+  movieReviews        MovieReview[]
 
   @@index([releaseDate])
   @@index([status])
   @@index([status, releaseDate])
   @@index([deletedAt])
+  @@index([popularity])
+  @@index([voteAverage])
   @@map("movies")
 }
 
@@ -300,12 +339,15 @@ model Person {
   gender             Int?
   knownForDepartment String?
   topMovies          Json?
+  imdbId             String?
+  popularity         Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   movies MoviePerson[]
 
+  @@index([popularity])
   @@map("people")
 }
 
@@ -675,3 +717,112 @@ model MovieKeyword {
   @@index([keywordId])
   @@map("movie_keywords")
 }
+
+// -----------------------------------------------------------------------------
+// TMDB Extended Catalog Entities (Additive, Non-breaking)
+// -----------------------------------------------------------------------------
+
+model MovieRecommendation {
+  id            String   @id @default(cuid())
+  sourceMovieId String
+  targetMovieId String
+  score         Float?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  sourceMovie Movie @relation("MovieRecommendationsSource", fields: [sourceMovieId], references: [id], onDelete: Cascade)
+  targetMovie Movie @relation("MovieRecommendationsTarget", fields: [targetMovieId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceMovieId, targetMovieId])
+  @@index([sourceMovieId])
+  @@index([targetMovieId])
+  @@map("movie_recommendations")
+}
+
+model MovieImage {
+  id          String    @id @default(cuid())
+  movieId     String
+  imageUrl    String
+  imageType   ImageType @default(POSTER)
+  aspectRatio Float?
+  width       Int?
+  height      Int?
+  isoCode     String?
+  voteAverage Float?
+  voteCount   Int?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId, imageType])
+  @@map("movie_images")
+}
+
+model MovieAlternativeTitle {
+  id          String   @id @default(cuid())
+  movieId     String
+  title       String
+  countryCode String?
+  type        String?
+  createdAt   DateTime @default(now())
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+  @@index([title])
+  @@map("movie_alternative_titles")
+}
+
+model WatchProvider {
+  id              String   @id @default(cuid())
+  tmdbId          Int      @unique
+  name            String
+  logoUrl         String?
+  displayPriority Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  movieLinks MovieWatchProviderLink[]
+
+  @@map("watch_providers")
+}
+
+model MovieWatchProviderLink {
+  id          String             @id @default(cuid())
+  movieId     String
+  providerId  String
+  countryCode String             @default("US")
+  accessType  ProviderAccessType @default(FLATRATE)
+  linkUrl     String?
+  createdAt   DateTime           @default(now())
+
+  movie    Movie         @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  provider WatchProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([movieId, providerId, countryCode, accessType])
+  @@index([movieId])
+  @@index([providerId])
+  @@map("movie_watch_provider_links")
+}
+
+model MovieReview {
+  id             String     @id @default(cuid())
+  movieId        String
+  tmdbId         String?    @unique
+  author         String
+  authorUsername String?
+  authorAvatar   String?
+  content        String     @db.Text
+  rating         Float?
+  url            String?
+  source         DataSource @default(TMDB)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+  @@map("movie_reviews")
+}
+

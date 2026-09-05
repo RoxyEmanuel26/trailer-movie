@@ -160,12 +160,12 @@ export class HomepageRepository {
       case 'AUTO_TRENDING':
         const trending = await db.movie.findMany({
           where: { status: 'PUBLISHED', deletedAt: null },
-          orderBy: { createdAt: 'desc' }, // placeholder for trending
+          orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
           take: 6,
           include: { genres: { include: { genre: true } } }
         });
         movies = trending;
-        viewAllLink = '/search?status=PUBLISHED';
+        viewAllLink = '/search?status=PUBLISHED&sort=popularity_desc';
         break;
 
       case 'MANUAL_COLLECTION':

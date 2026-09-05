@@ -54,7 +54,7 @@ export class ImportManagerService {
     await requireAdmin('write:imports');
     const job = await ImportRepository.findById(id);
     if (!job) {
-      throw new NotFoundError(`Import job with id ${id} not found`);
+      return { deleted: true, alreadyDeleted: true };
     }
     
     // We only allow deleting PENDING, FAILED or COMPLETED jobs. 

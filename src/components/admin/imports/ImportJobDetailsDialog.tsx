@@ -9,17 +9,21 @@ import {
 } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
+import { RotateCcw } from "lucide-react"
 
 interface ImportJobDetailsDialogProps {
   job: any | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onRetry?: (id: string) => Promise<void>
 }
 
 export function ImportJobDetailsDialog({
   job,
   open,
   onOpenChange,
+  onRetry,
 }: ImportJobDetailsDialogProps) {
   if (!job) return null
 
@@ -35,8 +39,22 @@ export function ImportJobDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-6">
           <DialogTitle>Import Job Details</DialogTitle>
+          {job.status === "FAILED" && onRetry && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+              onClick={async () => {
+                await onRetry(job.id)
+                onOpenChange(false)
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-1.5" />
+              Retry Job
+            </Button>
+          )}
         </DialogHeader>
 
         <div className="grid gap-6 py-4">

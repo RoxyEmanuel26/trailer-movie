@@ -104,6 +104,13 @@ export class ImportRepository {
     });
   }
 
+  static async retryAllFailed(db: DbClient = prisma) {
+    return db.importJob.updateMany({
+      where: { status: ImportJobStatus.FAILED },
+      data: { status: ImportJobStatus.PENDING }
+    });
+  }
+
   static async fetchJobsForProcessing(limit: number, db: DbClient = prisma) {
     // Prisma doesn't natively support SKIP LOCKED in findMany, so we use queryRaw
     // We combine SELECT and UPDATE into a single query to ensure locks are held atomically

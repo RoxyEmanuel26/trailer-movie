@@ -173,6 +173,16 @@ export class SeoService {
         };
       }
 
+      if (data.voteAverage && data.voteCount && data.voteCount > 0) {
+        schema.aggregateRating = {
+          '@type': 'AggregateRating',
+          ratingValue: data.voteAverage.toFixed(1),
+          ratingCount: data.voteCount,
+          bestRating: '10',
+          worstRating: '1',
+        };
+      }
+
       return schema;
     }
 
@@ -213,8 +223,8 @@ export class SeoService {
     ];
 
     movies.forEach(m => sitemap.push({ url: `${APP_URL}/watch/${m.slug}`, lastModified: m.updatedAt, changeFrequency: 'weekly', priority: 0.8 }));
-    genres.forEach(g => sitemap.push({ url: `${APP_URL}/genres/${g.slug}`, lastModified: g.updatedAt, changeFrequency: 'weekly', priority: 0.6 }));
-    collections.forEach(c => sitemap.push({ url: `${APP_URL}/collections/${c.slug}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 }));
+    genres.forEach(g => sitemap.push({ url: `${APP_URL}/genre/${g.slug}`, lastModified: g.updatedAt, changeFrequency: 'weekly', priority: 0.6 }));
+    collections.forEach(c => sitemap.push({ url: `${APP_URL}/collection/${c.slug}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 }));
 
     return sitemap;
   }

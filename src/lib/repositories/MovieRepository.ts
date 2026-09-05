@@ -25,6 +25,10 @@ export class MovieRepository {
         tags: { include: { tag: true } },
         companies: { include: { company: true } },
         keywords: { include: { keyword: true } },
+        images: { orderBy: { sortOrder: 'asc' } },
+        alternativeTitles: { take: 15 },
+        watchProviderLinks: { include: { provider: true } },
+        movieReviews: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     });
   }

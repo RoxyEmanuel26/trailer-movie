@@ -11,6 +11,7 @@ import { MovieCard } from '@/components/public/MovieCard';
 import { WatchProviders } from "@/components/movie/dynamic/WatchProviders"
 import { MovieReviews } from "@/components/movie/dynamic/MovieReviews"
 import { MovieExtraInfo } from "@/components/movie/dynamic/MovieExtraInfo"
+import { MovieGallery } from "@/components/movie/dynamic/MovieGallery"
 import { badgeVariants } from '@/components/ui/badge';
 
 interface PageProps {
@@ -48,6 +49,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
 
   const directors = movie.people.filter((p) => p.roleType === 'DIRECTOR');
   const cast = movie.people.filter((p) => p.roleType === 'ACTOR');
+  const otherCrew = movie.people.filter((p) => ['WRITER', 'COMPOSER', 'CINEMATOGRAPHER', 'EDITOR'].includes(p.roleType));
 
   const jsonLd = SeoService.generateStructuredData('Movie', {
     title: movie.title,
@@ -58,6 +60,9 @@ export default async function MovieDetailPage({ params }: PageProps) {
     actors: cast.map((a) => ({ name: a.person.name })),
     genre: movie.genres[0]?.genre,
     youtubeTrailerId: movie.youtubeTrailerId,
+    path: `/watch/${movie.slug}`,
+    voteAverage: movie.voteAverage,
+    voteCount: movie.voteCount,
   });
 
   const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
@@ -138,13 +143,26 @@ export default async function MovieDetailPage({ params }: PageProps) {
                         </dd>
                       </div>
                     )}
+                    {movie.alternativeTitles && movie.alternativeTitles.length > 0 && (
+                      <div className="flex flex-col mt-2">
+                        <dt className="text-muted-foreground">Also Known As</dt>
+                        <dd className="font-medium text-xs text-muted-foreground line-clamp-2">
+                          {movie.alternativeTitles.slice(0, 4).map(a => a.title).join(', ')}
+                          {movie.alternativeTitles.length > 4 && ` +${movie.alternativeTitles.length - 4} more`}
+                        </dd>
+                      </div>
+                    )}
                   </dl>
                 </div>
               </div>
             )}
             
-            {movie.watchProviders && (
-              <WatchProviders providers={movie.watchProviders} movieSlug={movie.slug} />
+            {(movie.watchProviders || (movie.watchProviderLinks && movie.watchProviderLinks.length > 0)) && (
+              <WatchProviders 
+                providers={movie.watchProviders} 
+                links={movie.watchProviderLinks as any} 
+                movieSlug={movie.slug} 
+              />
             )}
 
             <MovieExtraInfo 
@@ -163,8 +181,24 @@ export default async function MovieDetailPage({ params }: PageProps) {
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-2">
                 {movie.title} {year && <span className="text-muted-foreground font-normal">({year})</span>}
               </h1>
+
+              {movie.tagline && (
+                <p className="italic text-muted-foreground text-lg mb-2">"{movie.tagline}"</p>
+              )}
               
               <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-4">
+                {movie.voteAverage ? (
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground bg-muted/60 px-2.5 py-1 rounded-md border text-sm">
+                    <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />
+                    <span>{movie.voteAverage.toFixed(1)}</span>
+                    {movie.voteCount ? (
+                      <span className="text-xs text-muted-foreground font-normal">
+                        ({movie.voteCount.toLocaleString()} votes)
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {movie.releaseDate && (
                   <div className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
@@ -234,6 +268,35 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 </div>
               </div>
             )}
+
+            {otherCrew.length > 0 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-3">Key Crew</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {otherCrew.map((c) => (
+                    <Link href={`/person/${c.personId}`} key={c.personId} className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                      {c.person.headshotUrl ? (
+                        <Image src={c.person.headshotUrl} alt={c.person.name} width={48} height={48} className="rounded-md object-cover w-12 h-12" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center">
+                          <Users className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-bold truncate">{c.person.name}</span>
+                        <span className="text-xs text-muted-foreground capitalize truncate">
+                          {c.roleType.toLowerCase().replace('_', ' ')}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {movie.images && movie.images.length > 0 && (
+              <MovieGallery images={movie.images as any} />
+            )}
             
             {movie.collections.length > 0 && (
               <div className="mt-4">
@@ -248,8 +311,11 @@ export default async function MovieDetailPage({ params }: PageProps) {
               </div>
             )}
             
-            {movie.reviews && (
-              <MovieReviews reviews={movie.reviews as any[]} movieSlug={movie.slug} />
+            {((movie.movieReviews && movie.movieReviews.length > 0) || movie.reviews) && (
+              <MovieReviews 
+                reviews={(movie.movieReviews && movie.movieReviews.length > 0) ? movie.movieReviews : ((movie.reviews as any[]) || [])} 
+                movieSlug={movie.slug} 
+              />
             )}
           </div>
         </div>
