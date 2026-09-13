@@ -89,8 +89,23 @@ enum AuditActionType {
 enum ImportJobStatus {
   PENDING
   IN_PROGRESS
+  PARTIAL
   COMPLETED
   FAILED
+}
+
+enum ImportBatchStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+enum MovieQualityStatus {
+  READY
+  INCOMPLETE
+  NEEDS_REVIEW
 }
 
 // -----------------------------------------------------------------------------
@@ -163,7 +178,6 @@ model Verification {
 
   @@map("verifications")
 }
-
 
 enum DataSource {
   TMDB
@@ -250,16 +264,19 @@ model Movie {
   aiEnrichmentAttemptedAt DateTime?
 
   // Additional TMDB fields (Additive, Non-breaking)
-  voteAverage      Float?
-  voteCount        Int?
-  popularity       Float?
-  tagline          String?             @db.Text
-  logoUrl          String?
-  originalLanguage String?
-  imdbId           String?
-  homepage         String?
-  productionStatus String?
-  adult            Boolean             @default(false)
+  voteAverage         Float?
+  voteCount           Int?
+  popularity          Float?
+  tagline             String?            @db.Text
+  logoUrl             String?
+  originalLanguage    String?
+  imdbId              String?
+  homepage            String?
+  productionStatus    String?
+  adult               Boolean            @default(false)
+  tmdbSyncedAt        DateTime?
+  importQualityStatus MovieQualityStatus @default(NEEDS_REVIEW)
+  importQualityIssues Json?              @default("[]")
 
   // JSON objects (for arrays, ratings, watch providers)
   budget         BigInt?
@@ -311,6 +328,7 @@ model Trailer {
   durationSeconds Int?
   thumbnailUrl    String?
   status          TrailerStatus @default(ACTIVE)
+  dataSource      DataSource    @default(MANUAL)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -319,6 +337,7 @@ model Trailer {
 
   @@unique([movieId, sourceId]) // Prevent duplicate videos per movie
   @@index([movieId, isPrimary])
+  @@index([movieId, dataSource])
   @@map("trailers")
 }
 
@@ -341,6 +360,7 @@ model Person {
   topMovies          Json?
   imdbId             String?
   popularity         Float?
+  tmdbSyncedAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -445,6 +465,7 @@ model MovieCountry {
   country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
 
   @@id([movieId, countryId])
+  @@index([countryId])
   @@map("movie_countries")
 }
 
@@ -470,6 +491,7 @@ model MovieLanguage {
   language Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
 
   @@id([movieId, languageId])
+  @@index([languageId])
   @@map("movie_languages")
 }
 
@@ -653,17 +675,52 @@ model AnalyticsEvent {
 }
 
 model ImportJob {
-  id         String          @id @default(cuid())
-  tmdbId     Int
-  entityType String          @default("Movie") // e.g., "Movie", "Person"
-  status     ImportJobStatus @default(PENDING)
-  logs       Json? // Storing sync success/error traces
+  id            String          @id @default(cuid())
+  tmdbId        Int
+  entityType    String          @default("Movie") // e.g., "Movie", "Person"
+  status        ImportJobStatus @default(PENDING)
+  logs          Json? // Storing sync success/error traces
+  stage         String          @default("QUEUED")
+  progress      Int             @default(0)
+  attemptCount  Int             @default(0)
+  retryable     Boolean         @default(true)
+  nextAttemptAt DateTime?
+  startedAt     DateTime?
+  heartbeatAt   DateTime?
+  lockedUntil   DateTime?
+  completedAt   DateTime?
+  errorCode     String?
+  errorMessage  String?         @db.Text
+  result        Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([tmdbId, entityType])
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([completedAt])
   @@map("import_jobs")
+}
+
+model ImportBatch {
+  id           String            @id @default(cuid())
+  status       ImportBatchStatus @default(PENDING)
+  startDate    DateTime          @db.Date
+  endDate      DateTime          @db.Date
+  countryCode  String?
+  currentPage  Int               @default(1)
+  totalPages   Int               @default(0)
+  queuedCount  Int               @default(0)
+  skippedCount Int               @default(0)
+  errorMessage String?           @db.Text
+  nextRunAt    DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([status, nextRunAt, createdAt])
+  @@map("import_batches")
 }
 
 model UserFavorite {
@@ -825,4 +882,3 @@ model MovieReview {
   @@index([movieId])
   @@map("movie_reviews")
 }
-

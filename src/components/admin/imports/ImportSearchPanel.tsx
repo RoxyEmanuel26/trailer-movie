@@ -11,17 +11,22 @@ export function ImportSearchPanel() {
   const [query, setQuery] = React.useState("")
   const [results, setResults] = React.useState<any[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
+  const requestRef = React.useRef<AbortController | null>(null)
 
   const searchTmdb = useDebouncedCallback(async (searchTerm: string) => {
-    if (!searchTerm.trim()) {
+    if (searchTerm.trim().length < 2) {
+      requestRef.current?.abort()
       setResults([])
       setIsSearching(false)
       return
     }
 
     setIsSearching(true)
+    requestRef.current?.abort()
+    const controller = new AbortController()
+    requestRef.current = controller
     try {
-      const res = await fetch(`/api/admin/imports/search?query=${encodeURIComponent(searchTerm)}`)
+      const res = await fetch(`/api/admin/imports/search?query=${encodeURIComponent(searchTerm)}`, { signal: controller.signal })
       if (res.ok) {
         const data = await res.json()
         setResults(data.data?.results || [])
@@ -29,11 +34,13 @@ export function ImportSearchPanel() {
         setResults([])
       }
     } catch (e) {
-      console.error(e)
+      if ((e as Error).name !== 'AbortError') console.error(e)
     } finally {
-      setIsSearching(false)
+      if (requestRef.current === controller) setIsSearching(false)
     }
   }, 500)
+
+  React.useEffect(() => () => requestRef.current?.abort(), [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value)

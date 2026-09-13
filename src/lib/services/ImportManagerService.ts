@@ -8,25 +8,14 @@ export class ImportManagerService {
    * Enqueues a new movie import job.
    * If a pending or in-progress job exists for this TMDB ID, it returns that job.
    */
-  static async enqueueMovieImport(tmdbId: number) {
+  static async enqueueMovieImport(tmdbId: number, forceRefresh = false) {
     await requireAdmin('write:imports');
     // Targeted duplication check: find any active job (PENDING or IN_PROGRESS) for this TMDB ID.
     // This is a single O(1) indexed lookup - faster and reliable regardless of queue size.
-    const activeJob = await ImportRepository.findActivJobByTmdbId(tmdbId);
-    if (activeJob) {
-      return activeJob;
-    }
-
-    // Create the persistent job record
-    const job = await ImportRepository.create(tmdbId, 'Movie');
-
-    // Fire and forget promise removed to avoid unbounded memory/database connections.
-    // A background polling worker handles PENDING jobs via FOR UPDATE SKIP LOCKED.
-
-    return job;
+    return ImportRepository.enqueue(tmdbId, 'Movie', forceRefresh);
   }
 
-  static async listJobs(params: { skip?: number; take?: number; status?: ImportJobStatus }) {
+  static async listJobs(params: { skip?: number; take?: number; status?: ImportJobStatus; entityType?: string; stage?: string; retryable?: boolean }) {
     await requireAdmin('read:imports');
     const skip = params.skip || 0;
     const take = Math.min(Number(params.take) || 50, 100);

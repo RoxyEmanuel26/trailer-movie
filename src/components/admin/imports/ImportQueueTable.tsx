@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { toast } from "sonner"
-import { Eye, Trash, Loader2, RotateCcw } from "lucide-react"
+import { Eye, Trash, Loader2, RotateCcw, Square } from "lucide-react"
 
 import {
   Table,
@@ -20,8 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 import { StatusBadge } from "@/components/admin/StatusBadge"
 import { ConfirmationDialog } from "@/components/admin/global/ConfirmationDialog"
 import { ImportJobDetailsDialog } from "./ImportJobDetailsDialog"
@@ -30,20 +29,41 @@ interface ImportQueueTableProps {
   initialJobs: any[]
 }
 
+type DrainProgress = {
+  cycles: number
+  claimed: number
+  completed: number
+  partial: number
+  failed: number
+  remaining: number | null
+  readyRemaining: number | null
+}
+
+const initialDrainProgress: DrainProgress = {
+  cycles: 0,
+  claimed: 0,
+  completed: 0,
+  partial: 0,
+  failed: 0,
+  remaining: null,
+  readyRemaining: null,
+}
+
 export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
   const [jobs, setJobs] = React.useState(initialJobs)
   const [selectedJob, setSelectedJob] = React.useState<any | null>(null)
   const [deletingJobId, setDeletingJobId] = React.useState<string | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
   
-  // Auto Processing State
-  const [isAutoProcessing, setIsAutoProcessing] = React.useState(true)
   const [isCurrentlyFetching, setIsCurrentlyFetching] = React.useState(false)
+  const [drainProgress, setDrainProgress] = React.useState<DrainProgress>(initialDrainProgress)
+  const stopRequestedRef = React.useRef(false)
+  const activeRequestRef = React.useRef<AbortController | null>(null)
   const [retryingJobIds, setRetryingJobIds] = React.useState<Set<string>>(new Set())
   const [isRetryingAll, setIsRetryingAll] = React.useState(false)
 
   const failedJobsCount = React.useMemo(() => {
-    return jobs.filter((j: any) => j.status === 'FAILED').length
+    return jobs.filter((j: any) => ['FAILED', 'PARTIAL'].includes(j.status) && j.retryable).length
   }, [jobs])
 
   const handleRetrySingle = async (id: string) => {
@@ -72,7 +92,7 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
       if (!res.ok) throw new Error('Failed to retry all')
       const data = await res.json()
       toast.success(data?.data?.message || "All failed jobs queued for retry")
-      setJobs(prev => prev.map(j => j.status === 'FAILED' ? { ...j, status: 'PENDING' } : j))
+      setJobs(prev => prev.map(j => ['FAILED', 'PARTIAL'].includes(j.status) && j.retryable ? { ...j, status: 'PENDING' } : j))
       await fetchLatestJobs()
     } catch (e) {
       toast.error("Failed to retry all failed jobs")
@@ -81,79 +101,29 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
     }
   }
 
-  // Use a ref to strictly avoid overlapping loops across re-renders
-  const autoProcessorRef = React.useRef({ isRunning: false, isCancelled: false })
-
-  // Data fetching effect
-  const fetchLatestJobs = async () => {
+  const fetchLatestJobs = React.useCallback(async () => {
     try {
       const res = await fetch('/api/admin/imports')
       if (res.ok) {
         const data = await res.json()
-        if (!autoProcessorRef.current.isCancelled) {
-          setJobs(data.data.data)
-        }
+        setJobs(data.data.data)
         return data.data.data
       }
     } catch (e) {
       // ignore
     }
     return null
-  }
+  }, [])
 
-  // The continuous background processor loop
   React.useEffect(() => {
-    if (!isAutoProcessing) {
-      autoProcessorRef.current.isCancelled = true;
-      return;
-    }
+    const interval = window.setInterval(() => void fetchLatestJobs(), 5000)
+    return () => window.clearInterval(interval)
+  }, [fetchLatestJobs])
 
-    // Reset cancellation flag and start a fresh loop
-    autoProcessorRef.current.isCancelled = false;
-
-    // Guard: if a previous loop is still mid-fetch, let it exit naturally first
-    if (autoProcessorRef.current.isRunning) return;
-
-    autoProcessorRef.current.isRunning = true;
-
-    const runProcessor = async () => {
-      while (!autoProcessorRef.current.isCancelled) {
-        setIsCurrentlyFetching(true);
-        let processedCount = 0;
-        try {
-          // Hit the backend to process the queue. It will return the number of processed jobs.
-          const res = await fetch('/api/admin/cron/process-imports', { method: 'POST' });
-          if (res.ok) {
-            const result = await res.json();
-            processedCount = result.processed || 0;
-          }
-          await fetchLatestJobs(); // Update UI immediately after batch finishes
-        } catch (e) {
-          // Error, back off
-          processedCount = 0;
-        } finally {
-          setIsCurrentlyFetching(false);
-        }
-
-        if (autoProcessorRef.current.isCancelled) break;
-
-        if (processedCount > 0) {
-          // Processed something, there might be more, wait a bit and poll again
-          await new Promise(r => setTimeout(r, 2000));
-        } else {
-          // No pending jobs found anywhere in the DB, sleep longer
-          await new Promise(r => setTimeout(r, 10000));
-        }
-      }
-      autoProcessorRef.current.isRunning = false;
-    };
-
-    runProcessor();
-
-    return () => {
-      autoProcessorRef.current.isCancelled = true;
-    };
-  }, [isAutoProcessing]);
+  React.useEffect(() => () => {
+    stopRequestedRef.current = true
+    activeRequestRef.current?.abort()
+  }, [])
 
   const handleDelete = async () => {
     if (!deletingJobId || isDeleting) return
@@ -186,6 +156,12 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
       header: "Status",
       cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
     },
+    { accessorKey: "entityType", header: "Type" },
+    {
+      accessorKey: "stage",
+      header: "Progress",
+      cell: ({ row }) => <div className="min-w-32"><div className="mb-1 flex justify-between text-xs"><span>{row.original.stage}</span><span>{row.original.progress}%</span></div><Progress value={row.original.progress} className="h-1.5" /></div>,
+    },
     {
       accessorKey: "createdAt",
       header: "Created At",
@@ -196,7 +172,7 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
       cell: ({ row }) => {
         const job = row.original
         const canDelete = job.status !== "IN_PROGRESS"
-        const isFailed = job.status === "FAILED"
+        const isFailed = ["FAILED", "PARTIAL"].includes(job.status) && job.retryable
         const isRetrying = retryingJobIds.has(job.id)
 
         return (
@@ -245,28 +221,80 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
   })
 
   const handleProcessQueue = async () => {
-    toast.promise(fetch('/api/admin/cron/process-imports', { method: 'POST' }).then(() => fetchLatestJobs()), {
-      loading: 'Processing next batch...',
-      success: 'Queue batch processed',
-      error: 'Failed to process queue'
-    });
+    if (isCurrentlyFetching) return
+    setIsCurrentlyFetching(true)
+    stopRequestedRef.current = false
+    setDrainProgress(initialDrainProgress)
+    toast.info('Queue processing started. It will continue automatically while this page stays open.')
+
+    let noProgressCycles = 0
+    try {
+      while (!stopRequestedRef.current) {
+        const controller = new AbortController()
+        activeRequestRef.current = controller
+        const response = await fetch('/api/admin/cron/process-imports', {
+          method: 'POST',
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error('Worker request failed')
+        const summary = await response.json()
+
+        setDrainProgress((current) => ({
+          cycles: current.cycles + 1,
+          claimed: current.claimed + Number(summary.claimed || 0),
+          completed: current.completed + Number(summary.completed || 0),
+          partial: current.partial + Number(summary.partial || 0),
+          failed: current.failed + Number(summary.failed || 0),
+          remaining: Number(summary.remaining || 0),
+          readyRemaining: Number(summary.readyRemaining || 0),
+        }))
+        await fetchLatestJobs()
+
+        if (!summary.busy && Number(summary.readyRemaining || 0) === 0) {
+          if (Number(summary.remaining || 0) > 0) {
+            toast.info(`${summary.remaining} job remain deferred for a scheduled retry.`)
+          } else {
+            toast.success('All pending import jobs have been processed.')
+          }
+          break
+        }
+
+        noProgressCycles = Number(summary.claimed || 0) === 0 ? noProgressCycles + 1 : 0
+        if (noProgressCycles >= 40) {
+          throw new Error('Queue made no progress after several attempts. Please try again shortly.')
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, summary.busy ? 1500 : 400))
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        toast.info('Queue processing stopped. Pending jobs are safe and can be resumed.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Failed to process queue')
+      }
+    } finally {
+      activeRequestRef.current = null
+      setIsCurrentlyFetching(false)
+      await fetchLatestJobs()
+    }
+  }
+
+  const stopProcessingQueue = () => {
+    stopRequestedRef.current = true
+    activeRequestRef.current?.abort()
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center bg-muted/50 p-4 rounded-lg border">
-        <div className="flex items-center space-x-3">
-          <Switch 
-            id="auto-process" 
-            checked={isAutoProcessing} 
-            onCheckedChange={setIsAutoProcessing} 
-          />
-          <Label htmlFor="auto-process" className="flex items-center gap-2 font-medium cursor-pointer">
-            Auto-Process Queue
-            {isAutoProcessing && isCurrentlyFetching && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-          </Label>
+      <div className="flex flex-col justify-between gap-4 rounded-lg border bg-muted/50 p-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="font-medium">Persistent database worker</p>
+          <p className="text-sm text-muted-foreground">Process All continues automatically until every currently eligible job is finished.</p>
+          {isCurrentlyFetching && (
+            <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
+              {drainProgress.claimed} claimed · {drainProgress.completed} completed · {drainProgress.partial} partial · {drainProgress.failed} failed
+              {drainProgress.remaining !== null ? ` · ${drainProgress.remaining} remaining` : ''}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {failedJobsCount > 0 && (
@@ -281,12 +309,18 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
               ) : (
                 <RotateCcw className="h-4 w-4 mr-2" />
               )}
-              Retry Failed ({failedJobsCount})
+              Retry Eligible ({failedJobsCount})
             </Button>
           )}
-          <Button onClick={handleProcessQueue} variant="outline" disabled={isAutoProcessing}>
-            Process Next Batch (Manual)
-          </Button>
+          {isCurrentlyFetching ? (
+            <Button onClick={stopProcessingQueue} variant="outline">
+              <Square className="mr-2 h-4 w-4" /> Stop
+            </Button>
+          ) : (
+            <Button onClick={handleProcessQueue} variant="outline">
+              Process All Pending
+            </Button>
+          )}
         </div>
       </div>
 
@@ -353,4 +387,3 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
     </div>
   )
 }
-

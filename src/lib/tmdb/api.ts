@@ -150,3 +150,9 @@ export async function getPersonCombinedCredits(id: number): Promise<any> {
   return tmdbFetch<any>(`/person/${id}/combined_credits`, { params: { language: 'en-US' } });
 }
 
+export async function getPersonEnriched(id: number): Promise<any> {
+  return tmdbFetch<any>(`/person/${id}`, {
+    params: { language: 'en-US', append_to_response: 'combined_credits' },
+  });
+}
+

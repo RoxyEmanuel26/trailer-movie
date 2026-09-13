@@ -11,9 +11,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:imports": "tsx --test tests/import-pipeline.test.ts",
     "import:bulk": "npx tsx --env-file=.env scripts/bulk-discover.ts",
     "enrich:backfill": "npx tsx scripts/backfill-enriched-data.ts",
-    "db:backup": "npx tsx scripts/download-full-database.ts"
+    "db:backup": "npx tsx scripts/download-full-database.ts",
+    "db:audit": "npx tsx scripts/audit-database-fields.ts",
+    "import:verify": "tsx --env-file=.env scripts/verify-import-pipeline.ts",
+    "import:quality:dry-run": "npx tsx --env-file=.env scripts/backfill-import-quality.ts --dry-run",
+    "import:quality:apply": "npx tsx --env-file=.env scripts/backfill-import-quality.ts --apply",
+    "import:cron:deploy": "pnpm dlx wrangler deploy --config wrangler.import-cron.toml",
+    "import:cron:set-url": "pnpm dlx wrangler secret put PAGES_BASE_URL --config wrangler.import-cron.toml",
+    "import:cron:set-secret": "pnpm dlx wrangler secret put CRON_SECRET --config wrangler.import-cron.toml"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -81,6 +89,7 @@
     "prettier": "^3.9.6",
     "prisma": "^7.9.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

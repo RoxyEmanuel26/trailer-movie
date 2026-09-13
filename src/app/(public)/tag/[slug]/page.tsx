@@ -31,7 +31,7 @@ export const revalidate = 3600;
 export default async function TagPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const { page } = await searchParams;
-  
+
   let tag;
   try {
     tag = await TagService.getBySlug(slug);
@@ -39,7 +39,8 @@ export default async function TagPage({ params, searchParams }: PageProps) {
     notFound();
   }
 
-  const currentPage = typeof page === 'string' ? parseInt(page) : 1;
+  const parsedPage = typeof page === 'string' ? parseInt(page, 10) : 1;
+  const currentPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
   const itemsPerPage = 24;
   const skip = (currentPage - 1) * itemsPerPage;
 
@@ -52,28 +53,31 @@ export default async function TagPage({ params, searchParams }: PageProps) {
   });
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="mb-8 border-b pb-8 flex items-center gap-3">
-        <div className="bg-primary/10 p-3 rounded-full text-primary">
+    <div className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
+      <div className="mb-10 flex items-center gap-5">
+        <div className="rounded-2xl bg-primary/10 p-4 text-primary">
           <Hash className="w-8 h-8" />
         </div>
         <div>
-          <h1 className="text-4xl font-bold tracking-tight">{tag.name}</h1>
+          <p className="eyebrow mb-2">Catalog tag</p>
+          <h1 className="break-words text-4xl font-semibold leading-[1.02] tracking-[-0.05em] sm:text-5xl lg:text-6xl">
+            {tag.name}
+          </h1>
           <p className="text-sm font-medium mt-2 text-muted-foreground">
-            {totalMovies} {totalMovies === 1 ? 'Movie' : 'Movies'}
+            {totalMovies.toLocaleString()} {totalMovies === 1 ? 'movie' : 'movies'}
           </p>
         </div>
       </div>
 
       {movies.length > 0 ? (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-12">
+          <div className="mb-10 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:mb-12 lg:grid-cols-6 lg:gap-y-8">
             {movies.map((movie) => (
               <MovieCard key={movie.id} movie={movie} />
             ))}
           </div>
-          
-          <Pagination 
+
+          <Pagination
             currentPage={currentPage}
             itemsPerPage={itemsPerPage}
             totalItems={totalMovies}

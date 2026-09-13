@@ -1,265 +1,118 @@
 'use client';
 
 import * as React from 'react';
+import { Play, Pause, RefreshCcw, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Play, Pause, AlertTriangle, RefreshCcw } from 'lucide-react';
 
-export function BulkImportPanel() {
+type ImportBatch = {
+  id: string;
+  status: 'PENDING' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
+  startDate: string;
+  endDate: string;
+  countryCode: string | null;
+  currentPage: number;
+  totalPages: number;
+  queuedCount: number;
+  skippedCount: number;
+  errorMessage: string | null;
+};
+
+export function BulkImportPanel({ initialBatches = [] }: { initialBatches?: ImportBatch[] }) {
   const [startDate, setStartDate] = React.useState('2022-01-01');
-  const [endDate, setEndDate] = React.useState(() => new Date().toISOString().split('T')[0]);
-  const [country, setCountry] = React.useState(''); // Empty means 'All'
-  const [status, setStatus] = React.useState<'IDLE' | 'RUNNING' | 'PAUSED' | 'RATE_LIMITED' | 'DONE'>('IDLE');
-  
-  const [currentPage, setCurrentPage] = React.useState(1);
-  const [totalPages, setTotalPages] = React.useState(0);
-  const [stats, setStats] = React.useState({ queued: 0, skipped: 0 });
-  const [error, setError] = React.useState('');
+  const [endDate, setEndDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [country, setCountry] = React.useState('');
+  const [batches, setBatches] = React.useState<ImportBatch[]>(initialBatches);
+  const [busy, setBusy] = React.useState(false);
 
-  // Auto-pause ref to prevent race conditions during unmount/pause
-  const isRunningRef = React.useRef(false);
-
-  // Stop background process if component unmounts (e.g., user switches tabs)
-  React.useEffect(() => {
-    return () => {
-      isRunningRef.current = false;
-    };
+  const loadBatches = React.useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch('/api/admin/imports/bulk', { signal, cache: 'no-store' });
+    if (!response.ok) throw new Error('Failed to load bulk imports');
+    const payload = await response.json();
+    setBatches(payload.data.batches || []);
   }, []);
 
-  // Restore saved state on mount
   React.useEffect(() => {
-    const saved = localStorage.getItem('trailerTube_bulk_state');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setStartDate(parsed.startDate);
-        setEndDate(parsed.endDate);
-        if (parsed.country !== undefined) setCountry(parsed.country);
-        setCurrentPage(parsed.currentPage);
-        setTotalPages(parsed.totalPages || 0);
-        setStats(parsed.stats || { queued: 0, skipped: 0 });
-        
-        let restoredStatus: 'IDLE' | 'PAUSED' | 'DONE' = 'IDLE';
-        if (parsed.totalPages > 0 && parsed.currentPage >= parsed.totalPages) {
-          restoredStatus = 'DONE';
-        } else if (parsed.currentPage > 1) {
-          restoredStatus = 'PAUSED';
-        }
-        setStatus(restoredStatus);
-      } catch (e) {}
-    }
-  }, []);
+    const interval = window.setInterval(() => void loadBatches().catch(() => undefined), 5000);
+    return () => window.clearInterval(interval);
+  }, [loadBatches]);
 
-  // Save state on change
-  React.useEffect(() => {
-    if (status === 'DONE') {
-      localStorage.removeItem('trailerTube_bulk_state');
-    } else if (currentPage > 1 || status !== 'IDLE') {
-      localStorage.setItem('trailerTube_bulk_state', JSON.stringify({
-        startDate, endDate, country, currentPage, totalPages, stats
-      }));
-    }
-  }, [startDate, endDate, country, currentPage, totalPages, stats, status]);
-
-  const processNextPage = async (pageToProcess: number) => {
-    if (!isRunningRef.current) return;
-
+  const createBatch = async () => {
+    setBusy(true);
     try {
-      const res = await fetch('/api/admin/imports/bulk', {
+      const response = await fetch('/api/admin/imports/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page: pageToProcess, startDate, endDate, country: country || undefined }),
+        body: JSON.stringify({ startDate, endDate, country: country || undefined }),
       });
-
-      if (res.status === 429) {
-        setStatus('RATE_LIMITED');
-        isRunningRef.current = false;
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to fetch');
-      }
-
-      const data = await res.json();
-      
-      setStats(prev => ({
-        queued: prev.queued + data.queued,
-        skipped: prev.skipped + data.skipped,
-      }));
-      setTotalPages(data.totalPages);
-
-      if (pageToProcess >= data.totalPages) {
-        setStatus('DONE');
-        isRunningRef.current = false;
-        return;
-      }
-
-      setCurrentPage(pageToProcess + 1);
-      
-      // Artificial delay to prevent spamming DB too fast
-      setTimeout(() => {
-        if (isRunningRef.current) {
-          processNextPage(pageToProcess + 1);
-        }
-      }, 500);
-
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
-      setStatus('PAUSED');
-      isRunningRef.current = false;
+      if (!response.ok) throw new Error((await response.json()).error || 'Failed to create batch');
+      toast.success('Bulk discovery queued. It will continue after this page is closed.');
+      await loadBatches();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create batch');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleStart = () => {
-    if (isRunningRef.current) return; // Mencegah bug double-click (Race Condition)
-    
-    setError('');
-    setStatus('RUNNING');
-    isRunningRef.current = true;
-    
-    // If we're done, restart
-    if (status === 'DONE') {
-      setStats({ queued: 0, skipped: 0 });
-      setCurrentPage(1);
-      setTotalPages(0);
-      processNextPage(1);
-    } else {
-      processNextPage(currentPage);
+  const changeStatus = async (batch: ImportBatch, action: 'pause' | 'resume') => {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/admin/imports/bulk/${batch.id}/${action}`, { method: 'POST' });
+      if (!response.ok) throw new Error(`Failed to ${action} batch`);
+      await loadBatches();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Bulk import action failed');
+    } finally {
+      setBusy(false);
     }
-  };
-
-  const handlePause = () => {
-    setStatus('PAUSED');
-    isRunningRef.current = false;
-  };
-
-  const handleReset = () => {
-    setStatus('IDLE');
-    isRunningRef.current = false;
-    setCurrentPage(1);
-    setTotalPages(0);
-    setStats({ queued: 0, skipped: 0 });
-    setError('');
-    localStorage.removeItem('trailerTube_bulk_state');
   };
 
   return (
-    <div className="w-full bg-card border rounded-xl p-6 shadow-sm">
+    <div className="rounded-lg border bg-card p-6">
       <div className="mb-6">
-        <h2 className="text-xl font-semibold">Bulk Auto-Import</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Automatically discover and queue all movies released between a date range. It skips duplicates safely.
-        </p>
+        <h2 className="text-xl font-semibold">Persistent Bulk Discovery</h2>
+        <p className="text-sm text-muted-foreground">Discovery progress is stored in the database and processed by the scheduled worker.</p>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="mb-6 grid gap-4 md:grid-cols-3">
+        <div className="space-y-2"><Label htmlFor="import-start">Start date</Label><Input id="import-start" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></div>
+        <div className="space-y-2"><Label htmlFor="import-end">End date</Label><Input id="import-end" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></div>
         <div className="space-y-2">
-          <Label>Start Date (Release)</Label>
-          <Input 
-            type="date" 
-            value={startDate} 
-            onChange={(e) => setStartDate(e.target.value)} 
-            disabled={status === 'RUNNING' || (status === 'PAUSED' && currentPage > 1)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>End Date (Release)</Label>
-          <Input 
-            type="date" 
-            value={endDate} 
-            onChange={(e) => setEndDate(e.target.value)} 
-            disabled={status === 'RUNNING' || (status === 'PAUSED' && currentPage > 1)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Origin Country</Label>
-          <select 
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            disabled={status === 'RUNNING' || (status === 'PAUSED' && currentPage > 1)}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <option value="">All Countries (Global)</option>
-            <option value="US">United States (US)</option>
-            <option value="KR">South Korea (KR)</option>
-            <option value="JP">Japan (JP)</option>
-            <option value="CN">China (CN)</option>
-            <option value="ID">Indonesia (ID)</option>
-            <option value="GB">United Kingdom (GB)</option>
-            <option value="FR">France (FR)</option>
-            <option value="IN">India (IN)</option>
-            <option value="TH">Thailand (TH)</option>
+          <Label htmlFor="import-country">Origin country</Label>
+          <select id="import-country" value={country} onChange={(event) => setCountry(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="">All countries</option><option value="US">United States</option><option value="GB">United Kingdom</option>
+            <option value="ID">Indonesia</option><option value="JP">Japan</option><option value="KR">South Korea</option>
+            <option value="CN">China</option><option value="IN">India</option><option value="FR">France</option><option value="TH">Thailand</option>
           </select>
         </div>
       </div>
+      <Button onClick={createBatch} disabled={busy || !startDate || !endDate}>
+        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />} Queue discovery
+      </Button>
 
-      {/* Progress Section */}
-      {(status !== 'IDLE' || currentPage > 1) && (
-        <div className="mb-6 p-4 rounded-lg bg-muted/50 border">
-          <div className="flex justify-between items-end mb-2">
-            <span className="text-sm font-medium">
-              {status === 'RUNNING' ? 'Fetching TMDB Data...' : 
-               status === 'PAUSED' ? 'Paused' :
-               status === 'RATE_LIMITED' ? 'TMDB API Limit Reached' : 'Completed!'}
-            </span>
-            <span className="text-sm text-muted-foreground">
-              Page {currentPage} {totalPages > 0 ? `of ${totalPages}` : ''}
-            </span>
-          </div>
-          
-          <Progress value={totalPages > 0 ? (currentPage / totalPages) * 100 : 0} className="h-2 mb-4" />
-          
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="bg-background border rounded-md p-3 flex flex-col items-center justify-center">
-              <span className="text-2xl font-bold text-green-500">{stats.queued}</span>
-              <span className="text-muted-foreground">New Queued</span>
-            </div>
-            <div className="bg-background border rounded-md p-3 flex flex-col items-center justify-center">
-              <span className="text-2xl font-bold text-orange-500">{stats.skipped}</span>
-              <span className="text-muted-foreground">Skipped (Duplicate)</span>
-            </div>
-          </div>
-
-          {status === 'RATE_LIMITED' && (
-            <div className="mt-4 flex items-start gap-3 text-orange-500 bg-orange-500/10 p-3 rounded-md border border-orange-500/20">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-              <div className="text-sm">
-                <p className="font-semibold">Rate Limit Hit</p>
-                <p>TMDB has temporarily blocked requests. Your progress is saved. Please resume tomorrow or in a few hours.</p>
+      <div className="mt-8 space-y-4">
+        {batches.map((batch) => {
+          const progress = batch.totalPages > 0 ? Math.min(100, (batch.currentPage / batch.totalPages) * 100) : 0;
+          return (
+            <div key={batch.id} className="rounded-md border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><p className="font-medium">{batch.startDate.slice(0, 10)} – {batch.endDate.slice(0, 10)} {batch.countryCode ? `· ${batch.countryCode}` : ''}</p><p className="text-sm text-muted-foreground">{batch.status} · Page {batch.currentPage}{batch.totalPages ? ` of ${batch.totalPages}` : ''}</p></div>
+                {batch.status === 'PAUSED' ? (
+                  <Button size="sm" variant="outline" onClick={() => changeStatus(batch, 'resume')} disabled={busy}><RefreshCcw className="mr-2 h-4 w-4" />Resume</Button>
+                ) : !['COMPLETED', 'FAILED'].includes(batch.status) ? (
+                  <Button size="sm" variant="outline" onClick={() => changeStatus(batch, 'pause')} disabled={busy}><Pause className="mr-2 h-4 w-4" />Pause</Button>
+                ) : null}
               </div>
+              <Progress value={progress} className="my-3 h-2" />
+              <div className="flex gap-5 text-sm"><span><strong>{batch.queuedCount}</strong> queued</span><span><strong>{batch.skippedCount}</strong> skipped</span></div>
+              {batch.errorMessage && <p className="mt-3 text-sm text-destructive">{batch.errorMessage}</p>}
             </div>
-          )}
-          
-          {error && (
-            <div className="mt-4 text-red-500 text-sm bg-red-500/10 p-3 rounded-md border border-red-500/20">
-              Error: {error}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-3">
-        {status === 'RUNNING' ? (
-          <Button onClick={handlePause} variant="secondary" className="w-32">
-            <Pause className="w-4 h-4 mr-2" /> Pause
-          </Button>
-        ) : (
-          <Button onClick={handleStart} className="w-32">
-            <Play className="w-4 h-4 mr-2" /> {status === 'DONE' ? 'Restart' : status === 'PAUSED' || status === 'RATE_LIMITED' ? 'Resume' : 'Start'}
-          </Button>
-        )}
-        
-        {(status === 'PAUSED' || status === 'DONE' || status === 'RATE_LIMITED') && (
-          <Button onClick={handleReset} variant="outline" className="w-32">
-            <RefreshCcw className="w-4 h-4 mr-2" /> Reset
-          </Button>
-        )}
+          );
+        })}
+        {batches.length === 0 && <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">No bulk discovery runs yet.</p>}
       </div>
     </div>
   );

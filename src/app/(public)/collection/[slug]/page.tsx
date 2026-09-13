@@ -33,7 +33,7 @@ export const revalidate = 3600;
 export default async function CollectionPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const { page } = await searchParams;
-  
+
   let collection;
   try {
     collection = await CollectionService.getBySlug(slug);
@@ -41,7 +41,8 @@ export default async function CollectionPage({ params, searchParams }: PageProps
     notFound();
   }
 
-  const currentPage = typeof page === 'string' ? parseInt(page) : 1;
+  const parsedPage = typeof page === 'string' ? parseInt(page, 10) : 1;
+  const currentPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
   const itemsPerPage = 24;
   const skip = (currentPage - 1) * itemsPerPage;
 
@@ -67,9 +68,9 @@ export default async function CollectionPage({ params, searchParams }: PageProps
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       )}
-      
+
       {/* Hero Section */}
-      <section className="relative w-full h-[40vh] min-h-[300px] overflow-hidden bg-black flex flex-col justify-end border-b">
+      <section className="relative flex min-h-[20rem] w-full flex-col justify-end overflow-hidden bg-[#0d0e0c] sm:min-h-[23rem] lg:min-h-[25rem]">
         {collection.coverImageUrl ? (
           <Image
             src={collection.coverImageUrl}
@@ -77,21 +78,24 @@ export default async function CollectionPage({ params, searchParams }: PageProps
             fill
             priority
             sizes="100vw"
-            className="object-cover opacity-50"
+            className="object-cover opacity-60"
           />
         ) : (
           <div className="absolute inset-0 bg-muted flex items-center justify-center">
             <Layers className="w-24 h-24 text-muted-foreground opacity-20" />
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-        
-        <div className="container relative mx-auto px-4 pb-8 z-10">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-2 drop-shadow-md">
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0d0e0c] via-[#0d0e0c]/55 to-transparent" />
+
+        <div className="relative z-10 mx-auto w-full max-w-[90rem] px-4 pb-8 sm:px-6 sm:pb-10 lg:px-8">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#f48a6f]">
+            Curated collection
+          </p>
+          <h1 className="mb-3 max-w-4xl break-words text-4xl font-semibold leading-[1.02] tracking-[-0.055em] text-white sm:text-5xl lg:text-7xl">
             {collection.title}
           </h1>
           {collection.description && (
-            <p className="text-white/80 max-w-3xl text-lg drop-shadow">
+            <p className="line-clamp-4 max-w-3xl text-sm leading-6 text-white/80 drop-shadow sm:text-base sm:leading-7 lg:line-clamp-none lg:text-lg">
               {collection.description}
             </p>
           )}
@@ -101,16 +105,16 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         </div>
       </section>
 
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         {movies.length > 0 ? (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-12">
+            <div className="mb-10 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:mb-12 lg:grid-cols-6 lg:gap-y-8">
               {movies.map((movie, index) => (
                 <MovieCard key={movie.id} movie={movie} priority={index < 4} />
               ))}
             </div>
-            
-            <Pagination 
+
+            <Pagination
               currentPage={currentPage}
               itemsPerPage={itemsPerPage}
               totalItems={totalMovies}

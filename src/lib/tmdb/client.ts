@@ -7,7 +7,8 @@ interface FetchOptions extends RequestInit {
   retries?: number;
 }
 
-const DEFAULT_RETRIES = 15;
+// Two retries plus the initial request = at most three HTTP attempts.
+const DEFAULT_RETRIES = 2;
 const TIMEOUT_MS = 10000;
 
 export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
@@ -58,7 +59,7 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
 
       // Handle 5xx errors with standard exponential backoff
       if (response.status >= 500 && retries > 0) {
-        const backoff = (DEFAULT_RETRIES - retries + 1) * 1000; // 1s, 2s, 3s
+        const backoff = Math.min(8000, 2 ** (DEFAULT_RETRIES - retries) * 1000) + Math.floor(Math.random() * 500);
         logger.warn(`TMDB Server Error ${response.status}. Retrying in ${backoff}ms...`);
         await new Promise((resolve) => setTimeout(resolve, backoff));
         return tmdbFetch<T>(endpoint, { ...options, retries: retries - 1 });

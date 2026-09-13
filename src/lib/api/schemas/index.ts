@@ -23,7 +23,28 @@ export const SearchSchema = z.object({
  */
 export const ImportSchema = z.object({
   tmdbId: TmdbIdSchema,
+  forceRefresh: z.boolean().optional().default(false),
 });
+
+export const ImportListSchema = z.object({
+  skip: z.coerce.number().int().min(0).default(0),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  status: z.enum(['PENDING', 'IN_PROGRESS', 'PARTIAL', 'COMPLETED', 'FAILED']).optional(),
+  entityType: z.enum(['Movie', 'Person']).optional(),
+  stage: z.string().trim().max(50).optional(),
+  retryable: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+});
+
+const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}, 'Invalid calendar date');
+
+export const ImportBatchSchema = z.object({
+  startDate: IsoDateSchema,
+  endDate: IsoDateSchema,
+  country: z.string().regex(/^[A-Z]{2}$/).optional(),
+}).refine((data) => data.startDate <= data.endDate, { message: 'startDate must be before or equal to endDate' });
 
 /**
  * Movie Update Schema (Example for Admin edits)

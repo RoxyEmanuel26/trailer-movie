@@ -3,6 +3,19 @@ import { prisma } from '../prisma';
 import { DbClient } from './base.types';
 
 export class MovieRepository {
+  static async listPublishedReleaseYears(db: DbClient = prisma) {
+    const rows = await db.$queryRaw<Array<{ year: number }>>(Prisma.sql`
+      SELECT DISTINCT EXTRACT(YEAR FROM "releaseDate")::int AS "year"
+      FROM "movies"
+      WHERE "status" = 'PUBLISHED'
+        AND "deletedAt" IS NULL
+        AND "releaseDate" IS NOT NULL
+      ORDER BY "year" DESC
+    `);
+
+    return rows.map((row) => row.year);
+  }
+
   static async findById(id: string, db: DbClient = prisma) {
     return db.movie.findFirst({
       where: { id, deletedAt: null },
@@ -24,6 +37,8 @@ export class MovieRepository {
         collections: { include: { collection: true } },
         tags: { include: { tag: true } },
         companies: { include: { company: true } },
+        countries: { include: { country: true } },
+        languages: { include: { language: true } },
         keywords: { include: { keyword: true } },
         images: { orderBy: { sortOrder: 'asc' } },
         alternativeTitles: { take: 15 },
@@ -68,20 +83,23 @@ export class MovieRepository {
     });
   }
 
-  static async list(params: { 
-    skip?: number; 
-    take?: number; 
-    search?: string; 
-    status?: import('@prisma/client').MovieStatus; 
-    orderBy?: { [key: string]: 'asc' | 'desc' };
-    excludeId?: string;
-  }, db: DbClient = prisma) {
+  static async list(
+    params: {
+      skip?: number;
+      take?: number;
+      search?: string;
+      status?: import('@prisma/client').MovieStatus;
+      orderBy?: { [key: string]: 'asc' | 'desc' };
+      excludeId?: string;
+    },
+    db: DbClient = prisma
+  ) {
     const where: Prisma.MovieWhereInput = { deletedAt: null };
-    
+
     if (params.search) {
       where.title = { contains: params.search, mode: 'insensitive' };
     }
-    
+
     if (params.status) {
       where.status = params.status;
     }
@@ -98,38 +116,50 @@ export class MovieRepository {
         orderBy: params.orderBy || { createdAt: 'desc' },
         include: {
           genres: { include: { genre: true } },
-        }
+        },
       }),
-      db.movie.count({ where })
+      db.movie.count({ where }),
     ]);
 
     return { data, total };
   }
 
-  static async search(params: { 
-    skip?: number; 
-    take?: number; 
-    search?: string; 
-    status?: import('@prisma/client').MovieStatus; 
-    orderBy?: any;
-    genreSlug?: string;
-    genreIds?: string[];
-    collectionSlug?: string;
-    tagSlug?: string;
-    excludeId?: string;
-  }, db: DbClient = prisma) {
+  static async search(
+    params: {
+      skip?: number;
+      take?: number;
+      search?: string;
+      status?: import('@prisma/client').MovieStatus;
+      orderBy?: Prisma.MovieOrderByWithRelationInput | Prisma.MovieOrderByWithRelationInput[];
+      genreSlug?: string;
+      genreIds?: string[];
+      collectionSlug?: string;
+      tagSlug?: string;
+      excludeId?: string;
+      countryCodes?: string[];
+      languageCodes?: string[];
+      releaseYear?: number;
+    },
+    db: DbClient = prisma
+  ) {
     const where: Prisma.MovieWhereInput = { deletedAt: null };
-    
+    const andFilters: Prisma.MovieWhereInput[] = [];
+
     if (params.search) {
       // Use Postgres full text search instead of ILIKE
-      const searchStr = params.search.split(' ').map(s => s + ':*').join(' | ');
-      where.OR = [
-        { title: { search: searchStr } },
-        { originalTitle: { search: searchStr } },
-        { synopsis: { search: searchStr } },
-      ];
+      const searchStr = params.search
+        .split(' ')
+        .map((s) => s + ':*')
+        .join(' | ');
+      andFilters.push({
+        OR: [
+          { title: { search: searchStr } },
+          { originalTitle: { search: searchStr } },
+          { synopsis: { search: searchStr } },
+        ],
+      });
     }
-    
+
     if (params.status) {
       where.status = params.status;
     }
@@ -141,31 +171,63 @@ export class MovieRepository {
     if (params.genreIds && params.genreIds.length > 0) {
       where.genres = {
         some: {
-          genreId: { in: params.genreIds }
-        }
+          genreId: { in: params.genreIds },
+        },
       };
     } else if (params.genreSlug) {
       where.genres = {
         some: {
-          genre: { slug: params.genreSlug }
-        }
+          genre: { slug: params.genreSlug },
+        },
       };
     }
 
     if (params.collectionSlug) {
       where.collections = {
         some: {
-          collection: { slug: params.collectionSlug }
-        }
+          collection: { slug: params.collectionSlug },
+        },
       };
     }
 
     if (params.tagSlug) {
       where.tags = {
         some: {
-          tag: { slug: params.tagSlug }
-        }
+          tag: { slug: params.tagSlug },
+        },
       };
+    }
+
+    const originFilters: Prisma.MovieWhereInput[] = [];
+    if (params.countryCodes?.length) {
+      originFilters.push({
+        countries: {
+          some: { country: { isoCode: { in: params.countryCodes } } },
+        },
+      });
+    }
+    if (params.languageCodes?.length) {
+      originFilters.push({
+        languages: {
+          some: { language: { isoCode: { in: params.languageCodes } } },
+        },
+      });
+    }
+    if (originFilters.length) {
+      andFilters.push({ OR: originFilters });
+    }
+
+    if (params.releaseYear) {
+      andFilters.push({
+        releaseDate: {
+          gte: new Date(Date.UTC(params.releaseYear, 0, 1)),
+          lt: new Date(Date.UTC(params.releaseYear + 1, 0, 1)),
+        },
+      });
+    }
+
+    if (andFilters.length) {
+      where.AND = andFilters;
     }
 
     const [data, total] = await Promise.all([
@@ -176,9 +238,9 @@ export class MovieRepository {
         orderBy: params.orderBy || { createdAt: 'desc' },
         include: {
           genres: { include: { genre: true } },
-        }
+        },
       }),
-      db.movie.count({ where })
+      db.movie.count({ where }),
     ]);
 
     return { data, total };

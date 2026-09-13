@@ -1,3 +1,5 @@
+import { ImportRepository } from '../repositories/ImportRepository';
+
 export interface ProgressState {
   jobId: string;
   stage: string;
@@ -23,13 +25,13 @@ export class ProgressTracker {
     };
   }
 
-  update(stage: string, progress: number, logMessage?: string) {
+  async update(stage: string, progress: number, logMessage?: string) {
     this.state.stage = stage;
     this.state.progress = Math.min(Math.max(progress, 0), 100);
     if (logMessage) {
       this.state.logs.push(`[${new Date().toISOString()}] [${stage}] ${logMessage}`);
     }
-    // In a real implementation, this might flush to Redis or ImportRepository every N updates
+    await ImportRepository.updateProgress(this.state.jobId, stage, this.state.progress, this.state as any);
   }
 
   error(message: string) {
@@ -37,10 +39,10 @@ export class ProgressTracker {
     this.state.logs.push(`[${new Date().toISOString()}] [ERROR] ${message}`);
   }
 
-  finish() {
+  finish(completed = true) {
     this.state.finishedAt = new Date();
     this.state.durationMs = this.state.finishedAt.getTime() - this.state.startedAt.getTime();
-    this.state.progress = 100;
+    if (completed) this.state.progress = 100;
   }
 
   getState(): Readonly<ProgressState> {

@@ -77,6 +77,8 @@ export class HomepageRepository {
             posterUrl: true,
             releaseDate: true,
             status: true,
+            synopsis: true,
+            voteAverage: true,
             genres: {
               include: { genre: true }
             }
@@ -84,6 +86,31 @@ export class HomepageRepository {
         },
       },
     });
+  }
+
+  static async getPublicDiscoveryData(db: DbClient = prisma) {
+    const movieWhere = { status: 'PUBLISHED' as const, deletedAt: null };
+
+    const [hero, totalMovies, trailersAvailable, genres] = await Promise.all([
+      db.movie.findFirst({
+        where: {
+          ...movieWhere,
+          backdropUrl: { not: null },
+          youtubeTrailerId: { not: null },
+        },
+        orderBy: [{ popularity: 'desc' }, { voteCount: 'desc' }],
+        include: { genres: { include: { genre: true } } },
+      }),
+      db.movie.count({ where: movieWhere }),
+      db.movie.count({ where: { ...movieWhere, youtubeTrailerId: { not: null } } }),
+      db.genre.findMany({
+        orderBy: { movies: { _count: 'desc' } },
+        take: 12,
+        include: { _count: { select: { movies: true } } },
+      }),
+    ]);
+
+    return { hero, totalMovies, trailersAvailable, genres };
   }
 
   static async getFeaturedItem(id: string, db: DbClient = prisma) {

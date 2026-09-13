@@ -3,8 +3,7 @@ import { notFound } from 'next/navigation';
 import { GenreService } from '@/lib/services/GenreService';
 import { SeoService } from '@/lib/services/SeoService';
 import { MovieService } from '@/lib/services/MovieService';
-import { MovieCard } from '@/components/public/MovieCard';
-import { Pagination } from '@/components/public/Pagination';
+import { CatalogPage } from '@/components/public/CatalogPage';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -30,7 +29,7 @@ export const revalidate = 3600;
 export default async function GenrePage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const { page } = await searchParams;
-  
+
   let genre;
   try {
     genre = await GenreService.getBySlug(slug);
@@ -38,7 +37,8 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
     notFound();
   }
 
-  const currentPage = typeof page === 'string' ? parseInt(page) : 1;
+  const parsedPage = typeof page === 'string' ? parseInt(page, 10) : 1;
+  const currentPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
   const itemsPerPage = 24;
   const skip = (currentPage - 1) * itemsPerPage;
 
@@ -50,37 +50,22 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
     orderBy: { releaseDate: 'desc' },
   });
 
-  return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="mb-8 border-b pb-8">
-        <h1 className="text-4xl font-bold tracking-tight mb-2">{genre.name} Movies</h1>
-        {genre.description && (
-          <p className="text-muted-foreground max-w-3xl">{genre.description}</p>
-        )}
-        <p className="text-sm font-medium mt-4 bg-muted inline-flex px-3 py-1 rounded-full">
-          {totalMovies} Movies
-        </p>
-      </div>
+  const description =
+    genre.description ||
+    `Browse ${genre.name.toLowerCase()} movies and trailers from the local catalog.`;
 
-      {movies.length > 0 ? (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-12">
-            {movies.map((movie, index) => (
-              <MovieCard key={movie.id} movie={movie} priority={index < 4} />
-            ))}
-          </div>
-          
-          <Pagination 
-            currentPage={currentPage}
-            itemsPerPage={itemsPerPage}
-            totalItems={totalMovies}
-          />
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <p className="text-lg text-muted-foreground">No movies found in this genre yet.</p>
-        </div>
-      )}
-    </div>
+  return (
+    <CatalogPage
+      eyebrow="Genre collection"
+      title={`${genre.name} movies`}
+      description={description}
+      path={`/genre/${genre.slug}`}
+      movies={movies}
+      totalMovies={totalMovies}
+      currentPage={currentPage}
+      itemsPerPage={itemsPerPage}
+      emptyMessage="No movies have been published in this genre yet."
+      breadcrumbs={[{ name: 'Genres', path: '/genres' }]}
+    />
   );
 }

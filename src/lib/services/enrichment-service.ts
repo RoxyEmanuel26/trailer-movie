@@ -11,6 +11,7 @@ export interface EnrichmentResult {
   reviewsCount: number;
   recommendationsCount: number;
   peopleUpdatedCount: number;
+  issues: string[];
 }
 
 export class EnrichmentService {
@@ -21,7 +22,8 @@ export class EnrichmentService {
   static async enrichMovie(
     movieId: string,
     tmdbData: any,
-    client: Prisma.TransactionClient | typeof prisma = prisma
+    client: Prisma.TransactionClient | typeof prisma = prisma,
+    lockedFields: string[] = []
   ): Promise<EnrichmentResult> {
     const tmdbId = tmdbData.id;
     const result: EnrichmentResult = {
@@ -33,6 +35,7 @@ export class EnrichmentService {
       reviewsCount: 0,
       recommendationsCount: 0,
       peopleUpdatedCount: 0,
+      issues: [],
     };
 
     // 1. Extract Logo URL from images if present
@@ -94,13 +97,17 @@ export class EnrichmentService {
       movieUpdateData.reviews = tmdbData.reviews.results;
     }
 
+    for (const field of lockedFields) {
+      delete (movieUpdateData as Record<string, unknown>)[field];
+    }
+
     await client.movie.update({
       where: { id: movieId },
       data: movieUpdateData,
     });
 
     // 3. Populate MovieImage (Posters, Backdrops, Logos)
-    if (tmdbData.images) {
+    if (!lockedFields.includes('images') && tmdbData.images) {
       const imagesToInsert: Prisma.MovieImageCreateManyInput[] = [];
 
       // Top Backdrops (up to 8)
@@ -175,21 +182,21 @@ export class EnrichmentService {
         });
       }
 
+      await client.movieImage.deleteMany({ where: { movieId } });
       if (imagesToInsert.length > 0) {
-        await client.movieImage.deleteMany({ where: { movieId } });
         await client.movieImage.createMany({
           data: imagesToInsert,
           skipDuplicates: true,
         });
         result.imagesCount = imagesToInsert.length;
       }
-    }
+    } else if (!lockedFields.includes('images')) result.issues.push('images_unavailable');
 
     // 4. Populate MovieAlternativeTitle
-    if (tmdbData.alternative_titles?.titles && Array.isArray(tmdbData.alternative_titles.titles)) {
+    if (!lockedFields.includes('alternative_titles') && tmdbData.alternative_titles?.titles && Array.isArray(tmdbData.alternative_titles.titles)) {
       const titles = tmdbData.alternative_titles.titles.slice(0, 30);
+      await client.movieAlternativeTitle.deleteMany({ where: { movieId } });
       if (titles.length > 0) {
-        await client.movieAlternativeTitle.deleteMany({ where: { movieId } });
         const altTitlesToInsert: Prisma.MovieAlternativeTitleCreateManyInput[] = titles.map((t: any) => ({
           movieId,
           title: String(t.title).slice(0, 500),
@@ -203,11 +210,12 @@ export class EnrichmentService {
         });
         result.altTitlesCount = altTitlesToInsert.length;
       }
-    }
+    } else if (!lockedFields.includes('alternative_titles')) result.issues.push('alternative_titles_unavailable');
 
     // 5. Populate Watch Providers & Links
-    if (tmdbData['watch/providers']?.results) {
+    if (!lockedFields.includes('watch_providers') && tmdbData['watch/providers']?.results) {
       const providerResults = tmdbData['watch/providers'].results;
+      await client.movieWatchProviderLink.deleteMany({ where: { movieId } });
       // Extract target countries: US, ID, and others if available
       const countriesToCheck = Object.keys(providerResults);
       const linksToInsert: {
@@ -300,9 +308,6 @@ export class EnrichmentService {
           providerDbIdMap.set(wp.tmdbId, wp.id);
         }
 
-        // Clean existing links for this movie and re-insert
-        await client.movieWatchProviderLink.deleteMany({ where: { movieId } });
-
         const formattedLinks: Prisma.MovieWatchProviderLinkCreateManyInput[] = [];
         const seenKeys = new Set<string>();
 
@@ -330,13 +335,13 @@ export class EnrichmentService {
           result.watchProvidersCount = formattedLinks.length;
         }
       }
-    }
+    } else if (!lockedFields.includes('watch_providers')) result.issues.push('watch_providers_unavailable');
 
     // 6. Populate MovieReview
-    if (tmdbData.reviews?.results && Array.isArray(tmdbData.reviews.results)) {
+    if (!lockedFields.includes('reviews') && tmdbData.reviews?.results && Array.isArray(tmdbData.reviews.results)) {
       const reviews = tmdbData.reviews.results.slice(0, 10);
+      await client.movieReview.deleteMany({ where: { movieId } });
       if (reviews.length > 0) {
-        await client.movieReview.deleteMany({ where: { movieId } });
         const reviewsToInsert: Prisma.MovieReviewCreateManyInput[] = reviews.map((r: any) => {
           let avatar = r.author_details?.avatar_path || null;
           if (avatar && !avatar.startsWith('http')) {
@@ -361,11 +366,12 @@ export class EnrichmentService {
         });
         result.reviewsCount = reviewsToInsert.length;
       }
-    }
+    } else if (!lockedFields.includes('reviews')) result.issues.push('reviews_unavailable');
 
     // 7. Populate MovieRecommendation
-    if (tmdbData.recommendations?.results && Array.isArray(tmdbData.recommendations.results)) {
+    if (!lockedFields.includes('recommendations') && tmdbData.recommendations?.results && Array.isArray(tmdbData.recommendations.results)) {
       const recs = tmdbData.recommendations.results.slice(0, 20);
+      await client.movieRecommendation.deleteMany({ where: { sourceMovieId: movieId } });
       const recTmdbIds = recs.map((r: any) => r.id).filter((id: any) => typeof id === 'number');
 
       if (recTmdbIds.length > 0) {
@@ -380,8 +386,6 @@ export class EnrichmentService {
           for (const m of matchingTargetMovies) {
             if (m.tmdbId) tmdbToTargetId.set(m.tmdbId, m.id);
           }
-
-          await client.movieRecommendation.deleteMany({ where: { sourceMovieId: movieId } });
 
           const recsToInsert: Prisma.MovieRecommendationCreateManyInput[] = [];
           recs.forEach((r: any, idx: number) => {
@@ -405,7 +409,7 @@ export class EnrichmentService {
           }
         }
       }
-    }
+    } else if (!lockedFields.includes('recommendations')) result.issues.push('recommendations_unavailable');
 
     // 8. Update Popularity & IMDB ID for People if credits are attached
     if (tmdbData.credits?.cast || tmdbData.credits?.crew) {

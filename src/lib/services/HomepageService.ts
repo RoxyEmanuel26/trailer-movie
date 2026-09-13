@@ -84,4 +84,8 @@ export class HomepageService {
   static getSectionData = cache(async (section: any) => {
     return HomepageRepository.getSectionData(section);
   });
+
+  static getPublicDiscoveryData = cache(async () => {
+    return HomepageRepository.getPublicDiscoveryData();
+  });
 }

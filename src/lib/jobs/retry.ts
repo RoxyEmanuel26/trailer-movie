@@ -29,3 +29,10 @@ export class RetryableJobError extends Error {
     this.name = 'RetryableJobError';
   }
 }
+
+export class PartialJobError extends RetryableJobError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PartialJobError';
+  }
+}

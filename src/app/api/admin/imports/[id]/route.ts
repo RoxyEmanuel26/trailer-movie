@@ -5,7 +5,6 @@ import { requireAdmin } from "@/lib/auth/utils";
 import { ImportManagerService } from "@/lib/services/ImportManagerService";
 
 export const GET = apiHandler(async (request: NextRequest, { params }: any) => {
-  await requireAdmin("read:imports");
   const { id } = await params;
   
   const job = await ImportManagerService.getJob(id);

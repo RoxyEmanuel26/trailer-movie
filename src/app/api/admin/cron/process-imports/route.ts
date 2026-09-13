@@ -23,9 +23,9 @@ export const POST = async (request: Request) => {
     }
 
     // Process a single batch of imports
-    const processedCount = await importQueueWorker.processNextBatch();
+    const summary = await importQueueWorker.processNextBatch();
 
-    return NextResponse.json({ success: true, processed: processedCount, message: 'Batch processed successfully' });
+    return NextResponse.json({ success: true, processed: summary.claimed, ...summary, message: 'Batch processed successfully' });
   } catch (error) {
     logger.error({ err: error }, '[CRON_ERROR] Failed to process imports');
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

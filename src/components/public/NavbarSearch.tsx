@@ -58,7 +58,7 @@ export function NavbarSearch() {
       variant="ghost"
       size="icon"
       onClick={() => setIsSearchOpen(true)}
-      className="hidden md:flex"
+      className="hidden h-11 w-11 md:flex"
     >
       <Search className="h-5 w-5" />
       <span className="sr-only">Search</span>

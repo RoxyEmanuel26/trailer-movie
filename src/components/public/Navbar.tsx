@@ -4,49 +4,33 @@ import { Film } from 'lucide-react';
 import { NavbarSearch } from './NavbarSearch';
 import { NavbarThemeToggle } from './NavbarThemeToggle';
 import { NavbarMobile } from './NavbarMobile';
+import { GenreService } from '@/lib/services/GenreService';
+import { MovieService } from '@/lib/services/MovieService';
+import { BrowseNav } from './BrowseNav';
 
-export function Navbar() {
+export async function Navbar() {
+  const [genres, years] = await Promise.all([
+    GenreService.listGenres(),
+    MovieService.listPublishedReleaseYears(),
+  ]);
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4 flex h-16 items-center justify-between">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/82 backdrop-blur-xl">
+      <div className="mx-auto flex h-[4.5rem] max-w-[90rem] items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6 md:gap-10">
-          <Link href="/" className="flex items-center space-x-2">
-            <Film className="h-6 w-6" />
-            <span className="font-bold inline-block">TrailerTube</span>
+          <Link href="/" className="group flex items-center gap-2.5" aria-label="TrailerTube home">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground transition-transform duration-200 group-hover:-rotate-3 group-active:scale-95">
+              <Film className="h-4.5 w-4.5" />
+            </span>
+            <span className="text-[1.05rem] font-semibold tracking-[-0.035em]">TrailerTube</span>
           </Link>
-          <nav className="hidden md:flex gap-6">
-            <Link
-              href="/search?status=PUBLISHED"
-              className="flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Movies
-            </Link>
-            <div className="group relative flex items-center">
-              <button className="flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-                Genres
-              </button>
-              {/* Mega Menu Dropdown */}
-              <div className="absolute left-0 top-full hidden w-[600px] pt-4 group-hover:block">
-                <div className="rounded-md border bg-popover p-4 shadow-md">
-                  <div className="grid grid-cols-3 gap-4">
-                    {/* Hardcoded a few genres for now, could be passed as props if needed */}
-                    <Link href="/genre/action" className="text-sm hover:underline">Action</Link>
-                    <Link href="/genre/comedy" className="text-sm hover:underline">Comedy</Link>
-                    <Link href="/genre/drama" className="text-sm hover:underline">Drama</Link>
-                    <Link href="/genre/horror" className="text-sm hover:underline">Horror</Link>
-                    <Link href="/genre/sci-fi" className="text-sm hover:underline">Sci-Fi</Link>
-                    <Link href="/genre/thriller" className="text-sm hover:underline">Thriller</Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </nav>
+          <BrowseNav genres={genres} years={years} />
         </div>
 
         <div className="flex items-center gap-2">
           <NavbarSearch />
           <NavbarThemeToggle />
-          <NavbarMobile />
+          <NavbarMobile genres={genres} years={years} />
         </div>
       </div>
     </header>

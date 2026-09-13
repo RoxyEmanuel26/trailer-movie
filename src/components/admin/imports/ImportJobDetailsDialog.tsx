@@ -30,10 +30,10 @@ export function ImportJobDetailsDialog({
   // The tracker saves ProgressState in the 'logs' field as a JSON object.
   // Shape: { stage, progress, logs: string[], retryCount, startedAt, finishedAt, durationMs }
   const state = job.logs as any
-  const percentage = state?.progress || 0
+  const percentage = job.progress ?? state?.progress ?? 0
   const steps = Array.isArray(state?.logs) ? state.logs : []
-  const currentStep = state?.stage || 'Initializing'
-  const retryCount = state?.retryCount || 0
+  const currentStep = job.stage || state?.stage || 'Initializing'
+  const retryCount = job.attemptCount ?? state?.retryCount ?? 0
   const durationMs = state?.durationMs
 
   return (
@@ -41,7 +41,7 @@ export function ImportJobDetailsDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-6">
           <DialogTitle>Import Job Details</DialogTitle>
-          {job.status === "FAILED" && onRetry && (
+          {["FAILED", "PARTIAL"].includes(job.status) && job.retryable && onRetry && (
             <Button
               size="sm"
               variant="outline"
@@ -72,10 +72,22 @@ export function ImportJobDetailsDialog({
               <p className="font-medium">{job.status}</p>
             </div>
             <div>
+              <span className="text-muted-foreground">Entity:</span>
+              <p className="font-medium">{job.entityType}</p>
+            </div>
+            <div>
               <span className="text-muted-foreground">Created:</span>
               <p>{new Date(job.createdAt).toLocaleString()}</p>
             </div>
           </div>
+
+          {job.errorMessage && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+              <p className="font-medium text-destructive">{job.errorCode || 'Import error'}</p>
+              <p className="mt-1 break-words text-muted-foreground">{job.errorMessage}</p>
+              <p className="mt-2 text-xs">{job.retryable ? 'This error can be retried.' : 'Permanent failure; manual review required.'}</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="flex justify-between text-sm">

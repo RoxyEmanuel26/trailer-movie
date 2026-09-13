@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -37,65 +37,65 @@
 
 @layer base {
   :root {
-    --background: #ffffff;
-    --foreground: #09090b;
+    --background: #f4f1eb;
+    --foreground: #171714;
 
-    --card: #ffffff;
-    --card-foreground: #09090b;
+    --card: #fbfaf7;
+    --card-foreground: #171714;
 
-    --popover: #ffffff;
-    --popover-foreground: #09090b;
+    --popover: #fbfaf7;
+    --popover-foreground: #171714;
 
-    --primary: #18181b;
-    --primary-foreground: #fafafa;
+    --primary: #d04a2b;
+    --primary-foreground: #fffaf5;
 
-    --secondary: #f4f4f5;
-    --secondary-foreground: #18181b;
+    --secondary: #e9e3d9;
+    --secondary-foreground: #24221e;
 
-    --muted: #f4f4f5;
-    --muted-foreground: #71717a;
+    --muted: #e9e3d9;
+    --muted-foreground: #6d685f;
 
-    --accent: #f4f4f5;
-    --accent-foreground: #18181b;
+    --accent: #eee7dc;
+    --accent-foreground: #24221e;
 
     --destructive: #ef4444;
     --destructive-foreground: #fafafa;
 
-    --border: #e4e4e7;
-    --input: #e4e4e7;
-    --ring: #18181b;
+    --border: #d9d2c7;
+    --input: #d9d2c7;
+    --ring: #d04a2b;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
   }
 
   .dark {
-    --background: #09090b;
-    --foreground: #fafafa;
+    --background: #10110f;
+    --foreground: #f4f1eb;
 
-    --card: #09090b;
-    --card-foreground: #fafafa;
+    --card: #171815;
+    --card-foreground: #f4f1eb;
 
-    --popover: #09090b;
-    --popover-foreground: #fafafa;
+    --popover: #1a1b18;
+    --popover-foreground: #f4f1eb;
 
-    --primary: #fafafa;
-    --primary-foreground: #18181b;
+    --primary: #e25b38;
+    --primary-foreground: #fffaf5;
 
-    --secondary: #27272a;
-    --secondary-foreground: #fafafa;
+    --secondary: #272821;
+    --secondary-foreground: #f4f1eb;
 
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
+    --muted: #272821;
+    --muted-foreground: #aaa69c;
 
-    --accent: #27272a;
-    --accent-foreground: #fafafa;
+    --accent: #2c2c25;
+    --accent-foreground: #f4f1eb;
 
     --destructive: #7f1d1d;
     --destructive-foreground: #fafafa;
 
-    --border: #27272a;
-    --input: #27272a;
-    --ring: #d4d4d8;
+    --border: #34352f;
+    --input: #34352f;
+    --ring: #e25b38;
   }
 }
 
@@ -105,6 +105,111 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
+    font-family: var(--font-geist-sans), sans-serif;
+    text-rendering: optimizeLegibility;
+    background-image: radial-gradient(
+      circle at 12% -10%,
+      color-mix(in srgb, var(--primary) 10%, transparent),
+      transparent 34rem
+    );
+    background-attachment: fixed;
+    overflow-x: clip;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .skip-link {
+    @apply fixed left-4 top-3 z-[60] -translate-y-20 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform focus:translate-y-0;
+  }
+
+  .nav-link {
+    @apply rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground active:scale-[0.98];
+  }
+
+  .nav-link[aria-current='page'],
+  .nav-dropdown[data-active='true'] > .nav-link {
+    @apply bg-muted text-foreground;
+  }
+
+  .nav-dropdown-panel {
+    @apply invisible absolute top-full z-50 translate-y-2 pt-3 opacity-0 transition duration-200;
+  }
+
+  .nav-dropdown:hover > .nav-dropdown-panel,
+  .nav-dropdown:has(:focus-visible) > .nav-dropdown-panel,
+  .nav-dropdown[data-state='open'] > .nav-dropdown-panel {
+    @apply visible translate-y-0 opacity-100;
+  }
+
+  .nav-dropdown-chevron {
+    @apply transition-transform duration-200;
+  }
+
+  .nav-dropdown:hover > .nav-link .nav-dropdown-chevron,
+  .nav-dropdown:has(:focus-visible) > .nav-link .nav-dropdown-chevron,
+  .nav-dropdown[data-state='open'] > .nav-link .nav-dropdown-chevron {
+    @apply rotate-180;
+  }
+
+  .nav-dropdown-surface {
+    background: color-mix(in srgb, var(--popover) 96%, transparent);
+    box-shadow: 0 1.5rem 4rem color-mix(in srgb, var(--foreground) 16%, transparent);
+    @apply rounded-2xl border border-border/75 p-3 backdrop-blur-xl;
+  }
+
+  .nav-dropdown-label {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .nav-dropdown-item {
+    @apply rounded-lg px-3 py-2.5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent;
+  }
+
+  .mobile-nav-link {
+    @apply flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted active:scale-[0.99];
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.2em] text-primary;
+  }
+
+  .cinema-panel {
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    box-shadow: 0 1.25rem 4rem color-mix(in srgb, var(--foreground) 10%, transparent);
+    @apply border border-border/70 backdrop-blur-xl;
+  }
+}
+
+@media (hover: none) {
+  .group:hover .group-hover\:-translate-y-1,
+  .group:hover .group-hover\:scale-105 {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

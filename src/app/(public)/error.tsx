@@ -17,12 +17,14 @@ export default function ErrorPage({
   }, [error]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 text-center">
+    <div className="flex min-h-[60dvh] flex-col items-center justify-center px-4 py-16 text-center sm:min-h-[70vh]">
       <div className="bg-destructive/10 p-6 rounded-full mb-6">
         <AlertTriangle className="w-16 h-16 text-destructive" />
       </div>
-      <h1 className="text-4xl font-bold tracking-tight mb-4">Something went wrong</h1>
-      <p className="text-lg text-muted-foreground max-w-md mb-8">
+      <h1 className="mb-4 text-balance text-4xl font-bold tracking-tight sm:text-5xl">
+        Something went wrong
+      </h1>
+      <p className="mb-8 max-w-md text-base leading-7 text-muted-foreground sm:text-lg">
         We encountered an unexpected error while loading this page. Our team has been notified.
       </p>
       <div className="flex gap-4">

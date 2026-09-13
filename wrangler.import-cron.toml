@@ -1,0 +1,6 @@
+name = "trailertube-import-cron"
+main = "cloudflare/import-cron-worker.ts"
+compatibility_date = "2026-09-14"
+
+[triggers]
+crons = ["*/5 * * * *"]

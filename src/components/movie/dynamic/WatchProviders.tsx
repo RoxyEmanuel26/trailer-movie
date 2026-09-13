@@ -1,8 +1,8 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import Image from "next/image"
-import { ExternalLink, ChevronDown, ChevronUp } from "lucide-react"
+import * as React from 'react';
+import Image from 'next/image';
+import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 
 export interface WatchProvidersProps {
   providers?: any;
@@ -177,23 +177,23 @@ export function getDirectWatchUrl(providerName: string, movieTitle: string): str
 }
 
 const POPULAR_WEIGHTS: Record<string, number> = {
-  'netflix': 100,
+  netflix: 100,
   'prime video': 95,
   'disney+': 90,
   'apple tv': 85,
-  'max': 80,
-  'youtube': 75,
+  max: 80,
+  youtube: 75,
   'google play': 70,
-  'vidio': 68,
+  vidio: 68,
   'catchplay+': 67,
-  'viu': 66,
-  'hulu': 65,
+  viu: 66,
+  hulu: 65,
   'paramount+': 64,
-  'peacock': 63,
-  'plex': 60,
-  'tubi': 58,
+  peacock: 63,
+  plex: 60,
+  tubi: 58,
   'pluto tv': 57,
-  'sky': 55,
+  sky: 55,
   'rakuten tv': 50,
   'canal+': 45,
 };
@@ -206,12 +206,7 @@ function getProviderScore(normalizedName: string, displayPriority?: number): num
   return 30 - Math.min(displayPriority ?? 20, 25);
 }
 
-export function WatchProviders({ 
-  providers, 
-  links,
-  movieSlug,
-  movieTitle,
-}: WatchProvidersProps) {
+export function WatchProviders({ providers, links, movieSlug, movieTitle }: WatchProvidersProps) {
   const [filter, setFilter] = React.useState<'all' | 'stream' | 'rent_buy'>('all');
   const [isExpanded, setIsExpanded] = React.useState(false);
 
@@ -226,12 +221,12 @@ export function WatchProviders({
       if (!l.provider) continue;
       const rawName = l.provider.name;
       const normalized = normalizeProviderName(rawName);
-      const accessCategory: 'stream' | 'rent' | 'buy' = 
+      const accessCategory: 'stream' | 'rent' | 'buy' =
         l.accessType === 'FLATRATE' || l.accessType === 'FREE' || l.accessType === 'ADS'
           ? 'stream'
           : l.accessType === 'RENT'
-          ? 'rent'
-          : 'buy';
+            ? 'rent'
+            : 'buy';
 
       const existing = providerMap.get(normalized);
       if (existing) {
@@ -303,7 +298,9 @@ export function WatchProviders({
     return (
       <div className="mt-6 p-4 rounded-xl border bg-card/50">
         <h3 className="text-sm font-semibold mb-1 text-muted-foreground">Available on</h3>
-        <p className="text-xs text-muted-foreground/60 italic">No streaming provider data found for this movie.</p>
+        <p className="text-xs text-muted-foreground/60 italic">
+          No streaming provider data found for this movie.
+        </p>
       </div>
     );
   }
@@ -322,29 +319,35 @@ export function WatchProviders({
   // Collapse / Expand threshold
   const INITIAL_LIMIT = 12;
   const shouldTruncate = filteredProviders.length > INITIAL_LIMIT;
-  const displayProviders = isExpanded || !shouldTruncate 
-    ? filteredProviders 
-    : filteredProviders.slice(0, INITIAL_LIMIT);
+  const displayProviders =
+    isExpanded || !shouldTruncate ? filteredProviders : filteredProviders.slice(0, INITIAL_LIMIT);
 
   const hiddenCount = filteredProviders.length - INITIAL_LIMIT;
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const jsonLd = movieSlug ? {
-    "@context": "https://schema.org",
-    "@type": "Movie",
-    "@id": `${baseUrl}/watch/${movieSlug}`,
-    "offers": allProviders.map((p) => ({
-      "@type": "Offer",
-      "name": p.name,
-      "url": p.directUrl,
-      "category": p.types.has('stream') ? 'subscription' : 'rental'
-    }))
-  } : null;
+  const jsonLd = movieSlug
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'Movie',
+        '@id': `${baseUrl}/watch/${movieSlug}`,
+        offers: allProviders.map((p) => ({
+          '@type': 'Offer',
+          name: p.name,
+          url: p.directUrl,
+          category: p.types.has('stream') ? 'subscription' : 'rental',
+        })),
+      }
+    : null;
 
   return (
     <div className="mt-6 p-4 rounded-xl border bg-card shadow-sm">
-      {jsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />}
-      
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div>
@@ -358,13 +361,13 @@ export function WatchProviders({
 
       {/* Filter Tabs if both stream and rent/buy exist */}
       {streamCount > 0 && rentBuyCount > 0 && (
-        <div className="flex items-center gap-1 p-1 bg-muted/60 rounded-lg mb-3.5 text-xs font-medium border">
+        <div className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/60 p-1 text-xs font-medium sm:flex sm:items-center">
           <button
             type="button"
             onClick={() => setFilter('all')}
-            className={`flex-1 py-1 px-2 rounded-md transition-all text-center text-[11px] ${
-              filter === 'all' 
-                ? 'bg-background shadow-xs text-foreground font-semibold' 
+            className={`min-h-11 rounded-md px-1 py-1 text-center text-[10px] transition-all sm:flex-1 sm:px-2 sm:text-[11px] ${
+              filter === 'all'
+                ? 'bg-background shadow-xs text-foreground font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -373,9 +376,9 @@ export function WatchProviders({
           <button
             type="button"
             onClick={() => setFilter('stream')}
-            className={`flex-1 py-1 px-2 rounded-md transition-all text-center text-[11px] ${
-              filter === 'stream' 
-                ? 'bg-background shadow-xs text-foreground font-semibold' 
+            className={`min-h-11 rounded-md px-1 py-1 text-center text-[10px] transition-all sm:flex-1 sm:px-2 sm:text-[11px] ${
+              filter === 'stream'
+                ? 'bg-background shadow-xs text-foreground font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -384,9 +387,9 @@ export function WatchProviders({
           <button
             type="button"
             onClick={() => setFilter('rent_buy')}
-            className={`flex-1 py-1 px-2 rounded-md transition-all text-center text-[11px] ${
-              filter === 'rent_buy' 
-                ? 'bg-background shadow-xs text-foreground font-semibold' 
+            className={`min-h-11 rounded-md px-1 py-1 text-center text-[10px] transition-all sm:flex-1 sm:px-2 sm:text-[11px] ${
+              filter === 'rent_buy'
+                ? 'bg-background shadow-xs text-foreground font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -396,11 +399,12 @@ export function WatchProviders({
       )}
 
       {/* Provider Grid */}
-      <div className="grid grid-cols-4 sm:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-2 gap-2.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
         {displayProviders.map((provider) => {
           const isStream = provider.types.has('stream');
           const isRentBuy = provider.types.has('rent') || provider.types.has('buy');
-          const badgeText = isStream && isRentBuy ? 'Stream/Rent' : isStream ? 'Stream' : 'Rent/Buy';
+          const badgeText =
+            isStream && isRentBuy ? 'Stream/Rent' : isStream ? 'Stream' : 'Rent/Buy';
 
           return (
             <a
@@ -409,17 +413,17 @@ export function WatchProviders({
               target="_blank"
               rel="noopener noreferrer"
               title={`Watch "${effectiveTitle}" on ${provider.name} ↗`}
-              className="group relative flex flex-col items-center gap-1 p-1.5 rounded-xl border bg-muted/20 hover:bg-muted/80 hover:border-primary/50 transition-all duration-200 hover:scale-[1.04] shadow-xs"
+              className="group relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl border bg-muted/20 p-1.5 shadow-xs transition-all duration-200 hover:border-primary/50 hover:bg-muted/80 active:scale-[.98] [@media(hover:hover)]:hover:scale-[1.04]"
             >
               {/* Logo / Thumbnail */}
               <div className="relative w-11 h-11 rounded-lg overflow-hidden border bg-background shadow-xs flex items-center justify-center shrink-0">
                 {provider.logoUrl ? (
-                  <Image 
-                    src={provider.logoUrl} 
-                    alt={provider.name} 
-                    fill 
+                  <Image
+                    src={provider.logoUrl}
+                    alt={provider.name}
+                    fill
                     sizes="44px"
-                    className="object-cover transition-transform group-hover:scale-105 duration-200" 
+                    className="object-cover transition-transform group-hover:scale-105 duration-200"
                   />
                 ) : (
                   <div className="w-full h-full bg-muted flex items-center justify-center text-[10px] text-center font-bold px-1 text-muted-foreground">
@@ -451,7 +455,7 @@ export function WatchProviders({
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full mt-3 py-1.5 px-3 rounded-lg border bg-muted/40 hover:bg-muted text-xs font-medium flex items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          className="mt-3 flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {isExpanded ? (
             <>
@@ -480,8 +484,8 @@ export function WatchProvidersSkeleton() {
   return (
     <div className="mt-6 p-4 rounded-xl border bg-card animate-pulse">
       <div className="h-4 w-24 bg-muted rounded mb-3"></div>
-      <div className="grid grid-cols-4 gap-2.5">
-        {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+      <div className="grid grid-cols-2 gap-2.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
+        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
           <div key={i} className="flex flex-col items-center gap-1">
             <div className="w-11 h-11 bg-muted rounded-lg"></div>
             <div className="w-10 h-2 bg-muted rounded"></div>

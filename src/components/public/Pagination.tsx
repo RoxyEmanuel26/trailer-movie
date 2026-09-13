@@ -13,7 +13,12 @@ interface PaginationProps {
   className?: string;
 }
 
-export function Pagination({ totalItems, itemsPerPage, currentPage, className = '' }: PaginationProps) {
+export function Pagination({
+  totalItems,
+  itemsPerPage,
+  currentPage,
+  className = '',
+}: PaginationProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const totalPages = Math.ceil(totalItems / itemsPerPage);
@@ -29,7 +34,7 @@ export function Pagination({ totalItems, itemsPerPage, currentPage, className = 
   const getPageNumbers = () => {
     const pages = [];
     const maxVisiblePages = 5;
-    
+
     if (totalPages <= maxVisiblePages) {
       for (let i = 1; i <= totalPages; i++) pages.push(i);
     } else {
@@ -46,53 +51,71 @@ export function Pagination({ totalItems, itemsPerPage, currentPage, className = 
 
   return (
     <div className={`flex flex-wrap items-center justify-center gap-2 ${className}`}>
-      <Button
-        variant="outline"
-        size="icon"
-        asChild
-        disabled={currentPage === 1}
-        className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
-      >
-        <Link href={createPageUrl(currentPage - 1)} aria-label="Previous Page">
+      {currentPage === 1 ? (
+        <Button
+          variant="outline"
+          size="icon"
+          disabled
+          aria-label="Previous Page"
+          className="h-11 w-11"
+        >
           <ChevronLeft className="h-4 w-4" />
-        </Link>
-      </Button>
+        </Button>
+      ) : (
+        <Button variant="outline" size="icon" asChild className="h-11 w-11">
+          <Link href={createPageUrl(currentPage - 1)} aria-label="Previous Page">
+            <ChevronLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+      )}
 
       {getPageNumbers().map((page, index) => {
         if (page === '...') {
           return (
-            <Button key={`ellipsis-${index}`} variant="ghost" size="icon" disabled>
+            <Button
+              key={`ellipsis-${index}`}
+              variant="ghost"
+              size="icon"
+              disabled
+              className="hidden h-11 w-11 sm:inline-flex"
+            >
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           );
         }
 
         const isCurrent = page === currentPage;
+        const isMobilePriority = isCurrent || page === 1 || page === totalPages;
         return (
           <Button
             key={`page-${page}`}
             variant={isCurrent ? 'default' : 'outline'}
             size="icon"
+            className={`${isMobilePriority ? 'inline-flex' : 'hidden sm:inline-flex'} h-11 w-11`}
             asChild
           >
-            <Link href={createPageUrl(page as number)} aria-label={`Page ${page}`} aria-current={isCurrent ? 'page' : undefined}>
+            <Link
+              href={createPageUrl(page as number)}
+              aria-label={`Page ${page}`}
+              aria-current={isCurrent ? 'page' : undefined}
+            >
               {page}
             </Link>
           </Button>
         );
       })}
 
-      <Button
-        variant="outline"
-        size="icon"
-        asChild
-        disabled={currentPage === totalPages}
-        className={currentPage === totalPages ? 'pointer-events-none opacity-50' : ''}
-      >
-        <Link href={createPageUrl(currentPage + 1)} aria-label="Next Page">
+      {currentPage === totalPages ? (
+        <Button variant="outline" size="icon" disabled aria-label="Next Page" className="h-11 w-11">
           <ChevronRight className="h-4 w-4" />
-        </Link>
-      </Button>
+        </Button>
+      ) : (
+        <Button variant="outline" size="icon" asChild className="h-11 w-11">
+          <Link href={createPageUrl(currentPage + 1)} aria-label="Next Page">
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      )}
     </div>
   );
 }

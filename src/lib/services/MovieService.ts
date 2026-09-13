@@ -3,8 +3,13 @@ import { NotFoundError, ValidationError } from '../errors';
 import { cache } from 'react';
 import { requireAdmin } from '../auth/utils';
 import { prisma } from '../prisma';
+import type { Prisma } from '@prisma/client';
 
 export class MovieService {
+  static listPublishedReleaseYears = cache(async () => {
+    return MovieRepository.listPublishedReleaseYears();
+  });
+
   static getMovie = cache(async (id: string) => {
     const movie = await MovieRepository.findById(id);
     if (!movie || movie.status !== 'PUBLISHED') {
@@ -146,12 +151,12 @@ export class MovieService {
     return MovieRepository.update(id, data);
   }
 
-  static async adminListMovies(params: { 
-    skip?: number; 
-    take?: number; 
-    search?: string; 
-    status?: any; 
-    orderBy?: any 
+  static async adminListMovies(params: {
+    skip?: number;
+    take?: number;
+    search?: string;
+    status?: any;
+    orderBy?: any;
   }) {
     await requireAdmin('read:movies');
     const skip = params.skip || 0;
@@ -163,44 +168,57 @@ export class MovieService {
         total,
         skip,
         take,
-      }
+      },
     };
   }
 
-  static async listMovies(params: { 
-    skip?: number; 
-    take?: number; 
-    search?: string; 
-    status?: any; 
-    orderBy?: any 
+  static async listMovies(params: {
+    skip?: number;
+    take?: number;
+    search?: string;
+    status?: any;
+    orderBy?: any;
   }) {
     const skip = params.skip || 0;
     const take = Math.min(Number(params.take) || 50, 100);
-    const { data, total } = await MovieRepository.list({ ...params, skip, take, status: 'PUBLISHED' });
+    const { data, total } = await MovieRepository.list({
+      ...params,
+      skip,
+      take,
+      status: 'PUBLISHED',
+    });
     return {
       data,
       meta: {
         total,
         skip,
         take,
-      }
+      },
     };
   }
 
-  static async searchMovies(params: { 
-    skip?: number; 
-    take?: number; 
-    search?: string; 
-    status?: any; 
-    orderBy?: any;
+  static async searchMovies(params: {
+    skip?: number;
+    take?: number;
+    search?: string;
+    status?: any;
+    orderBy?: Prisma.MovieOrderByWithRelationInput | Prisma.MovieOrderByWithRelationInput[];
     genreSlug?: string;
     collectionSlug?: string;
     tagSlug?: string;
+    countryCodes?: string[];
+    languageCodes?: string[];
+    releaseYear?: number;
   }) {
     // Public search method that uses full-text search
     const skip = params.skip || 0;
     const take = Math.min(Number(params.take) || 24, 48);
-    const { data, total } = await MovieRepository.search({ ...params, skip, take, status: 'PUBLISHED' });
+    const { data, total } = await MovieRepository.search({
+      ...params,
+      skip,
+      take,
+      status: 'PUBLISHED',
+    });
     return { data, total };
   }
 }

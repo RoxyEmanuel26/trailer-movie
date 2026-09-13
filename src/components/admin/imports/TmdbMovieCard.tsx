@@ -26,7 +26,7 @@ export function TmdbMovieCard({ movie }: TmdbMovieCardProps) {
       const res = await fetch("/api/admin/imports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tmdbId: movie.id }),
+        body: JSON.stringify({ tmdbId: movie.id, forceRefresh: true }),
       })
       if (!res.ok) throw new Error("Failed to queue import")
       toast.success(`Import queued for ${movie.title}`)
