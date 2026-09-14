@@ -6,16 +6,28 @@ import { Pagination } from '@/components/public/Pagination';
 import { GenreService } from '@/lib/services/GenreService';
 import Link from 'next/link';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { isPageOutOfRange, parseStrictPage } from '@/lib/pagination';
+import { notFound } from 'next/navigation';
+import { SearchResultsTracker } from '@/components/public/SearchResultsTracker';
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const resolved = await searchParams;
+  const page = parseStrictPage(resolved.page);
+  if (!page) notFound();
+  const q = typeof resolved.q === 'string' ? resolved.q : undefined;
+  const genreSlug = typeof resolved.genre === 'string' ? resolved.genre : undefined;
+  const collectionSlug = typeof resolved.collection === 'string' ? resolved.collection : undefined;
+  const { total } = await MovieService.searchMovies({ search: q, genreSlug, collectionSlug, take: 1 });
+  if (isPageOutOfRange(page, total, 24)) notFound();
   return SeoService.generateMetadata('Page', 'search', {
     title: 'Search Movies',
     description: 'Search and filter through our extensive collection of movie trailers.',
     path: '/search',
+    indexable: false,
   });
 }
 
@@ -27,9 +39,8 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const collectionSlug =
     typeof resolvedParams.collection === 'string' ? resolvedParams.collection : undefined;
   const sort = typeof resolvedParams.sort === 'string' ? resolvedParams.sort : 'createdAt_desc';
-  const parsedPage =
-    typeof resolvedParams.page === 'string' ? parseInt(resolvedParams.page, 10) : 1;
-  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const page = parseStrictPage(resolvedParams.page);
+  if (!page) notFound();
 
   const itemsPerPage = 24;
   const skip = (page - 1) * itemsPerPage;
@@ -53,9 +64,11 @@ export default async function SearchPage({ searchParams }: PageProps) {
     }),
     GenreService.listGenres(),
   ]);
+  if (isPageOutOfRange(page, totalMovies, itemsPerPage)) notFound();
 
   return (
     <div className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
+      <SearchResultsTracker query={q || ''} resultsCount={totalMovies} />
       <div className="mb-8 max-w-3xl sm:mb-10">
         <p className="eyebrow mb-3">Explore the catalog</p>
         <h1 className="text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.05em] sm:text-5xl lg:text-6xl">
@@ -126,8 +139,8 @@ export default async function SearchPage({ searchParams }: PageProps) {
         {movies.length > 0 ? (
           <>
             <div className="mb-10 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:mb-12 lg:grid-cols-6 lg:gap-y-8">
-              {movies.map((movie, index) => (
-                <MovieCard key={movie.id} movie={movie} priority={index < 4} />
+              {movies.map((movie) => (
+                <MovieCard key={movie.id} movie={movie} />
               ))}
             </div>
 

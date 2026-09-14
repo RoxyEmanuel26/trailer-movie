@@ -8,7 +8,7 @@ export function Footer() {
         <div className="col-span-2 flex max-w-md flex-col gap-4 md:col-span-1">
           <Link href="/" className="flex items-center space-x-2">
             <Film className="h-6 w-6" />
-            <span className="font-bold text-lg">TrailerTube</span>
+            <span className="font-bold text-lg">MovieFlix</span>
           </Link>
           <p className="text-sm text-muted-foreground">
             A focused movie discovery guide powered by a locally indexed catalog—trailers, cast,
@@ -21,7 +21,7 @@ export function Footer() {
           <ul className="flex flex-col text-sm text-muted-foreground">
             <li>
               <Link
-                href="/search?status=PUBLISHED"
+                href="/movies"
                 className="flex min-h-11 items-center hover:text-foreground"
               >
                 All Movies
@@ -52,8 +52,11 @@ export function Footer() {
         </div>
 
         <div>
-          <h3 className="font-semibold mb-4 text-sm">Legal</h3>
+          <h3 className="font-semibold mb-4 text-sm">MovieFlix</h3>
           <ul className="flex flex-col text-sm text-muted-foreground">
+            <li><Link href="/about" className="flex min-h-11 items-center hover:text-foreground">About</Link></li>
+            <li><Link href="/methodology" className="flex min-h-11 items-center hover:text-foreground">Methodology</Link></li>
+            <li><Link href="/contact" className="flex min-h-11 items-center hover:text-foreground">Contact</Link></li>
             <li>
               <Link href="/privacy" className="flex min-h-11 items-center hover:text-foreground">
                 Privacy policy
@@ -74,7 +77,7 @@ export function Footer() {
       </div>
 
       <div className="mx-auto mt-9 flex max-w-[90rem] flex-col items-start justify-between gap-3 border-t px-4 pt-7 text-xs text-muted-foreground sm:px-6 md:mt-12 md:flex-row md:items-center md:pt-8 lg:px-8">
-        <p>© {new Date().getFullYear()} TrailerTube. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} MovieFlix. All rights reserved.</p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <a href="/feed.xml" className="flex min-h-8 items-center hover:text-foreground">
             RSS

@@ -45,7 +45,7 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
               <Film className="h-4.5 w-4.5" />
             </span>
-            <SheetTitle className="font-semibold tracking-[-0.03em]">TrailerTube</SheetTitle>
+            <SheetTitle className="font-semibold tracking-[-0.03em]">MovieFlix</SheetTitle>
           </Link>
           <form onSubmit={handleSearch} className="mt-4 flex gap-2">
             <Input
@@ -66,11 +66,11 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
         >
           <div className="flex flex-col gap-1">
             <Link
-              href="/search"
-              aria-current={pathname === '/search' ? 'page' : undefined}
+              href="/movies"
+              aria-current={pathname === '/movies' ? 'page' : undefined}
               className={cn(
                 'mobile-nav-link font-semibold',
-                pathname === '/search' && 'bg-muted text-primary'
+                pathname === '/movies' && 'bg-muted text-primary'
               )}
               onClick={closeMenu}
             >
@@ -104,7 +104,8 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
               ))}
             </MobileNavSection>
 
-            <MobileNavSection label="Popular" active={pathname.startsWith('/popular/')}>
+            <MobileNavSection label="Popular" active={pathname.startsWith('/popular')}>
+              <Link href="/popular" className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Popular overview</Link>
               {POPULAR_CATALOG.map((item) => (
                 <Link
                   key={item.slug}
@@ -121,7 +122,8 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
               ))}
             </MobileNavSection>
 
-            <MobileNavSection label="Countries" active={pathname.startsWith('/origin/')}>
+            <MobileNavSection label="Countries" active={pathname.startsWith('/origin/') || pathname === '/countries'}>
+              <Link href="/countries" className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Countries overview</Link>
               {ORIGIN_CATALOG.map((item) => (
                 <Link
                   key={item.slug}
@@ -138,7 +140,8 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
               ))}
             </MobileNavSection>
 
-            <MobileNavSection label="Years" active={pathname.startsWith('/year/')}>
+            <MobileNavSection label="Years" active={pathname.startsWith('/year/') || pathname === '/years'}>
+              <Link href="/years" className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Years overview</Link>
               <div className="grid grid-cols-3 gap-1">
                 {years.map((year) => (
                   <Link

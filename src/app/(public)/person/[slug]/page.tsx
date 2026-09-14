@@ -6,6 +6,11 @@ import { Star, Film } from 'lucide-react';
 import { ResponsiveDetails } from '@/components/public/ResponsiveDetails';
 import { PersonService } from '@/lib/services/PersonService';
 import { SeoService } from '@/lib/services/SeoService';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { PersonRepository } from '@/lib/repositories/PersonRepository';
+import { EntityViewTracker } from '@/components/public/EntityViewTracker';
+import { moviePath } from '@/lib/public-routes';
+import { absoluteUrl } from '@/lib/site-config';
 
 export default async function PersonPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug: routeParam } = await params;
@@ -49,8 +54,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
   }
   const catalogMovies = Array.from(catalogMovieMap.values());
 
-  const jsonLd = [
-    SeoService.generateStructuredData('Person', {
+  const personNode = SeoService.generateStructuredData('Person', {
       path: canonicalPath,
       name: person.name,
       description: person.biography,
@@ -61,7 +65,20 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
       birthPlace: person.placeOfBirth,
       jobTitle: person.knownForDepartment,
       sameAs: person.imdbId ? [`https://www.imdb.com/name/${person.imdbId}`] : [],
-    }),
+    });
+  const personUrl = absoluteUrl(canonicalPath);
+  const jsonLd = [
+    {
+      '@type': 'ProfilePage',
+      '@id': `${personUrl}#webpage`,
+      url: personUrl,
+      name: person.name,
+      description: person.biography || `${person.name} movie credits and biography on MovieFlix.`,
+      dateModified: person.updatedAt.toISOString(),
+      isPartOf: { '@id': `${absoluteUrl('/')}#website` },
+      mainEntity: { '@id': `${personUrl}#person` },
+    },
+    { ...personNode, '@id': `${personUrl}#person`, mainEntityOfPage: { '@id': `${personUrl}#webpage` } },
     SeoService.generateStructuredData('BreadcrumbList', {
       items: [
         { name: 'Home', path: '/' },
@@ -72,10 +89,8 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-16">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
-      />
+      <JsonLd data={{ '@context': 'https://schema.org', '@graph': jsonLd }} />
+      <EntityViewTracker eventName="person_view" entityId={person.id} />
       <nav aria-label="Breadcrumb" className="mb-7 text-sm text-muted-foreground sm:mb-9">
         <ol className="flex min-w-0 items-center gap-2">
           <li>
@@ -206,7 +221,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
                   return (
                     <Link
                       key={movie.id}
-                      href={`/watch/${movie.slug}`}
+                      href={moviePath(movie.slug)}
                       className="group relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-card p-2 transition-all duration-300 hover:shadow-md active:scale-[.99] [@media(hover:hover)]:hover:scale-[1.02]"
                     >
                       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted">
@@ -288,7 +303,8 @@ export async function generateMetadata({
 }): Promise<import('next').Metadata> {
   const { slug: routeParam } = await params;
   const result = await PersonService.getPublicProfile(routeParam);
-  if (!result) return { title: 'Person Not Found', robots: { index: false, follow: false } };
+  if (!result) notFound();
+  if (result.shouldRedirect) permanentRedirect(result.canonicalPath);
 
   const { person, canonicalPath } = result;
   const description = createPersonDescription(person.name, person.biography);
@@ -298,7 +314,7 @@ export async function generateMetadata({
     description,
     image: person.headshotUrl || undefined,
     path: canonicalPath,
-    indexable: person.movies.length > 0,
+    indexable: PersonRepository.isIndexableProfile(person),
     openGraphType: 'profile',
   });
 }
@@ -315,7 +331,7 @@ function formatPersonDate(date: Date) {
 }
 
 function createPersonDescription(name: string, biography: string | null) {
-  const fallback = `Explore ${name}'s biography, filmography, roles, and movies available on TrailerTube.`;
+  const fallback = `Explore ${name}'s biography, filmography, roles, and movies available on MovieFlix.`;
   const normalized = biography?.replace(/\s+/g, ' ').trim() || fallback;
 
   if (normalized.length <= 160) return normalized;

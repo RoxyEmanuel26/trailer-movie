@@ -4,6 +4,9 @@ import { requireAdmin } from "@/lib/auth/utils"
 
 import { SessionProvider } from "@/components/auth/SessionProvider"
 import { AdminLayoutClient } from "@/components/admin/layout/AdminLayoutClient"
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { robots: { index: false, follow: false } }
 
 export const dynamic = 'force-dynamic';
 

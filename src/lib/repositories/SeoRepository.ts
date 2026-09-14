@@ -81,24 +81,82 @@ export class SeoRepository {
     }
   }
 
-  static async getSitemapData(db: DbClient = prisma) {
-    const [movies, genres, collections] = await Promise.all([
-      db.movie.findMany({ 
-        where: { status: 'PUBLISHED', deletedAt: null }, 
-        select: { slug: true, updatedAt: true }, 
-        orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
-        take: 1000 
+  static async countIndexableMovies(db: DbClient = prisma) {
+    return db.movie.count({
+      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' },
+    });
+  }
+
+  static async listIndexableMoviesForSitemap(
+    params: { skip: number; take: number },
+    db: DbClient = prisma
+  ) {
+    return db.movie.findMany({
+      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' },
+      select: {
+        slug: true,
+        title: true,
+        synopsis: true,
+        posterUrl: true,
+        updatedAt: true,
+        youtubeTrailerId: true,
+        trailers: {
+          where: { status: 'ACTIVE', sourceType: 'YOUTUBE' },
+          orderBy: [{ isPrimary: 'desc' }, { publishedDate: 'desc' }],
+          take: 1,
+          select: { sourceId: true, title: true, thumbnailUrl: true, publishedDate: true },
+        },
+      },
+      orderBy: [{ slug: 'asc' }, { id: 'asc' }],
+      skip: params.skip,
+      take: params.take,
+    });
+  }
+
+  static async getCoreSitemapData(db: DbClient = prisma) {
+    const [genres, collections] = await Promise.all([
+      db.genre.findMany({
+        where: {
+          description: { not: null },
+          movies: { some: { movie: { status: 'PUBLISHED', deletedAt: null } } },
+        },
+        select: {
+          slug: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              movies: { where: { movie: { status: 'PUBLISHED', deletedAt: null } } },
+            },
+          },
+        },
       }),
-      db.genre.findMany({ select: { slug: true, updatedAt: true }, take: 100 }),
-      db.collection.findMany({ where: { isActive: true }, select: { slug: true }, take: 100 }),
+      db.collection.findMany({
+        where: {
+          isActive: true,
+          description: { not: null },
+          movies: { some: { movie: { status: 'PUBLISHED', deletedAt: null } } },
+        },
+        select: {
+          slug: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              movies: { where: { movie: { status: 'PUBLISHED', deletedAt: null } } },
+            },
+          },
+        },
+      }),
     ]);
 
-    return { movies, genres, collections };
+    return {
+      genres: genres.filter((genre) => genre._count.movies >= 3),
+      collections: collections.filter((collection) => collection._count.movies >= 3),
+    };
   }
 
   static async getRssFeedData(db: DbClient = prisma) {
     return db.movie.findMany({
-      where: { status: 'PUBLISHED' },
+      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });

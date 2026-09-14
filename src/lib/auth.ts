@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { prisma } from './prisma';
+import { siteConfig } from './site-config';
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -13,7 +14,7 @@ export const auth = betterAuth({
     cookiePrefix: 'trailer-movie',
     useSecureCookies: process.env.NODE_ENV === 'production',
   },
-  trustedOrigins: ['http://localhost:3000', 'http://192.168.100.7:3000'],
+  trustedOrigins: [siteConfig.url, 'http://localhost:3000', 'http://192.168.100.7:3000'],
   // We can add OAuth providers here later
   /*
   socialProviders: {
@@ -22,4 +23,3 @@ export const auth = betterAuth({
   }
   */
 });
-

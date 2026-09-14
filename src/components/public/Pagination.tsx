@@ -27,8 +27,10 @@ export function Pagination({
 
   const createPageUrl = (pageNumber: number) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set('page', pageNumber.toString());
-    return `${pathname}?${params.toString()}`;
+    if (pageNumber === 1) params.delete('page');
+    else params.set('page', pageNumber.toString());
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
   };
 
   const getPageNumbers = () => {

@@ -38,7 +38,7 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
   assignIfNotLocked('originalTitle', tmdbMovie.original_title);
 
   if (tmdbMovie.title && !lockedFields.includes('slug')) {
-    assignIfNotLocked('slug', `${generateSlug(tmdbMovie.title)}-${tmdbMovie.id}`);
+    assignIfNotLocked('slug', `${generateSlug(tmdbMovie.title) || 'movie'}-${tmdbMovie.id}`);
   }
 
   assignIfNotLocked('synopsis', tmdbMovie.overview || null);
@@ -57,7 +57,7 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
   if (tmdbMovie.backdrop_path) {
     assignIfNotLocked(
       'backdropUrl',
-      `https://image.tmdb.org/t/p/original${tmdbMovie.backdrop_path}`
+      `https://image.tmdb.org/t/p/w1280${tmdbMovie.backdrop_path}`
     );
   }
 
@@ -101,7 +101,7 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
   if (extra.images && extra.images.logos && Array.isArray(extra.images.logos) && extra.images.logos.length > 0) {
     const enLogo = extra.images.logos.find((l: any) => l.iso_639_1 === 'en') || extra.images.logos[0];
     if (enLogo && enLogo.file_path) {
-      assignIfNotLocked('logoUrl', `https://image.tmdb.org/t/p/original${enLogo.file_path}`);
+      assignIfNotLocked('logoUrl', `https://image.tmdb.org/t/p/w500${enLogo.file_path}`);
     }
   }
   

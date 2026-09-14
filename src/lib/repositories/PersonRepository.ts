@@ -72,40 +72,78 @@ export class PersonRepository {
   }
 
   static async countIndexableForSitemap(db: DbClient = prisma) {
-    return db.person.count({
-      where: {
-        movies: {
-          some: {
-            movie: {
-              status: 'PUBLISHED',
-              deletedAt: null,
-            },
-          },
-        },
-      },
-    });
+    const rows = await db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS "count"
+      FROM "people" p
+      WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
+        AND (
+          LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
+          OR (
+            SELECT COUNT(DISTINCT mp."movieId")
+            FROM "movie_people" mp
+            JOIN "movies" m ON m."id" = mp."movieId"
+            WHERE mp."personId" = p."id"
+              AND m."status" = 'PUBLISHED'
+              AND m."deletedAt" IS NULL
+          ) >= 3
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM "movie_people" mp
+          JOIN "movies" m ON m."id" = mp."movieId"
+          WHERE mp."personId" = p."id"
+            AND m."status" = 'PUBLISHED'
+            AND m."deletedAt" IS NULL
+        )
+    `);
+    return Number(rows[0]?.count || 0);
   }
 
   static async listIndexableForSitemap(
     params: { skip?: number; take?: number } = {},
     db: DbClient = prisma
   ) {
-    return db.person.findMany({
-      where: {
-        movies: {
-          some: {
-            movie: {
-              status: 'PUBLISHED',
-              deletedAt: null,
-            },
-          },
-        },
-      },
-      select: { slug: true, updatedAt: true },
-      orderBy: { slug: 'asc' },
-      skip: params.skip,
-      take: params.take,
-    });
+    const skip = Math.max(0, params.skip || 0);
+    const take = Math.min(45_000, Math.max(1, params.take || 45_000));
+    return db.$queryRaw<Array<{ slug: string; updatedAt: Date }>>(Prisma.sql`
+      SELECT p."slug", p."updatedAt"
+      FROM "people" p
+      WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
+        AND (
+          LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
+          OR (
+            SELECT COUNT(DISTINCT mp."movieId")
+            FROM "movie_people" mp
+            JOIN "movies" m ON m."id" = mp."movieId"
+            WHERE mp."personId" = p."id"
+              AND m."status" = 'PUBLISHED'
+              AND m."deletedAt" IS NULL
+          ) >= 3
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM "movie_people" mp
+          JOIN "movies" m ON m."id" = mp."movieId"
+          WHERE mp."personId" = p."id"
+            AND m."status" = 'PUBLISHED'
+            AND m."deletedAt" IS NULL
+        )
+      ORDER BY p."slug" ASC
+      OFFSET ${skip}
+      LIMIT ${take}
+    `);
+  }
+
+  static isIndexableProfile(person: {
+    headshotUrl: string | null;
+    biography: string | null;
+    movies: Array<{ movieId?: string; movie: { id: string } }>;
+  }) {
+    const creditCount = new Set(person.movies.map((credit) => credit.movie.id)).size;
+    return Boolean(
+      person.headshotUrl?.trim() &&
+        ((person.biography?.trim().length || 0) >= 160 || creditCount >= 3)
+    );
   }
 
   static async upsert(

@@ -109,7 +109,7 @@ export class AnalyticsRepository {
   static async getTopSearchQueries(limit: number = 20, db: any = prisma) {
     const results = await db.$queryRaw`
       SELECT LOWER(metadata->>'query') as query, COUNT(*)::int as count
-      FROM "AnalyticsEvent"
+      FROM "analytics_events"
       WHERE "eventName" = 'search' 
         AND metadata->>'query' IS NOT NULL
       GROUP BY LOWER(metadata->>'query')
@@ -122,7 +122,7 @@ export class AnalyticsRepository {
   static async getZeroResultSearchQueries(limit: number = 20, db: any = prisma) {
     const results = await db.$queryRaw`
       SELECT LOWER(metadata->>'query') as query, COUNT(*)::int as count
-      FROM "AnalyticsEvent"
+      FROM "analytics_events"
       WHERE "eventName" = 'search' 
         AND metadata->>'query' IS NOT NULL
         AND (metadata->>'resultsCount')::int = 0
@@ -131,6 +131,36 @@ export class AnalyticsRepository {
       LIMIT ${limit}
     `;
     return results;
+  }
+
+  static async getSeoObservability(db: any = prisma) {
+    const [vitals, published, ready, topPages] = await Promise.all([
+      db.$queryRaw<Array<{ name: string; p75: number; samples: number }>>`
+        SELECT metadata->>'name' AS name,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY (metadata->>'value')::double precision) AS p75,
+          COUNT(*)::int AS samples
+        FROM "analytics_events"
+        WHERE "eventName" = 'web_vital'
+          AND metadata->>'name' IN ('LCP', 'INP', 'CLS')
+          AND "createdAt" >= NOW() - INTERVAL '28 days'
+        GROUP BY metadata->>'name'
+      `,
+      db.movie.count({ where: { status: 'PUBLISHED', deletedAt: null } }),
+      db.movie.count({ where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' } }),
+      db.$queryRaw<Array<{ path: string; views: number }>>`
+        SELECT metadata->>'path' AS path, COUNT(*)::int AS views
+        FROM "analytics_events"
+        WHERE "eventName" = 'page_view' AND metadata->>'path' IS NOT NULL
+        GROUP BY metadata->>'path'
+        ORDER BY views DESC
+        LIMIT 8
+      `,
+    ]);
+    return {
+      vitals,
+      qualityReadyPercent: published ? Math.round((ready / published) * 1000) / 10 : 100,
+      topPages,
+    };
   }
 
   static async getRecentAdminActivity(take: number = 10, db: any = prisma) {

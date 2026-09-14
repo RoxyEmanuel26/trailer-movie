@@ -12,7 +12,7 @@ interface MovieImageItem {
   voteAverage?: number | null;
 }
 
-export function MovieGallery({ images }: { images: MovieImageItem[] }) {
+export function MovieGallery({ images, movieTitle = 'Movie' }: { images: MovieImageItem[]; movieTitle?: string }) {
   if (!images || images.length === 0) return null;
 
   const backdrops = images.filter((img) => img.imageType === 'BACKDROP');
@@ -31,7 +31,7 @@ export function MovieGallery({ images }: { images: MovieImageItem[] }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3">
-        {displayImages.map((img) => {
+        {displayImages.map((img, index) => {
           const isBackdrop = img.imageType === 'BACKDROP';
           return (
             <div
@@ -42,7 +42,7 @@ export function MovieGallery({ images }: { images: MovieImageItem[] }) {
             >
               <Image
                 src={img.imageUrl}
-                alt="Movie gallery image"
+                alt={`${movieTitle} ${img.imageType.toLowerCase()} ${index + 1}`}
                 fill
                 sizes="(max-width: 768px) 50vw, 33vw"
                 className="object-cover transition-all duration-300 group-hover:brightness-90"

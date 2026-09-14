@@ -4,6 +4,9 @@ import { Film } from 'lucide-react';
 import { MovieCard } from './MovieCard';
 import { Pagination } from './Pagination';
 import { SeoService } from '@/lib/services/SeoService';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { absoluteUrl } from '@/lib/site-config';
+import { moviePath } from '@/lib/public-routes';
 
 type CatalogMovie = ComponentProps<typeof MovieCard>['movie'];
 
@@ -18,6 +21,7 @@ interface CatalogPageProps {
   itemsPerPage?: number;
   emptyMessage?: string;
   breadcrumbs?: Array<{ name: string; path: string }>;
+  facts?: Array<{ label: string; value: string }>;
 }
 
 export function CatalogPage({
@@ -31,19 +35,30 @@ export function CatalogPage({
   itemsPerPage = 24,
   emptyMessage = 'No movies are available in this section yet.',
   breadcrumbs = [],
+  facts = [],
 }: CatalogPageProps) {
   const breadcrumbItems = [{ name: 'Home', path: '/' }, ...breadcrumbs, { name: title, path }];
-  const jsonLd = [
-    SeoService.generateStructuredData('CollectionPage', { title, description, path }),
-    SeoService.generateStructuredData('BreadcrumbList', { items: breadcrumbItems }),
-  ];
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      SeoService.generateStructuredData('CollectionPage', { title, description, path }),
+      SeoService.generateStructuredData('BreadcrumbList', { items: breadcrumbItems }),
+      {
+        '@type': 'ItemList',
+        itemListElement: movies.map((movie, index) => ({
+          '@type': 'ListItem',
+          position: (currentPage - 1) * itemsPerPage + index + 1,
+          url: absoluteUrl(moviePath(movie.slug)),
+          name: movie.title,
+          ...(movie.posterUrl ? { image: movie.posterUrl } : {}),
+        })),
+      },
+    ],
+  };
 
   return (
     <div className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
-      />
+      <JsonLd data={jsonLd} />
 
       <nav
         aria-label="Breadcrumb"
@@ -79,13 +94,23 @@ export function CatalogPage({
           </span>{' '}
           {totalMovies === 1 ? 'movie' : 'movies'}
         </p>
+        {facts.length ? (
+          <dl className="mt-5 flex flex-wrap gap-x-6 gap-y-3 border-t pt-5 text-sm">
+            {facts.map((fact) => (
+              <div key={fact.label}>
+                <dt className="text-muted-foreground">{fact.label}</dt>
+                <dd className="mt-0.5 font-semibold text-foreground">{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </header>
 
       {movies.length ? (
         <>
           <div className="mb-10 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:mb-12 lg:grid-cols-6 lg:gap-y-8">
-            {movies.map((movie, index) => (
-              <MovieCard key={movie.id} movie={movie} priority={index < 4} />
+            {movies.map((movie) => (
+              <MovieCard key={movie.id} movie={movie} />
             ))}
           </div>
           <Pagination

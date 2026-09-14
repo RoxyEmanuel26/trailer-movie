@@ -6,23 +6,29 @@ import { MovieService } from '@/lib/services/MovieService';
 import { MovieCard } from '@/components/public/MovieCard';
 import { Pagination } from '@/components/public/Pagination';
 import { Hash } from 'lucide-react';
+import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { slug } = await params;
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
   try {
     const tag = await TagService.getBySlug(slug);
+    const page = parseStrictPage(query.page);
+    if (!page) notFound();
+    const { total } = await MovieService.searchMovies({ tagSlug: tag.slug, take: 1 });
+    if (isPageOutOfRange(page, total, 24)) notFound();
     return SeoService.generateMetadata('Tag', tag.id, {
-      title: `Movies tagged with ${tag.name}`,
+      title: `Movies tagged with ${tag.name}${page > 1 ? ` — Page ${page}` : ''}`,
       description: `Browse movies tagged with ${tag.name}.`,
-      path: `/tag/${tag.slug}`,
+      path: pagePath(`/tag/${tag.slug}`, page),
+      indexable: false,
     });
   } catch (error) {
-    return { title: 'Not Found' };
+    notFound();
   }
 }
 
@@ -39,8 +45,8 @@ export default async function TagPage({ params, searchParams }: PageProps) {
     notFound();
   }
 
-  const parsedPage = typeof page === 'string' ? parseInt(page, 10) : 1;
-  const currentPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const currentPage = parseStrictPage(page);
+  if (!currentPage) notFound();
   const itemsPerPage = 24;
   const skip = (currentPage - 1) * itemsPerPage;
 
@@ -51,6 +57,7 @@ export default async function TagPage({ params, searchParams }: PageProps) {
     take: itemsPerPage,
     orderBy: { releaseDate: 'desc' },
   });
+  if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();
 
   return (
     <div className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-14">

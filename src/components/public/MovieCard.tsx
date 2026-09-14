@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Clock, Play, Star } from 'lucide-react';
+import { moviePath } from '@/lib/public-routes';
 
 interface MovieCardProps {
   movie: {
@@ -28,7 +29,7 @@ export function MovieCard({ movie, className = '', priority = false }: MovieCard
 
   return (
     <Link
-      href={`/watch/${movie.slug}`}
+      href={moviePath(movie.slug)}
       className={`group relative flex min-w-0 flex-col gap-2.5 sm:gap-3 ${className}`}
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-[0.9rem] bg-muted shadow-[0_1rem_2.5rem_-1.4rem_rgba(0,0,0,.75)] ring-1 ring-black/5 transition duration-300 group-active:scale-[0.99] sm:rounded-[1.1rem] [@media(hover:hover)]:group-hover:-translate-y-1 [@media(hover:hover)]:group-hover:shadow-[0_1.5rem_3rem_-1.2rem_rgba(0,0,0,.8)] dark:ring-white/10">

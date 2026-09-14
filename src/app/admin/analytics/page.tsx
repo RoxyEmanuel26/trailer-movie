@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AnalyticsOverviewPage() {
   const data = await AnalyticsService.getOverviewDashboard();
-  const { metrics, chartData, topMovies, recentActivity } = data;
+  const { metrics, chartData, topMovies, recentActivity, seo } = data;
 
   return (
     <div className="space-y-6">
@@ -55,6 +55,26 @@ export default async function AnalyticsOverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle>SEO & Core Web Vitals</CardTitle></CardHeader>
+        <CardContent className="grid gap-6 md:grid-cols-2">
+          <div>
+            <p className="text-sm text-muted-foreground">Published movies passing the quality gate</p>
+            <p className="mt-1 text-2xl font-bold">{seo.qualityReadyPercent}%</p>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              {['LCP', 'INP', 'CLS'].map((name) => {
+                const vital = seo.vitals.find((item: any) => item.name === name);
+                return <div key={name} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{name} p75</p><p className="mt-1 font-semibold">{vital ? Number(vital.p75).toFixed(name === 'CLS' ? 3 : 0) : 'No data'}</p><p className="text-[10px] text-muted-foreground">{vital?.samples || 0} samples</p></div>;
+              })}
+            </div>
+          </div>
+          <div>
+            <p className="mb-3 text-sm font-medium">Top public pages</p>
+            <div className="space-y-2">{seo.topPages.length ? seo.topPages.map((page: any) => <div key={page.path} className="flex justify-between gap-4 text-sm"><span className="truncate text-muted-foreground">{page.path}</span><span className="font-medium tabular-nums">{page.views}</span></div>) : <p className="text-sm text-muted-foreground">No page-view data yet.</p>}</div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-4">

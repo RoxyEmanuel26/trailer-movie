@@ -77,11 +77,12 @@ export function MoviesToolbar() {
         </div>
       </div>
 
-      <InvestigateDialog 
-        open={isInvestigateOpen} 
-        onOpenChange={setIsInvestigateOpen} 
-      />
+      {isInvestigateOpen ? (
+        <InvestigateDialog
+          open
+          onOpenChange={setIsInvestigateOpen}
+        />
+      ) : null}
     </>
   )
 }
-

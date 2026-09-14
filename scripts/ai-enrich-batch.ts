@@ -129,7 +129,7 @@ Use ISO 639-1 for language codes.`;
     console.log(`[AI RESULT]`, data);
 
     let isEnriched = false;
-    let lockedFields = (movie.lockedFields as string[]) || [];
+    const lockedFields = (movie.lockedFields as string[]) || [];
 
     if (data.synopsis && typeof data.synopsis === 'string' && data.synopsis.length > 20) {
       if (!lockedFields.includes('synopsis')) lockedFields.push('synopsis');
@@ -184,7 +184,7 @@ Use ISO 639-1 for language codes.`;
           const makeSlug = (text: string) => text.toLowerCase().replace(/\\s+/g, '-').replace(/[^\\w\\-]+/g, '');
           const slug = makeSlug(cName);
           // Just in case slug already exists from a different name spelling
-          let existingSlug = await prisma.productionCompany.findUnique({ where: { slug } });
+          const existingSlug = await prisma.productionCompany.findUnique({ where: { slug } });
           if (existingSlug) {
             company = existingSlug;
           } else {

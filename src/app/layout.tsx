@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import { siteConfig } from '@/lib/site-config';
 
 // Force dynamic to allow Next.js build to succeed in CI environments without a live database.
 
@@ -16,13 +17,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+  metadataBase: new URL(siteConfig.url),
   title: {
-    default: 'TrailerTube — Discover what to watch next',
-    template: '%s | TrailerTube',
+    default: 'MovieFlix — Discover movies, trailers and where to watch',
+    template: '%s | MovieFlix',
   },
-  description: 'Explore movie trailers, cast, reviews, collections, and streaming availability from our curated catalog.',
-  applicationName: 'TrailerTube',
+  description: siteConfig.description,
+  applicationName: siteConfig.name,
+  manifest: '/manifest.webmanifest',
+  robots: {
+    index: siteConfig.indexingEnabled,
+    follow: siteConfig.indexingEnabled,
+  },
+  verification: siteConfig.googleVerification
+    ? { google: siteConfig.googleVerification }
+    : undefined,
 };
 
 export default function RootLayout({

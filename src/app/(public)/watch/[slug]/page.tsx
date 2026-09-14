@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { Calendar, Clock, Star, Users, Film } from 'lucide-react';
 
 import { MovieService } from '@/lib/services/MovieService';
@@ -15,6 +15,10 @@ import { MovieGallery } from '@/components/movie/dynamic/MovieGallery';
 import { ResponsiveDetails } from '@/components/public/ResponsiveDetails';
 import { badgeVariants } from '@/components/ui/badge';
 import { personPath } from '@/lib/public-routes';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { absoluteUrl, normalizeMetaDescription } from '@/lib/site-config';
+import { ORIGIN_CATALOG } from '@/lib/public-catalog';
+import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -22,29 +26,27 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  try {
-    const movie = await MovieService.getBySlug(slug);
-    return SeoService.generateMetadata('Movie', movie.id, {
-      title: `${movie.title} Trailer`,
-      description: movie.synopsis || `Watch the trailer for ${movie.title}`,
-      image: movie.backdropUrl || movie.posterUrl || undefined,
-      path: `/watch/${movie.slug}`,
-    });
-  } catch (error) {
-    return { title: 'Not Found' };
-  }
+  const result = await MovieService.getPublicMovie(slug);
+  if (!result) notFound();
+  if (result.shouldRedirect) permanentRedirect(result.canonicalPath);
+  const { movie, canonicalPath } = result;
+  const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
+  return SeoService.generateMetadata('Movie', movie.id, {
+    title: `${movie.title}${year ? ` (${year})` : ''} Trailer, Cast & Where to Watch`,
+    description: normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title}, explore its cast and crew, and find where it is available.`),
+    image: movie.backdropUrl || movie.posterUrl || undefined,
+    path: canonicalPath,
+  });
 }
 
 export const revalidate = 3600;
 
 export default async function MovieDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  let movie;
-  try {
-    movie = await MovieService.getBySlug(slug);
-  } catch (error) {
-    notFound();
-  }
+  const result = await MovieService.getPublicMovie(slug);
+  if (!result) notFound();
+  if (result.shouldRedirect) permanentRedirect(result.canonicalPath);
+  const { movie, canonicalPath } = result;
 
   const genreIds = movie.genres.map((g) => g.genreId);
   const relatedMovies = await MovieService.getRelatedMovies(movie.id, genreIds);
@@ -93,42 +95,54 @@ export default async function MovieDetailPage({ params }: PageProps) {
   }
   const otherCrew = Array.from(crewMap.values());
 
-  const jsonLd = SeoService.generateStructuredData('Movie', {
-    title: movie.title,
-    description: movie.synopsis,
-    image: movie.posterUrl,
-    releaseDate: movie.releaseDate,
-    directors: directors.map((d) => ({
-      name: d.person.name,
-      path: personPath(d.person.slug),
-    })),
-    actors: cast.map((a) => ({
-      name: a.person.name,
-      path: personPath(a.person.slug),
-    })),
-    genre: movie.genres[0]?.genre,
-    youtubeTrailerId: movie.youtubeTrailerId,
-    path: `/watch/${movie.slug}`,
-    voteAverage: movie.voteAverage,
-    voteCount: movie.voteCount,
-  });
-
   const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
+  const primaryTrailer = movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE' && trailer.isPrimary)
+    || movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE');
+  const youtubeId = primaryTrailer?.sourceId || movie.youtubeTrailerId;
+  const displayedReviews = (movie.movieReviews?.length ? movie.movieReviews : (movie.reviews as any[]) || []).slice(0, 5);
+  const movieUrl = absoluteUrl(canonicalPath);
+  const description = normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title} and explore its cast, crew, and viewing information.`);
+  const matchingOrigins = ORIGIN_CATALOG.filter((origin) =>
+    origin.countryCodes.some((code) => movie.countries.some(({ country }) => country.isoCode === code)) ||
+    origin.languageCodes.some((code) => movie.languages.some(({ language }) => language.isoCode === code))
+  );
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'WebPage', '@id': `${movieUrl}#webpage`, url: movieUrl, name: movie.title, description, dateModified: movie.updatedAt.toISOString(), isPartOf: { '@id': `${absoluteUrl('/')}#website` }, publisher: { '@id': `${absoluteUrl('/')}#organization` }, mainEntity: { '@id': `${movieUrl}#movie` } },
+      { '@type': 'BreadcrumbList', '@id': `${movieUrl}#breadcrumb`, itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
+        { '@type': 'ListItem', position: 2, name: 'Movies', item: absoluteUrl('/movies') },
+        { '@type': 'ListItem', position: 3, name: movie.title, item: movieUrl },
+      ] },
+      {
+        '@type': 'Movie', '@id': `${movieUrl}#movie`, url: movieUrl, name: movie.title, description, dateModified: movie.updatedAt.toISOString(),
+        image: movie.posterUrl || movie.backdropUrl || undefined,
+        datePublished: movie.releaseDate?.toISOString(),
+        duration: movie.runtimeMinutes ? `PT${movie.runtimeMinutes}M` : undefined,
+        contentRating: movie.ageRating || movie.mpaaRating || undefined,
+        genre: movie.genres.map(({ genre }) => genre.name),
+        director: directors.map(({ person }) => ({ '@type': 'Person', name: person.name, url: absoluteUrl(personPath(person.slug)) })),
+        actor: cast.map(({ person }) => ({ '@type': 'Person', name: person.name, url: absoluteUrl(personPath(person.slug)) })),
+        productionCompany: movie.companies.map(({ company }) => ({ '@type': 'Organization', name: company.name })),
+        keywords: movie.keywords.map(({ keyword }) => keyword.name).join(', ') || undefined,
+        aggregateRating: movie.voteAverage && movie.voteCount ? { '@type': 'AggregateRating', ratingValue: movie.voteAverage.toFixed(1), ratingCount: movie.voteCount, bestRating: 10, worstRating: 1 } : undefined,
+        review: displayedReviews.map((review: any) => ({ '@type': 'Review', author: { '@type': 'Person', name: review.author }, datePublished: (review.createdAt || review.created_at) ? new Date(review.createdAt || review.created_at).toISOString() : undefined, reviewBody: review.content, reviewRating: (review.rating || review.author_details?.rating) ? { '@type': 'Rating', ratingValue: review.rating || review.author_details?.rating, bestRating: 10 } : undefined })),
+        trailer: youtubeId ? { '@type': 'VideoObject', name: primaryTrailer?.title || `${movie.title} trailer`, description, thumbnailUrl: primaryTrailer?.thumbnailUrl || `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`, embedUrl: `https://www.youtube.com/embed/${youtubeId}`, uploadDate: (primaryTrailer?.publishedDate || movie.releaseDate)?.toISOString() } : undefined,
+      },
+    ],
+  };
 
   return (
     <>
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
+      <JsonLd data={jsonLd} />
+      <EntityViewTracker eventName="movie_view" entityId={movie.id} />
 
       {/* Media Player Section */}
       <section className="w-full bg-[#080908]">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
-          {movie.youtubeTrailerId ? (
-            <YouTubePlayer videoId={movie.youtubeTrailerId} movieId={movie.id} autoplay={true} />
+          {youtubeId ? (
+            <YouTubePlayer videoId={youtubeId} movieId={movie.id} />
           ) : (
             <div className="flex aspect-video w-full flex-col items-center justify-center rounded-2xl border border-white/10 bg-[#151613]">
               <Film className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
@@ -209,6 +223,11 @@ export default async function MovieDetailPage({ params }: PageProps) {
             <p className="max-w-[68ch] text-base leading-7 text-muted-foreground sm:leading-8">
               {movie.synopsis || 'A synopsis has not been added yet.'}
             </p>
+            <div className="mt-5 flex flex-wrap gap-2 text-sm">
+              {year ? <Link href={`/year/${year}`} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">More from {year}</Link> : null}
+              {matchingOrigins.map((origin) => <Link key={origin.slug} href={`/origin/${origin.slug}`} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">{origin.label}</Link>)}
+            </div>
+            <p className="mt-4 text-xs leading-5 text-muted-foreground">Catalog metadata provided by TMDB and stored locally by MovieFlix. Last updated {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'UTC' }).format(movie.updatedAt)}.</p>
           </div>
 
           {/* Sidebar / Poster */}
@@ -219,7 +238,6 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   src={movie.posterUrl}
                   alt={movie.title}
                   fill
-                  priority
                   sizes="(max-width: 639px) 208px, (max-width: 767px) 272px, 33vw"
                   className="object-cover"
                 />
@@ -413,7 +431,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
 
             {movie.images && movie.images.length > 0 && (
               <div className="order-8 md:order-none">
-                <MovieGallery images={movie.images as any} />
+                <MovieGallery images={movie.images as any} movieTitle={movie.title} />
               </div>
             )}
 

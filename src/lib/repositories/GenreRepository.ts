@@ -28,6 +28,19 @@ export class GenreRepository {
     });
   }
 
+  static async listWithPublishedCounts(db: DbClient = prisma) {
+    return db.genre.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        _count: {
+          select: {
+            movies: { where: { movie: { status: 'PUBLISHED', deletedAt: null } } },
+          },
+        },
+      },
+    });
+  }
+
   static async findById(id: string, db: DbClient = prisma) {
     return db.genre.findUnique({
       where: { id },

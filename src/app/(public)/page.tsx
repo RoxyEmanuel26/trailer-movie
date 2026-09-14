@@ -6,6 +6,9 @@ import { HomepageService } from '@/lib/services/HomepageService';
 import { SeoService } from '@/lib/services/SeoService';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
 import { Button } from '@/components/ui/button';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { absoluteUrl, siteConfig } from '@/lib/site-config';
+import { moviePath } from '@/lib/public-routes';
 
 export async function generateMetadata(): Promise<Metadata> {
   return SeoService.generateMetadata('Page', 'home', {
@@ -52,6 +55,14 @@ export default async function HomePage() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <JsonLd data={{
+        '@context': 'https://schema.org',
+        '@graph': [
+          { '@type': 'Organization', '@id': `${siteConfig.url}#organization`, name: siteConfig.name, url: siteConfig.url, logo: absoluteUrl('/opengraph-image'), ...(siteConfig.contactEmail ? { email: siteConfig.contactEmail } : {}) },
+          { '@type': 'WebSite', '@id': `${siteConfig.url}#website`, name: siteConfig.name, url: siteConfig.url, publisher: { '@id': `${siteConfig.url}#organization` }, potentialAction: { '@type': 'SearchAction', target: absoluteUrl('/search?q={search_term_string}'), 'query-input': 'required name=search_term_string' } },
+          { '@type': 'WebPage', '@id': `${siteConfig.url}#webpage`, url: siteConfig.url, name: 'Discover Movies, Trailers and Where to Watch', isPartOf: { '@id': `${siteConfig.url}#website` }, description: siteConfig.description },
+        ],
+      }} />
       <section className="relative isolate min-h-[36rem] overflow-hidden bg-[#0d0e0c] text-white sm:min-h-[42rem] lg:min-h-[46rem]">
         {heroBackdrop ? (
           <Image
@@ -71,9 +82,10 @@ export default async function HomePage() {
             <p className="mb-4 flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-[#f48a6f] sm:mb-5 sm:text-xs sm:tracking-[0.24em]">
               <Clapperboard className="h-4 w-4" /> Featured discovery
             </p>
-            <h1 className="max-w-[15ch] text-balance text-[clamp(2.65rem,13vw,3.7rem)] font-semibold leading-[0.94] tracking-[-0.06em] sm:text-6xl md:text-7xl lg:text-[5.8rem]">
-              {headline || 'Find your next great watch.'}
+            <h1 className="max-w-[17ch] text-balance text-[clamp(2.55rem,12vw,3.6rem)] font-semibold leading-[0.94] tracking-[-0.06em] sm:text-6xl md:text-7xl lg:text-[5.4rem]">
+              Discover movies, trailers and where to watch
             </h1>
+            {headline ? <h2 className="mt-5 text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">Featured: {headline}</h2> : null}
             {hero?.synopsis ? (
               <p className="mt-5 line-clamp-4 max-w-[62ch] text-pretty text-sm leading-6 text-white/72 sm:mt-6 sm:line-clamp-5 sm:text-base sm:leading-7 lg:line-clamp-none lg:text-lg">
                 {hero.synopsis}
@@ -91,7 +103,7 @@ export default async function HomePage() {
                   asChild
                   className="h-12 w-full rounded-xl px-6 shadow-lg shadow-primary/20 sm:w-auto"
                 >
-                  <Link href={`/watch/${hero.slug}`}>
+                  <Link href={moviePath(hero.slug)}>
                     <Play className="mr-2 h-4 w-4 fill-current" />
                     Watch trailer
                   </Link>
@@ -103,7 +115,7 @@ export default async function HomePage() {
                 asChild
                 className="h-12 w-full rounded-xl border-white/25 bg-white/8 px-6 text-white hover:bg-white/15 hover:text-white sm:w-auto"
               >
-                <Link href="/search">
+                <Link href="/movies">
                   <Search className="mr-2 h-4 w-4" />
                   Browse catalog
                 </Link>

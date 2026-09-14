@@ -28,16 +28,6 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
   const [progressCount, setProgressCount] = React.useState(0)
   const [results, setResults] = React.useState({ success: 0, skipped: 0, failed: 0 })
 
-  React.useEffect(() => {
-    if (open) {
-      cancelRef.current = false
-      setStage('idle')
-      setMissingMovies([])
-      setResults({ success: 0, skipped: 0, failed: 0 })
-      setProgressCount(0)
-    }
-  }, [open])
-
   const handleScan = async () => {
     setStage('scanning')
     try {
@@ -59,7 +49,7 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
     setStage('processing')
     setProgressCount(0)
     
-    let currentResults = { success: 0, skipped: 0, failed: 0 }
+    const currentResults = { success: 0, skipped: 0, failed: 0 }
     
     // Process in chunks of 25 to prevent server timeouts while maintaining fast real-time progress
     const CHUNK_SIZE = 25;

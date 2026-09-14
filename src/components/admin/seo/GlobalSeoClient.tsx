@@ -59,7 +59,7 @@ export function GlobalSeoClient({ initialData }: { initialData: any }) {
             <Input 
               value={data.defaultTitle}
               onChange={(e) => setData({ ...data, defaultTitle: e.target.value })}
-              placeholder="e.g. Trailer Movie - Watch the Best Trailers"
+              placeholder="e.g. MovieFlix - Discover Movies and Trailers"
             />
             <p className="text-xs text-muted-foreground">The title used if a specific page doesn't have one.</p>
           </div>
@@ -87,17 +87,17 @@ export function GlobalSeoClient({ initialData }: { initialData: any }) {
             <Label>OpenGraph Site Name</Label>
             <Input 
               value={data.ogSiteName}
-              onChange={(e) => setData({ ...data, ogSiteName: e.target.value })}
-              placeholder="e.g. Trailer Movie"
+              disabled
             />
+            <p className="text-xs text-muted-foreground">Controlled by NEXT_PUBLIC_SITE_NAME in the deployment environment.</p>
           </div>
           <div className="space-y-2">
             <Label>Twitter Handle</Label>
             <Input 
               value={data.twitterHandle}
-              onChange={(e) => setData({ ...data, twitterHandle: e.target.value })}
-              placeholder="e.g. @trailermovie"
+              disabled
             />
+            <p className="text-xs text-muted-foreground">Controlled by NEXT_PUBLIC_TWITTER_HANDLE.</p>
           </div>
         </div>
 
@@ -107,9 +107,9 @@ export function GlobalSeoClient({ initialData }: { initialData: any }) {
             <Label>Google Search Console Verification Code</Label>
             <Input 
               value={data.googleVerification}
-              onChange={(e) => setData({ ...data, googleVerification: e.target.value })}
-              placeholder="e.g. xyz123"
+              disabled
             />
+            <p className="text-xs text-muted-foreground">Controlled by GOOGLE_SITE_VERIFICATION.</p>
           </div>
           <div className="space-y-2">
             <Label>Bing Webmaster Verification Code</Label>

@@ -4,7 +4,10 @@ import { requireAdmin } from '../auth/utils';
 export class AnalyticsService {
   static async getOverviewDashboard() {
     await requireAdmin('read:analytics');
-    const metrics = await AnalyticsRepository.getOverviewMetrics();
+    const [metrics, seo] = await Promise.all([
+      AnalyticsRepository.getOverviewMetrics(),
+      AnalyticsRepository.getSeoObservability(),
+    ]);
     
     // Get last 7 days of page views for a chart
     const endDate = new Date();
@@ -22,6 +25,7 @@ export class AnalyticsService {
       chartData: dailyViews.map((d: any) => ({ date: d.date.toISOString().split('T')[0], views: d.value })),
       topMovies,
       recentActivity,
+      seo,
     };
   }
 

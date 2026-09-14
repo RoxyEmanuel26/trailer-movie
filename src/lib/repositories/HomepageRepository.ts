@@ -170,7 +170,7 @@ export class HomepageRepository {
           include: { genres: { include: { genre: true } } }
         });
         movies = recent;
-        viewAllLink = '/search?status=PUBLISHED';
+        viewAllLink = '/popular/recently-added';
         break;
 
       case 'AUTO_UPCOMING':
@@ -181,7 +181,7 @@ export class HomepageRepository {
           include: { genres: { include: { genre: true } } }
         });
         movies = upcoming;
-        viewAllLink = '/search?status=PUBLISHED&sort=releaseDate_asc';
+        viewAllLink = '/search?sort=releaseDate_asc';
         break;
 
       case 'AUTO_TRENDING':
@@ -192,7 +192,7 @@ export class HomepageRepository {
           include: { genres: { include: { genre: true } } }
         });
         movies = trending;
-        viewAllLink = '/search?status=PUBLISHED&sort=popularity_desc';
+        viewAllLink = '/popular/most-popular';
         break;
 
       case 'MANUAL_COLLECTION':

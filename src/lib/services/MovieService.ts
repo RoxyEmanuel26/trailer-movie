@@ -4,10 +4,15 @@ import { cache } from 'react';
 import { requireAdmin } from '../auth/utils';
 import { prisma } from '../prisma';
 import type { Prisma } from '@prisma/client';
+import { moviePath, publicMovieSlug } from '../public-routes';
 
 export class MovieService {
   static listPublishedReleaseYears = cache(async () => {
     return MovieRepository.listPublishedReleaseYears();
+  });
+
+  static listPublishedReleaseYearStats = cache(async () => {
+    return MovieRepository.listPublishedReleaseYearStats();
   });
 
   static getMovie = cache(async (id: string) => {
@@ -24,6 +29,21 @@ export class MovieService {
       throw new NotFoundError(`Movie with slug ${slug} not found`);
     }
     return movie;
+  });
+
+  static getPublicMovie = cache(async (routeParam: string) => {
+    const canonicalSlug = await MovieRepository.resolveCanonicalSlug(routeParam);
+    if (!canonicalSlug) return null;
+    try {
+      const movie = await this.getBySlug(canonicalSlug);
+      return {
+        movie,
+        canonicalPath: moviePath(movie.slug),
+        shouldRedirect: publicMovieSlug(movie.slug) !== routeParam,
+      };
+    } catch {
+      return null;
+    }
   });
 
   static async getRelatedMovies(movieId: string, genreIds: string[]) {
@@ -209,6 +229,7 @@ export class MovieService {
     countryCodes?: string[];
     languageCodes?: string[];
     releaseYear?: number;
+    releaseDateLte?: Date;
   }) {
     // Public search method that uses full-text search
     const skip = params.skip || 0;
@@ -220,5 +241,15 @@ export class MovieService {
       status: 'PUBLISHED',
     });
     return { data, total };
+  }
+
+  static async searchTopRatedMovies(params: { skip?: number; take?: number }) {
+    const skip = Math.max(0, params.skip || 0);
+    const take = Math.min(Number(params.take) || 24, 48);
+    return MovieRepository.searchTopRated({ skip, take, minimumVotes: 50 });
+  }
+
+  static async getCatalogStats(filters: Parameters<typeof MovieRepository.getCatalogStats>[0]) {
+    return MovieRepository.getCatalogStats(filters);
   }
 }

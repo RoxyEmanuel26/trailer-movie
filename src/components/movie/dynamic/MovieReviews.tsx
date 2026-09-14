@@ -4,7 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import { Star, User } from 'lucide-react';
 
-export function MovieReviews({ reviews, movieSlug }: { reviews: any[]; movieSlug?: string }) {
+export function MovieReviews({ reviews }: { reviews: any[]; movieSlug?: string }) {
   if (!reviews || reviews.length === 0) {
     return (
       <div className="mt-8">
@@ -18,37 +18,8 @@ export function MovieReviews({ reviews, movieSlug }: { reviews: any[]; movieSlug
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const jsonLd = movieSlug
-    ? {
-        '@context': 'https://schema.org',
-        '@type': 'Movie',
-        '@id': `${baseUrl}/watch/${movieSlug}`,
-        review: reviews.map((r: any) => ({
-          '@type': 'Review',
-          author: { '@type': 'Person', name: r.author },
-          datePublished: r.createdAt || r.created_at,
-          reviewBody: r.content,
-          reviewRating:
-            r.rating || r.author_details?.rating
-              ? {
-                  '@type': 'Rating',
-                  ratingValue: r.rating || r.author_details?.rating,
-                  bestRating: '10',
-                }
-              : undefined,
-        })),
-      }
-    : null;
-
   return (
     <div className="mt-8">
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
       <h2 className="text-xl font-semibold mb-4">User Reviews</h2>
       <div className="flex flex-col gap-4">
         {reviews.slice(0, 5).map((review: any, idx: number) => {

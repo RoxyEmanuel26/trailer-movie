@@ -1,16 +1,22 @@
 import { SeoService } from '@/lib/services/SeoService';
 import { serializeSitemapIndex, xmlResponse } from '@/lib/sitemap-xml';
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+import { absoluteUrl } from '@/lib/site-config';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const personPageCount = await SeoService.getPersonSitemapPageCount();
-  const sitemapUrls = [`${APP_URL}/sitemaps/core`];
+  const [moviePageCount, personPageCount] = await Promise.all([
+    SeoService.getMovieSitemapPageCount(),
+    SeoService.getPersonSitemapPageCount(),
+  ]);
+  const sitemapUrls = [absoluteUrl('/sitemaps/core')];
+
+  for (let page = 0; page < moviePageCount; page += 1) {
+    sitemapUrls.push(absoluteUrl(`/sitemaps/movies-${page}`));
+  }
 
   for (let page = 0; page < personPageCount; page += 1) {
-    sitemapUrls.push(`${APP_URL}/sitemaps/people-${page}`);
+    sitemapUrls.push(absoluteUrl(`/sitemaps/people-${page}`));
   }
 
   return xmlResponse(serializeSitemapIndex(sitemapUrls));

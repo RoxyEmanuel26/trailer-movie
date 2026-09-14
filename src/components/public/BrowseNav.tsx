@@ -96,9 +96,9 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
       aria-label="Primary navigation"
     >
       <Link
-        href="/search"
+        href="/movies"
         className="nav-link"
-        aria-current={pathname === '/search' ? 'page' : undefined}
+        aria-current={pathname === '/movies' ? 'page' : undefined}
       >
         Movies
       </Link>
@@ -148,7 +148,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         onClose={() => setOpenMenu(null)}
       >
         <div className="nav-dropdown-surface p-2">
-          <p className="nav-dropdown-label px-3 pb-2 pt-1">Choose a ranking</p>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Choose a ranking</p><Link href="/popular" onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
           {POPULAR_CATALOG.map((item) => (
             <Link
               key={item.slug}
@@ -172,9 +172,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         onClose={() => setOpenMenu(null)}
       >
         <div className="nav-dropdown-surface">
-          <p className="nav-dropdown-label px-3 pb-2 pt-1">
-            Production country or spoken language
-          </p>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Production country or spoken language</p><Link href="/countries" onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
           <div className="grid grid-cols-2 gap-1">
             {ORIGIN_CATALOG.map((item) => (
               <Link
@@ -200,7 +198,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         onClose={() => setOpenMenu(null)}
       >
         <div className="nav-dropdown-surface">
-          <p className="nav-dropdown-label px-3 pb-2 pt-1">Browse by release year</p>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Browse by release year</p><Link href="/years" onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
           <div className="grid max-h-[22rem] grid-cols-4 gap-1 overflow-y-auto overscroll-contain pr-1">
             {years.map((year) => (
               <Link

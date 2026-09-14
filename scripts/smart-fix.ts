@@ -67,7 +67,7 @@ async function runFix() {
           update: {}
         });
 
-        let lockedFields = (m.lockedFields as string[]) || [];
+        const lockedFields = (m.lockedFields as string[]) || [];
         if (!lockedFields.includes('languages')) lockedFields.push('languages');
         if (!lockedFields.includes('countries')) lockedFields.push('countries');
         

@@ -11,6 +11,10 @@ export class GenreService {
     return GenreRepository.list();
   }
 
+  static async listGenresWithPublishedCounts() {
+    return GenreRepository.listWithPublishedCounts();
+  }
+
   static async getGenre(id: string) {
     const genre = await GenreRepository.findById(id);
     if (!genre) throw new NotFoundError("Genre not found");

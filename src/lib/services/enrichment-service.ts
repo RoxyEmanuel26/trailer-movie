@@ -43,7 +43,7 @@ export class EnrichmentService {
     if (tmdbData.images?.logos && Array.isArray(tmdbData.images.logos) && tmdbData.images.logos.length > 0) {
       const enLogo = tmdbData.images.logos.find((l: any) => l.iso_639_1 === 'en') || tmdbData.images.logos[0];
       if (enLogo?.file_path) {
-        logoUrl = `https://image.tmdb.org/t/p/original${enLogo.file_path}`;
+        logoUrl = `https://image.tmdb.org/t/p/w500${enLogo.file_path}`;
       }
     }
 
@@ -120,7 +120,7 @@ export class EnrichmentService {
           if (img.file_path) {
             imagesToInsert.push({
               movieId,
-              imageUrl: `https://image.tmdb.org/t/p/original${img.file_path}`,
+              imageUrl: `https://image.tmdb.org/t/p/w1280${img.file_path}`,
               imageType: ImageType.BACKDROP,
               aspectRatio: img.aspect_ratio || null,
               width: img.width || null,
@@ -144,7 +144,7 @@ export class EnrichmentService {
           if (img.file_path) {
             imagesToInsert.push({
               movieId,
-              imageUrl: `https://image.tmdb.org/t/p/original${img.file_path}`,
+              imageUrl: `https://image.tmdb.org/t/p/w500${img.file_path}`,
               imageType: ImageType.POSTER,
               aspectRatio: img.aspect_ratio || null,
               width: img.width || null,
@@ -168,7 +168,7 @@ export class EnrichmentService {
           if (img.file_path) {
             imagesToInsert.push({
               movieId,
-              imageUrl: `https://image.tmdb.org/t/p/original${img.file_path}`,
+              imageUrl: `https://image.tmdb.org/t/p/w500${img.file_path}`,
               imageType: ImageType.LOGO,
               aspectRatio: img.aspect_ratio || null,
               width: img.width || null,
@@ -248,7 +248,7 @@ export class EnrichmentService {
               linksToInsert.push({
                 providerTmdbId: p.provider_id,
                 providerName: p.provider_name,
-                providerLogo: p.logo_path ? `https://image.tmdb.org/t/p/original${p.logo_path}` : null,
+                providerLogo: p.logo_path ? `https://image.tmdb.org/t/p/w185${p.logo_path}` : null,
                 priority: p.display_priority ?? 0,
                 countryCode: cCode,
                 accessType: type,

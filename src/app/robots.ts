@@ -1,15 +1,21 @@
 import { MetadataRoute } from 'next';
 import { SeoService } from '@/lib/services/SeoService';
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+import { absoluteUrl, siteConfig } from '@/lib/site-config';
 
 export default function robots(): MetadataRoute.Robots {
-  // Although we generate string inside SeoService, Next.js robots.ts expects a configuration object
+  if (!siteConfig.indexingEnabled) {
+    return {
+      rules: { userAgent: '*', disallow: '/' },
+      sitemap: absoluteUrl('/sitemap.xml'),
+    };
+  }
+
   return {
     rules: {
       userAgent: '*',
       allow: '/',
+      disallow: ['/admin/', '/api/', '/login', '/monitoring', '/person-not-found'],
     },
-    sitemap: `${APP_URL}/sitemap.xml`,
+    sitemap: absoluteUrl('/sitemap.xml'),
   };
 }

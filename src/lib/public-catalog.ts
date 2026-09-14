@@ -6,7 +6,7 @@ export interface PopularCatalogItem {
   slug: PopularMode;
   label: string;
   description: string;
-  orderBy: Prisma.MovieOrderByWithRelationInput | Prisma.MovieOrderByWithRelationInput[];
+  orderBy?: Prisma.MovieOrderByWithRelationInput | Prisma.MovieOrderByWithRelationInput[];
 }
 
 export interface OriginCatalogItem {
@@ -20,25 +20,24 @@ export const POPULAR_CATALOG: PopularCatalogItem[] = [
   {
     slug: 'most-popular',
     label: 'Most popular',
-    description: 'Movies audiences are discovering most across the catalog.',
+    description: 'Discover the movies drawing the most audience interest across MovieFlix, ordered by locally stored TMDB popularity and vote activity.',
     orderBy: [{ popularity: 'desc' }, { voteCount: 'desc' }],
   },
   {
     slug: 'top-rated',
     label: 'Top rated',
-    description: 'The highest-rated movies, ordered by score and audience votes.',
-    orderBy: [{ voteAverage: 'desc' }, { voteCount: 'desc' }],
+    description: 'Compare highly rated movies with at least 50 audience votes, ranked with a Bayesian weighted score that reduces small-sample bias.',
   },
   {
     slug: 'latest-releases',
     label: 'Latest releases',
-    description: 'Recently released movies, with the newest dates first.',
+    description: 'Browse movies that have already reached their release date, ordered from the newest release backward without mixing in upcoming titles.',
     orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
   },
   {
     slug: 'recently-added',
     label: 'Recently added',
-    description: 'The newest movies added to the TrailerTube catalog.',
+    description: 'Explore the movies most recently added to the local MovieFlix catalog, independent of when each title originally reached theaters.',
     orderBy: [{ createdAt: 'desc' }, { popularity: 'desc' }],
   },
 ];

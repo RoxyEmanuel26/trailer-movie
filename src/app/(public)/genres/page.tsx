@@ -3,22 +3,23 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { GenreService } from '@/lib/services/GenreService';
 import { SeoService } from '@/lib/services/SeoService';
+import { JsonLd } from '@/components/seo/JsonLd';
 
 export const revalidate = 3600;
 
 export async function generateMetadata(): Promise<Metadata> {
   return SeoService.generateMetadata('Page', 'genres', {
     title: 'Movie genres',
-    description: 'Browse every movie genre available in the TrailerTube catalog.',
+    description: 'Browse every movie genre available in MovieFlix and open locally indexed collections with trailers, cast, ratings, and related discovery links.',
     path: '/genres',
   });
 }
 
 export default async function GenresPage() {
-  const genres = await GenreService.listGenres();
+  const genres = await GenreService.listGenresWithPublishedCounts();
   const path = '/genres';
   const title = 'Every movie genre';
-  const description = 'Browse every movie genre available in the TrailerTube catalog.';
+  const description = 'Browse every movie genre available in the MovieFlix catalog.';
   const jsonLd = [
     SeoService.generateStructuredData('CollectionPage', { title, description, path }),
     SeoService.generateStructuredData('BreadcrumbList', {
@@ -31,10 +32,7 @@ export default async function GenresPage() {
 
   return (
     <div className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
-      />
+      <JsonLd data={{ '@context': 'https://schema.org', '@graph': jsonLd }} />
       <nav
         aria-label="Breadcrumb"
         className="mb-7 flex items-center gap-2 text-xs font-medium text-muted-foreground"
@@ -71,6 +69,9 @@ export default async function GenresPage() {
               <h2 className="text-xl font-semibold tracking-[-0.03em] group-hover:text-primary">
                 {genre.name}
               </h2>
+              <p className="mt-2 text-xs font-semibold tabular-nums text-muted-foreground">
+                {genre._count.movies.toLocaleString()} {genre._count.movies === 1 ? 'movie' : 'movies'}
+              </p>
             </div>
             <ArrowUpRight className="h-5 w-5 text-muted-foreground transition duration-200 group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:text-primary" />
           </Link>

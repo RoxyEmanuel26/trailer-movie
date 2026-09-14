@@ -24,7 +24,6 @@ export function MovieExtraInfo({
   productionStatus,
   homepage,
   imdbId,
-  movieSlug,
 }: {
   budget: any;
   revenue: any;
@@ -41,29 +40,8 @@ export function MovieExtraInfo({
 }) {
   const certification = ageRating || 'NR';
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const jsonLd = movieSlug
-    ? {
-        '@context': 'https://schema.org',
-        '@type': 'Movie',
-        '@id': `${baseUrl}/watch/${movieSlug}`,
-        contentRating: certification !== 'NR' ? certification : undefined,
-        keywords: keywords.map((k: any) => k.keyword?.name || k.name).join(', '),
-        productionCompany: companies.map((c: any) => ({
-          '@type': 'Organization',
-          name: c.company?.name || c.name,
-        })),
-      }
-    : null;
-
   return (
     <div className="flex flex-col gap-6 mt-6">
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
       <div className="cinema-panel rounded-2xl p-5">
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           Production details

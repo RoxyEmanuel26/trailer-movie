@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { EventTrackingService } from '@/lib/services/EventTrackingService';
 
 const eventSchema = z.object({
-  eventName: z.enum(['page_view', 'movie_view', 'trailer_play', 'trailer_complete', 'search', 'homepage_click', 'system_error', 'security_alert']),
+  eventName: z.enum(['page_view', 'movie_view', 'person_view', 'trailer_play', 'trailer_complete', 'search', 'filter_apply', 'pagination', 'homepage_click', 'web_vital', 'system_error', 'security_alert']),
   entityId: z.string().optional(),
   metadata: z.record(z.string(), z.any()).optional(),
 });
@@ -30,11 +30,10 @@ export async function POST(req: NextRequest) {
         if (entityId) await EventTrackingService.trackTrailerPlay(entityId, (metadata?.trailerId as string) || '');
         break;
       case 'search':
-        await EventTrackingService.trackSearch((metadata?.query as string) || '', (metadata?.resultsCount as number) || 0);
+        await EventTrackingService.trackSearch(sanitizeSearchQuery((metadata?.query as string) || ''), (metadata?.resultsCount as number) || 0);
         break;
-      // Additional events can be handled directly via a generic method if needed
       default:
-        // Or directly log via repository
+        await EventTrackingService.trackGeneric(eventName, entityId, metadata as any);
         break;
     }
 
@@ -42,4 +41,13 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
+}
+
+function sanitizeSearchQuery(value: string) {
+  return value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[redacted-phone]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
 }

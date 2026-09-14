@@ -57,8 +57,8 @@ export async function SectionRenderer({ section }: SectionRendererProps) {
         )}
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:grid-cols-6">
-        {movies.map((movie, index) => (
-          <MovieCard key={movie.id} movie={movie} priority={index < 4} />
+        {movies.map((movie) => (
+          <MovieCard key={movie.id} movie={movie} />
         ))}
       </div>
     </section>

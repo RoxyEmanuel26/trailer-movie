@@ -6,10 +6,21 @@ import { cache } from 'react';
 import { MovieRepository } from '../repositories/MovieRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '../public-catalog';
-import { personPath } from '../public-routes';
+import { moviePath, personPath } from '../public-routes';
+import { absoluteUrl, canonicalUrl, isValidContactEmail, normalizeMetaDescription, siteConfig } from '../site-config';
+import type { SitemapEntry } from '../sitemap-xml';
+import { getTmdbImageUrl } from '../tmdb-image-loader';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 export const PERSON_SITEMAP_PAGE_SIZE = 45_000;
+export const MOVIE_SITEMAP_PAGE_SIZE = 45_000;
+
+export function escapeCdata(value: string) {
+  return value.replace(/]]>/g, ']]]]><![CDATA[>');
+}
+
+function normalizeLegacyBrand(value: string) {
+  return value.replace(/TrailerTube|Trailer Movie/gi, siteConfig.name);
+}
 
 export class SeoService {
   // --------------------------------------------------------------------------
@@ -49,12 +60,12 @@ export class SeoService {
       {} as Record<string, string>
     );
     return {
-      defaultTitle: map['seo.defaultTitle'] || 'Trailer Movie',
-      defaultDescription: map['seo.defaultDescription'] || 'Watch the best movie trailers.',
+      defaultTitle: normalizeLegacyBrand(map['seo.defaultTitle'] || siteConfig.name),
+      defaultDescription: normalizeLegacyBrand(map['seo.defaultDescription'] || siteConfig.description),
       defaultKeywords: map['seo.defaultKeywords'] || 'movies, trailers',
-      ogSiteName: map['seo.ogSiteName'] || 'Trailer Movie',
-      twitterHandle: map['seo.twitterHandle'] || '@trailermovie',
-      googleVerification: map['seo.googleVerification'] || '',
+      ogSiteName: siteConfig.name,
+      twitterHandle: siteConfig.twitterHandle,
+      googleVerification: siteConfig.googleVerification,
       bingVerification: map['seo.bingVerification'] || '',
       yandexVerification: map['seo.yandexVerification'] || '',
     };
@@ -70,7 +81,8 @@ export class SeoService {
     bingVerification: string;
     yandexVerification: string;
   }) {
-    const settings = Object.entries(data).map(([key, value]) => ({
+    const environmentOwned = new Set(['ogSiteName', 'twitterHandle', 'googleVerification']);
+    const settings = Object.entries(data).filter(([key]) => !environmentOwned.has(key)).map(([key, value]) => ({
       key: `seo.${key}`,
       value,
       group: 'seo',
@@ -103,17 +115,19 @@ export class SeoService {
       SeoRepository.findPageSEO(seoableType, seoableId),
     ]);
 
-    const title = pageSeo?.metaTitle || fallback.title || globalSettings.defaultTitle;
-    const description =
-      pageSeo?.metaDescription || fallback.description || globalSettings.defaultDescription;
+    const title = normalizeLegacyBrand(pageSeo?.metaTitle || fallback.title || globalSettings.defaultTitle);
+    const description = normalizeMetaDescription(
+      normalizeLegacyBrand(pageSeo?.metaDescription || fallback.description || ''),
+      globalSettings.defaultDescription
+    );
     const keywords = globalSettings.defaultKeywords;
     const ogImage = pageSeo?.ogImageUrl || fallback.image;
 
     // Canonical URL
-    const canonical =
-      pageSeo?.canonicalUrl || (fallback.path ? `${APP_URL}${fallback.path}` : APP_URL);
+    const canonical = canonicalUrl(pageSeo?.canonicalUrl, fallback.path || '/');
 
-    const isNoindex = pageSeo?.isNoindex === true || fallback.indexable === false;
+    const isNoindex =
+      !siteConfig.indexingEnabled || pageSeo?.isNoindex === true || fallback.indexable === false;
 
     return {
       title,
@@ -124,26 +138,26 @@ export class SeoService {
       },
       robots: {
         index: !isNoindex,
-        follow: !isNoindex,
+        follow: true,
       },
       openGraph: {
         title: title,
         description: description,
         url: canonical,
         siteName: globalSettings.ogSiteName,
-        images: ogImage ? [{ url: ogImage }] : [],
+        images: [{ url: ogImage || absoluteUrl('/opengraph-image'), width: 1200, height: 630, alt: title }],
         type: fallback.openGraphType || 'website',
       },
       twitter: {
         card: 'summary_large_image',
         title: title,
         description: description,
-        images: ogImage ? [ogImage] : [],
-        creator: globalSettings.twitterHandle,
+        images: [ogImage || absoluteUrl('/opengraph-image')],
+        ...(globalSettings.twitterHandle ? { creator: globalSettings.twitterHandle } : {}),
       },
       verification: {
-        google: globalSettings.googleVerification,
-        yandex: globalSettings.yandexVerification,
+        google: globalSettings.googleVerification || undefined,
+        yandex: globalSettings.yandexVerification || undefined,
         other: {
           bing: globalSettings.bingVerification ? [globalSettings.bingVerification] : [],
         },
@@ -163,10 +177,10 @@ export class SeoService {
         '@context': 'https://schema.org',
         '@type': 'WebSite',
         name: data.name,
-        url: APP_URL,
+        url: siteConfig.url,
         potentialAction: {
           '@type': 'SearchAction',
-          target: `${APP_URL}/search?q={search_term_string}`,
+          target: absoluteUrl('/search?q={search_term_string}'),
           'query-input': 'required name=search_term_string',
         },
       };
@@ -176,22 +190,24 @@ export class SeoService {
       const schema: any = {
         '@context': 'https://schema.org',
         '@type': 'Movie',
-        '@id': `${APP_URL}${data.path}`,
+        '@id': `${absoluteUrl(data.path)}#movie`,
         name: data.title,
         description: data.description,
         image: data.image,
-        dateCreated: data.releaseDate,
+        datePublished: data.releaseDate,
         director: data.directors?.map((director: any) => ({
           '@type': 'Person',
           name: director.name,
-          ...(director.path ? { url: `${APP_URL}${director.path}` } : {}),
+          ...(director.path ? { url: absoluteUrl(director.path) } : {}),
         })),
         actor: data.actors?.map((actor: any) => ({
           '@type': 'Person',
           name: actor.name,
-          ...(actor.path ? { url: `${APP_URL}${actor.path}` } : {}),
+          ...(actor.path ? { url: absoluteUrl(actor.path) } : {}),
         })),
-        genre: data.genre?.name,
+        genre: Array.isArray(data.genres)
+          ? data.genres.map((genre: any) => genre.name || genre)
+          : data.genre?.name,
       };
 
       if (data.youtubeTrailerId) {
@@ -202,7 +218,7 @@ export class SeoService {
           thumbnailUrl:
             data.image || `https://img.youtube.com/vi/${data.youtubeTrailerId}/maxresdefault.jpg`,
           embedUrl: `https://www.youtube.com/embed/${data.youtubeTrailerId}`,
-          uploadDate: data.releaseDate,
+          uploadDate: data.trailerPublishedDate || data.releaseDate,
         };
       }
 
@@ -223,9 +239,9 @@ export class SeoService {
       return {
         '@context': 'https://schema.org',
         '@type': 'Person',
-        '@id': `${APP_URL}${data.path}#person`,
-        url: `${APP_URL}${data.path}`,
-        mainEntityOfPage: `${APP_URL}${data.path}`,
+        '@id': `${absoluteUrl(data.path)}#person`,
+        url: absoluteUrl(data.path),
+        mainEntityOfPage: absoluteUrl(data.path),
         name: data.name,
         description: data.description || undefined,
         image: data.image || undefined,
@@ -244,7 +260,7 @@ export class SeoService {
         '@type': 'CollectionPage',
         name: data.title,
         description: data.description,
-        url: `${APP_URL}${data.path}`,
+        url: absoluteUrl(data.path),
       };
     }
 
@@ -256,7 +272,7 @@ export class SeoService {
           '@type': 'ListItem',
           position: index + 1,
           name: item.name,
-          item: `${APP_URL}${item.path}`,
+          item: absoluteUrl(item.path),
         })),
       };
     }
@@ -268,32 +284,44 @@ export class SeoService {
    * Generate Sitemap Data
    */
   static async generateSitemapData() {
-    const [{ movies, genres, collections }, years] = await Promise.all([
-      SeoRepository.getSitemapData(),
-      MovieRepository.listPublishedReleaseYears(),
+    const [{ genres, collections }, years, originCounts] = await Promise.all([
+      SeoRepository.getCoreSitemapData(),
+      MovieRepository.listPublishedReleaseYearStats(),
+      Promise.all(
+        ORIGIN_CATALOG.map(async (item) => {
+          const { total } = await MovieRepository.search({
+            status: 'PUBLISHED',
+            countryCodes: item.countryCodes,
+            languageCodes: item.languageCodes,
+            take: 1,
+          });
+          return { item, total };
+        })
+      ),
     ]);
 
-    const sitemap = [
-      { url: APP_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
-      {
-        url: `${APP_URL}/genres`,
-        lastModified: new Date(),
-        changeFrequency: 'weekly',
-        priority: 0.7,
-      },
+    const sitemap: SitemapEntry[] = [
+      { url: siteConfig.url, changeFrequency: 'daily', priority: 1.0 },
+      { url: absoluteUrl('/movies'), changeFrequency: 'daily', priority: 0.8 },
+      { url: absoluteUrl('/genres'), changeFrequency: 'weekly', priority: 0.7 },
+      { url: absoluteUrl('/countries'), changeFrequency: 'weekly', priority: 0.7 },
+      { url: absoluteUrl('/years'), changeFrequency: 'weekly', priority: 0.7 },
+      { url: absoluteUrl('/popular'), changeFrequency: 'daily', priority: 0.7 },
+      { url: absoluteUrl('/about'), changeFrequency: 'monthly', priority: 0.4 },
+      { url: absoluteUrl('/methodology'), changeFrequency: 'monthly', priority: 0.4 },
+      { url: absoluteUrl('/privacy'), changeFrequency: 'monthly', priority: 0.2 },
+      { url: absoluteUrl('/terms'), changeFrequency: 'monthly', priority: 0.2 },
+      ...(isValidContactEmail(siteConfig.contactEmail)
+        ? [
+            { url: absoluteUrl('/contact'), changeFrequency: 'monthly', priority: 0.3 },
+            { url: absoluteUrl('/dmca'), changeFrequency: 'monthly', priority: 0.2 },
+          ] satisfies SitemapEntry[]
+        : []),
     ];
 
-    movies.forEach((m) =>
-      sitemap.push({
-        url: `${APP_URL}/watch/${m.slug}`,
-        lastModified: m.updatedAt,
-        changeFrequency: 'weekly',
-        priority: 0.8,
-      })
-    );
     genres.forEach((g) =>
       sitemap.push({
-        url: `${APP_URL}/genre/${g.slug}`,
+        url: absoluteUrl(`/genre/${g.slug}`),
         lastModified: g.updatedAt,
         changeFrequency: 'weekly',
         priority: 0.6,
@@ -301,38 +329,79 @@ export class SeoService {
     );
     collections.forEach((c) =>
       sitemap.push({
-        url: `${APP_URL}/collection/${c.slug}`,
-        lastModified: new Date(),
+        url: absoluteUrl(`/collection/${c.slug}`),
+        lastModified: c.updatedAt,
         changeFrequency: 'weekly',
         priority: 0.7,
       })
     );
     POPULAR_CATALOG.forEach((item) =>
       sitemap.push({
-        url: `${APP_URL}/popular/${item.slug}`,
-        lastModified: new Date(),
+        url: absoluteUrl(`/popular/${item.slug}`),
         changeFrequency: 'daily',
         priority: 0.7,
       })
     );
-    ORIGIN_CATALOG.forEach((item) =>
+    originCounts.filter(({ total }) => total >= 3).forEach(({ item }) =>
       sitemap.push({
-        url: `${APP_URL}/origin/${item.slug}`,
-        lastModified: new Date(),
+        url: absoluteUrl(`/origin/${item.slug}`),
         changeFrequency: 'weekly',
         priority: 0.6,
       })
     );
-    years.forEach((year) =>
+    years.filter((item) => Number(item.count) >= 3).forEach((item) =>
       sitemap.push({
-        url: `${APP_URL}/year/${year}`,
-        lastModified: new Date(),
+        url: absoluteUrl(`/year/${item.year}`),
+        lastModified: item.updatedAt,
         changeFrequency: 'weekly',
         priority: 0.6,
       })
     );
 
     return sitemap;
+  }
+
+  static async getMovieSitemapPageCount() {
+    const total = await SeoRepository.countIndexableMovies();
+    return Math.ceil(total / MOVIE_SITEMAP_PAGE_SIZE);
+  }
+
+  static async generateMovieSitemapData(page: number): Promise<SitemapEntry[]> {
+    if (!Number.isSafeInteger(page) || page < 0) return [];
+    const movies = await SeoRepository.listIndexableMoviesForSitemap({
+      skip: page * MOVIE_SITEMAP_PAGE_SIZE,
+      take: MOVIE_SITEMAP_PAGE_SIZE,
+    });
+
+    return movies.map((movie) => {
+      const trailer = movie.trailers[0];
+      const youtubeId = trailer?.sourceId || movie.youtubeTrailerId;
+      const description = normalizeMetaDescription(
+        movie.synopsis,
+        `Watch the official trailer for ${movie.title} on MovieFlix.`
+      );
+      return {
+        url: absoluteUrl(moviePath(movie.slug)),
+        lastModified: movie.updatedAt,
+        changeFrequency: 'weekly',
+        priority: 0.8,
+        ...(movie.posterUrl
+          ? { image: { loc: getTmdbImageUrl(movie.posterUrl, 500), title: `${movie.title} poster` } }
+          : {}),
+        ...(youtubeId
+          ? {
+              video: {
+                thumbnailLoc:
+                  trailer?.thumbnailUrl || `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`,
+                title: trailer?.title || `${movie.title} trailer`,
+                description,
+                playerLoc: `https://www.youtube.com/embed/${youtubeId}`,
+                publicationDate: trailer?.publishedDate || undefined,
+              },
+            }
+          : {}),
+      };
+    });
   }
 
   static async getPersonSitemapPageCount() {
@@ -349,7 +418,7 @@ export class SeoService {
     });
 
     return people.map((person) => ({
-      url: `${APP_URL}${personPath(person.slug)}`,
+      url: absoluteUrl(personPath(person.slug)),
       lastModified: person.updatedAt,
       changeFrequency: 'monthly' as const,
       priority: 0.6,
@@ -363,7 +432,7 @@ export class SeoService {
     return `User-agent: *
 Allow: /
 
-Sitemap: ${APP_URL}/sitemap.xml`;
+Sitemap: ${absoluteUrl('/sitemap.xml')}`;
   }
 
   /**
@@ -376,11 +445,11 @@ Sitemap: ${APP_URL}/sitemap.xml`;
       .map(
         (m) => `
       <item>
-        <title><![CDATA[${m.title}]]></title>
-        <link>${APP_URL}/watch/${m.slug}</link>
-        <guid>${APP_URL}/watch/${m.slug}</guid>
+        <title><![CDATA[${escapeCdata(m.title)}]]></title>
+        <link>${absoluteUrl(moviePath(m.slug))}</link>
+        <guid>${absoluteUrl(moviePath(m.slug))}</guid>
         <pubDate>${m.createdAt.toUTCString()}</pubDate>
-        <description><![CDATA[${m.synopsis || ''}]]></description>
+        <description><![CDATA[${escapeCdata(m.synopsis || '')}]]></description>
       </item>
     `
       )
@@ -389,9 +458,9 @@ Sitemap: ${APP_URL}/sitemap.xml`;
     return `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
   <channel>
-    <title>Trailer Movie</title>
-    <link>${APP_URL}</link>
-    <description>Latest Movies and Trailers</description>
+    <title>MovieFlix</title>
+    <link>${siteConfig.url}</link>
+    <description>Latest movies and trailers from MovieFlix</description>
     ${items}
   </channel>
 </rss>`;

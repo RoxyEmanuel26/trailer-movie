@@ -1,10 +1,17 @@
 import type { NextConfig } from "next";
 import "./src/env";
+import { assertProductionSiteConfig } from "./src/lib/site-config";
+
+assertProductionSiteConfig();
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Resolve metadata before sending headers so redirects and not-found responses
+  // keep their real HTTP status for crawlers, browsers, and link checkers.
+  htmlLimitedBots: /.*/,
   images: {
-    unoptimized: true,
+    loader: 'custom',
+    loaderFile: './src/lib/tmdb-image-loader.ts',
     remotePatterns: [
       {
         protocol: 'https',
@@ -53,6 +60,10 @@ const nextConfig: NextConfig = {
           {
             key: 'Cross-Origin-Resource-Policy',
             value: 'same-site',
+          },
+          {
+            key: 'X-Robots-Tag',
+            value: process.env.SEO_INDEXING_ENABLED === 'true' ? 'index, follow' : 'noindex, nofollow',
           }
         ],
       },

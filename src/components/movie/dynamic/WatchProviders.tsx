@@ -324,29 +324,8 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
 
   const hiddenCount = filteredProviders.length - INITIAL_LIMIT;
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const jsonLd = movieSlug
-    ? {
-        '@context': 'https://schema.org',
-        '@type': 'Movie',
-        '@id': `${baseUrl}/watch/${movieSlug}`,
-        offers: allProviders.map((p) => ({
-          '@type': 'Offer',
-          name: p.name,
-          url: p.directUrl,
-          category: p.types.has('stream') ? 'subscription' : 'rental',
-        })),
-      }
-    : null;
-
   return (
     <div className="mt-6 p-4 rounded-xl border bg-card shadow-sm">
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-3">

@@ -7,24 +7,31 @@ import { MovieService } from '@/lib/services/MovieService';
 import { MovieCard } from '@/components/public/MovieCard';
 import { Pagination } from '@/components/public/Pagination';
 import { Layers } from 'lucide-react';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { slug } = await params;
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
   try {
     const collection = await CollectionService.getBySlug(slug);
+    const page = parseStrictPage(query.page);
+    if (!page) notFound();
+    const { total } = await MovieService.searchMovies({ collectionSlug: collection.slug, take: 1 });
+    if (isPageOutOfRange(page, total, 24)) notFound();
     return SeoService.generateMetadata('Collection', collection.id, {
-      title: `${collection.title} Collection`,
+      title: `${collection.title} Collection${page > 1 ? ` — Page ${page}` : ''}`,
       description: collection.description || `Explore the ${collection.title} collection.`,
       image: collection.coverImageUrl || undefined,
-      path: `/collection/${collection.slug}`,
+      path: pagePath(`/collection/${collection.slug}`, page),
+      indexable: total >= 3 && Boolean(collection.description?.trim()),
     });
   } catch (error) {
-    return { title: 'Not Found' };
+    notFound();
   }
 }
 
@@ -41,8 +48,8 @@ export default async function CollectionPage({ params, searchParams }: PageProps
     notFound();
   }
 
-  const parsedPage = typeof page === 'string' ? parseInt(page, 10) : 1;
-  const currentPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const currentPage = parseStrictPage(page);
+  if (!currentPage) notFound();
   const itemsPerPage = 24;
   const skip = (currentPage - 1) * itemsPerPage;
 
@@ -53,6 +60,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
     take: itemsPerPage,
     orderBy: { releaseDate: 'desc' },
   });
+  if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();
 
   const jsonLd = SeoService.generateStructuredData('CollectionPage', {
     title: collection.title,
@@ -62,12 +70,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
 
   return (
     <>
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
+      {jsonLd ? <JsonLd data={jsonLd} /> : null}
 
       {/* Hero Section */}
       <section className="relative flex min-h-[20rem] w-full flex-col justify-end overflow-hidden bg-[#0d0e0c] sm:min-h-[23rem] lg:min-h-[25rem]">
@@ -109,8 +112,8 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         {movies.length > 0 ? (
           <>
             <div className="mb-10 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:mb-12 lg:grid-cols-6 lg:gap-y-8">
-              {movies.map((movie, index) => (
-                <MovieCard key={movie.id} movie={movie} priority={index < 4} />
+              {movies.map((movie) => (
+                <MovieCard key={movie.id} movie={movie} />
               ))}
             </div>
 
