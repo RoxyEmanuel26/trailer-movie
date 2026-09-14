@@ -25,6 +25,13 @@ export const metadata: Metadata = {
   description: siteConfig.description,
   applicationName: siteConfig.name,
   manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/brand/movieflix-mark.svg', type: 'image/svg+xml' },
+    ],
+    apple: [{ url: '/brand/movieflix-apple-touch-icon.png', sizes: '180x180' }],
+  },
   robots: {
     index: siteConfig.indexingEnabled,
     follow: siteConfig.indexingEnabled,

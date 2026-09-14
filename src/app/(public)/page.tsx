@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Clapperboard, Library, Play, Search, Star } from 'lucide-react';
+import { Clapperboard, Play, Search, Star } from 'lucide-react';
 import { HomepageService } from '@/lib/services/HomepageService';
 import { SeoService } from '@/lib/services/SeoService';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
@@ -144,34 +144,6 @@ export default async function HomePage() {
               </div>
             ) : null}
           </div>
-        </div>
-      </section>
-
-      <section className="relative z-10 mx-auto -mt-6 grid w-[calc(100%-2rem)] max-w-5xl grid-cols-3 overflow-hidden rounded-2xl border border-white/10 bg-[#191a17] text-white shadow-2xl sm:-mt-8">
-        <div className="min-w-0 p-3.5 sm:p-6 lg:p-7">
-          <Library className="mb-2.5 h-4 w-4 text-[#f48a6f] sm:mb-4 sm:h-5 sm:w-5" />
-          <p className="truncate text-lg font-semibold tabular-nums sm:text-3xl">
-            {discovery.totalMovies.toLocaleString()}
-          </p>
-          <p className="mt-1 text-[0.65rem] leading-4 text-white/55 sm:text-xs">
-            movies indexed locally
-          </p>
-        </div>
-        <div className="min-w-0 border-l border-white/10 p-3.5 sm:p-6 lg:p-7">
-          <Play className="mb-2.5 h-4 w-4 text-[#f48a6f] sm:mb-4 sm:h-5 sm:w-5" />
-          <p className="truncate text-lg font-semibold tabular-nums sm:text-3xl">
-            {discovery.trailersAvailable.toLocaleString()}
-          </p>
-          <p className="mt-1 text-[0.65rem] leading-4 text-white/55 sm:text-xs">
-            trailers ready to play
-          </p>
-        </div>
-        <div className="min-w-0 border-l border-white/10 p-3.5 sm:p-6 lg:p-7">
-          <Clapperboard className="mb-2.5 h-4 w-4 text-[#f48a6f] sm:mb-4 sm:h-5 sm:w-5" />
-          <p className="truncate text-lg font-semibold tabular-nums sm:text-3xl">
-            {discovery.genres.length}
-          </p>
-          <p className="mt-1 text-[0.65rem] leading-4 text-white/55 sm:text-xs">popular genres</p>
         </div>
       </section>
 

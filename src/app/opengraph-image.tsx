@@ -21,7 +21,13 @@ export default function OpenGraphImage() {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px', fontSize: 34, fontWeight: 700 }}>
-        <div style={{ display: 'flex', width: 58, height: 58, borderRadius: 16, alignItems: 'center', justifyContent: 'center', background: '#e65335' }}>M</div>
+        <svg width="58" height="58" viewBox="0 0 40 40">
+          <path fill="#e25b38" d="M9.25 2.75h6.1c1.47 0 2.9.43 4.11 1.24l15.02 10.08a7.14 7.14 0 0 1 0 11.86L19.46 36.01a7.38 7.38 0 0 1-4.11 1.24h-6.1A6.5 6.5 0 0 1 2.75 30.75V9.25a6.5 6.5 0 0 1 6.5-6.5Z" />
+          <path fill="#fffaf5" d="m17.04 11.78 11.3 7.15a1.27 1.27 0 0 1 0 2.14l-11.3 7.15A1.32 1.32 0 0 1 15 27.1V12.9a1.32 1.32 0 0 1 2.04-1.12Z" />
+          <rect x="7" y="8" width="4" height="5" rx="1.25" fill="#fffaf5" />
+          <rect x="7" y="17.5" width="4" height="5" rx="1.25" fill="#fffaf5" />
+          <rect x="7" y="27" width="4" height="5" rx="1.25" fill="#fffaf5" />
+        </svg>
         {siteConfig.name}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: 980 }}>

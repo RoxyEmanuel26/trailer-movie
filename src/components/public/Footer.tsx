@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Film } from 'lucide-react';
+import { MovieFlixLogo } from '@/components/brand/MovieFlixLogo';
 
 export function Footer() {
   return (
@@ -7,8 +7,7 @@ export function Footer() {
       <div className="mx-auto grid max-w-[90rem] grid-cols-2 gap-x-6 gap-y-9 px-4 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr] md:gap-10 lg:px-8">
         <div className="col-span-2 flex max-w-md flex-col gap-4 md:col-span-1">
           <Link href="/" className="flex items-center space-x-2">
-            <Film className="h-6 w-6" />
-            <span className="font-bold text-lg">MovieFlix</span>
+            <MovieFlixLogo markClassName="h-8 w-8" wordmarkClassName="text-lg" />
           </Link>
           <p className="text-sm text-muted-foreground">
             A focused movie discovery guide powered by a locally indexed catalog—trailers, cast,

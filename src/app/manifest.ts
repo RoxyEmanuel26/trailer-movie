@@ -9,6 +9,10 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#0d0e0c',
     theme_color: '#e65335',
-    icons: [{ src: '/favicon.ico', sizes: 'any', type: 'image/x-icon' }],
+    icons: [
+      { src: '/brand/movieflix-mark.svg', sizes: 'any', type: 'image/svg+xml' },
+      { src: '/brand/movieflix-icon-192.png', sizes: '192x192', type: 'image/png' },
+      { src: '/brand/movieflix-icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
   };
 }

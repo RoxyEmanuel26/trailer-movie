@@ -3,12 +3,13 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Search, Menu, Film, ChevronDown } from 'lucide-react';
+import { Search, Menu, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '@/lib/public-catalog';
+import { MovieFlixMark } from '@/components/brand/MovieFlixLogo';
 
 interface NavbarMobileProps {
   genres: Array<{ id: string; name: string; slug: string }>;
@@ -42,9 +43,7 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
       <SheetContent className="flex h-dvh w-[min(92vw,25rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
         <div className="shrink-0 border-b bg-background/95 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-6">
           <Link href="/" className="flex min-h-11 items-center space-x-2 pr-12" onClick={closeMenu}>
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-              <Film className="h-4.5 w-4.5" />
-            </span>
+            <MovieFlixMark className="h-9 w-9 text-primary" />
             <SheetTitle className="font-semibold tracking-[-0.03em]">MovieFlix</SheetTitle>
           </Link>
           <form onSubmit={handleSearch} className="mt-4 flex gap-2">
