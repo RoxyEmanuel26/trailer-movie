@@ -11,15 +11,18 @@ const envSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(16, 'BETTER_AUTH_SECRET must be at least 16 characters long'),
 
   // External APIs
-  TMDB_ACCESS_TOKEN: z.string().min(1, 'TMDB_ACCESS_TOKEN is required'),
+  // Only the local import worker needs TMDB. Public Cloudflare pages do not.
+  TMDB_ACCESS_TOKEN: z.string().min(1).optional(),
 
   // Public SEO configuration
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
-  NEXT_PUBLIC_SITE_NAME: z.string().min(1).optional(),
   NEXT_PUBLIC_TWITTER_HANDLE: z.string().optional(),
   GOOGLE_SITE_VERIFICATION: z.string().optional(),
   CONTACT_EMAIL: z.string().email().optional(),
   SEO_INDEXING_ENABLED: z.enum(['true', 'false']).default('false'),
+  ANALYTICS_HMAC_SECRET: z.string().min(32).optional(),
+  REVALIDATION_SECRET: z.string().min(32).optional(),
+  REVALIDATION_BASE_URL: z.string().url().optional(),
 });
 
 const _env = envSchema.safeParse(process.env);

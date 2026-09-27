@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { Play } from 'lucide-react';
+import { sendAnalyticsEvent } from '@/lib/analytics/client';
 
 interface YouTubePlayerProps {
   videoId: string;
@@ -27,16 +28,11 @@ export function YouTubePlayer({
   const startPlayback = () => {
     setHasStarted(true);
     if (movieId) {
-      fetch('/api/analytics/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventName: 'trailer_play',
-          entityId: movieId,
-          metadata: { trailerId: videoId },
-        }),
-        keepalive: true,
-      }).catch(console.error);
+      void sendAnalyticsEvent({
+        eventName: 'trailer_play',
+        entityId: movieId,
+        metadata: { trailerId: videoId },
+      });
     }
   };
 

@@ -3,12 +3,16 @@ import { prisma } from '../prisma';
 import { DbClient } from './base.types';
 
 const ACTIVE_STATUSES: ImportJobStatus[] = [ImportJobStatus.PENDING, ImportJobStatus.IN_PROGRESS];
+// Use stable string values here instead of runtime enum property reads. During
+// Next.js dev hot reload a process can briefly retain the previous generated
+// Prisma enum module after a migration, which would otherwise yield undefined.
+const HIDDEN_HISTORY_STATUSES: ImportJobStatus[] = ['COMPLETED', 'SKIPPED', 'CANCELED'];
 
 export class ImportRepository {
-  static async enqueue(tmdbId: number, entityType = 'Movie', forceRefresh = false, db: DbClient = prisma) {
+  static async enqueue(tmdbId: number, entityType = 'Movie', forceRefresh = false, db: DbClient = prisma, importBatchId?: string) {
     const job = await db.importJob.upsert({
       where: { tmdbId_entityType: { tmdbId, entityType } },
-      create: { tmdbId, entityType, status: ImportJobStatus.PENDING },
+      create: { tmdbId, entityType, status: ImportJobStatus.PENDING, importBatchId },
       update: {},
     });
     if (ACTIVE_STATUSES.includes(job.status)) return job;
@@ -19,7 +23,7 @@ export class ImportRepository {
         status: ImportJobStatus.PENDING, stage: 'QUEUED', progress: 0, attemptCount: 0,
         retryable: true, nextAttemptAt: null, startedAt: null, heartbeatAt: null,
         lockedUntil: null, completedAt: null, errorCode: null, errorMessage: null,
-        result: Prisma.DbNull, logs: Prisma.DbNull,
+        result: Prisma.DbNull, logs: Prisma.DbNull, ...(importBatchId && { importBatchId }),
       },
     });
   }
@@ -49,6 +53,39 @@ export class ImportRepository {
     return db.importJob.findUnique({ where: { id } });
   }
 
+  static async findStatuses(ids: string[], db: DbClient = prisma) {
+    if (ids.length === 0) return [];
+    return db.importJob.findMany({ where: { id: { in: ids } }, select: { id: true, status: true } });
+  }
+
+  static async enqueuePersons(tmdbIds: number[], db: DbClient = prisma) {
+    const uniqueIds = [...new Set(tmdbIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+    if (uniqueIds.length === 0) return;
+    const staleBefore = new Date(Date.now() - 90 * 86_400_000);
+    await db.importJob.createMany({
+      data: uniqueIds.map((tmdbId) => ({ tmdbId, entityType: 'Person', status: ImportJobStatus.PENDING })),
+      skipDuplicates: true,
+    });
+    await db.importJob.updateMany({
+      where: {
+        entityType: 'Person', tmdbId: { in: uniqueIds },
+        OR: [
+          { status: { in: [ImportJobStatus.FAILED, ImportJobStatus.PARTIAL] }, retryable: true },
+          {
+            status: ImportJobStatus.COMPLETED,
+            OR: [{ completedAt: null }, { completedAt: { lt: staleBefore } }],
+          },
+        ],
+      },
+      data: {
+        status: ImportJobStatus.PENDING, stage: 'QUEUED', progress: 0, attemptCount: 0,
+        retryable: true, nextAttemptAt: null, startedAt: null, heartbeatAt: null,
+        lockedUntil: null, completedAt: null, errorCode: null, errorMessage: null,
+        result: Prisma.DbNull, logs: Prisma.DbNull,
+      },
+    });
+  }
+
   static async findActivJobByTmdbId(tmdbId: number, db: DbClient = prisma) {
     return db.importJob.findFirst({ where: { tmdbId, entityType: 'Movie', status: { in: ACTIVE_STATUSES } } });
   }
@@ -57,9 +94,11 @@ export class ImportRepository {
     return db.importJob.delete({ where: { id } });
   }
 
-  static async list(params: { skip?: number; take?: number; status?: ImportJobStatus; entityType?: string; stage?: string; retryable?: boolean }, db: DbClient = prisma) {
+  static async list(params: { skip?: number; take?: number; status?: ImportJobStatus; entityType?: string; stage?: string; retryable?: boolean; includeCompleted?: boolean }, db: DbClient = prisma) {
     const where: Prisma.ImportJobWhereInput = {
-      ...(params.status && { status: params.status }),
+      ...(params.status
+        ? { status: params.status }
+        : !params.includeCompleted && { status: { notIn: HIDDEN_HISTORY_STATUSES } }),
       ...(params.entityType && { entityType: params.entityType }),
       ...(params.stage && { stage: params.stage }),
       ...(params.retryable !== undefined && { retryable: params.retryable }),
@@ -72,15 +111,21 @@ export class ImportRepository {
   }
 
   static async getOverview(db: DbClient = prisma) {
-    const [queued, running, partial, completed, failed, recentJobs] = await Promise.all([
-      db.importJob.count({ where: { status: ImportJobStatus.PENDING } }),
-      db.importJob.count({ where: { status: ImportJobStatus.IN_PROGRESS } }),
-      db.importJob.count({ where: { status: ImportJobStatus.PARTIAL } }),
-      db.importJob.count({ where: { status: ImportJobStatus.COMPLETED } }),
-      db.importJob.count({ where: { status: ImportJobStatus.FAILED } }),
+    const [counts, recentJobs] = await Promise.all([
+      db.importJob.groupBy({ by: ['status'], _count: { _all: true } }),
       db.importJob.findMany({ take: 20, orderBy: { updatedAt: 'desc' } }),
     ]);
-    return { stats: { queued, running, partial, completed, failed }, recentJobs };
+    const byStatus = new Map(counts.map(({ status, _count }) => [status, _count._all]));
+    return {
+      stats: {
+        queued: byStatus.get(ImportJobStatus.PENDING) || 0,
+        running: byStatus.get(ImportJobStatus.IN_PROGRESS) || 0,
+        partial: byStatus.get(ImportJobStatus.PARTIAL) || 0,
+        completed: byStatus.get(ImportJobStatus.COMPLETED) || 0,
+        failed: byStatus.get(ImportJobStatus.FAILED) || 0,
+      },
+      recentJobs,
+    };
   }
 
   static async countReadyForProcessing(db: DbClient = prisma) {
@@ -105,6 +150,47 @@ export class ImportRepository {
 
   static async recoverStuckJobs(_thresholdDate?: Date, db: DbClient = prisma) {
     return this.recoverExpiredLeases(db);
+  }
+
+  static async recoverMisclassifiedTimeouts(db: DbClient = prisma) {
+    return db.importJob.updateMany({
+      where: {
+        status: ImportJobStatus.FAILED,
+        retryable: false,
+        errorCode: 'UNKNOWN',
+        errorMessage: { contains: 'timed out', mode: 'insensitive' },
+      },
+      data: {
+        status: ImportJobStatus.PENDING,
+        stage: 'QUEUED',
+        retryable: true,
+        nextAttemptAt: new Date(),
+        lockedUntil: null,
+        errorCode: 'UPSTREAM_TIMEOUT',
+      },
+    });
+  }
+
+  static async recoverMisclassifiedDictionaryRaces(db: DbClient = prisma) {
+    return db.importJob.updateMany({
+      where: {
+        status: ImportJobStatus.FAILED,
+        retryable: false,
+        errorCode: 'P2002',
+        OR: [
+          { errorMessage: { contains: 'tx.keyword.create', mode: 'insensitive' } },
+          { errorMessage: { contains: 'tx.productionCompany.create', mode: 'insensitive' } },
+        ],
+      },
+      data: {
+        status: ImportJobStatus.PENDING,
+        stage: 'QUEUED',
+        retryable: true,
+        nextAttemptAt: new Date(),
+        lockedUntil: null,
+        errorCode: 'DB_UNIQUE_RACE',
+      },
+    });
   }
 
   static async claimJobs(entityType: 'Movie' | 'Person', limit: number) {
@@ -134,6 +220,32 @@ export class ImportRepository {
         status: ImportJobStatus.COMPLETED, stage: 'COMPLETED', progress: 100, retryable: false,
         completedAt: new Date(), heartbeatAt: new Date(), lockedUntil: null, nextAttemptAt: null,
         errorCode: null, errorMessage: null, ...(result !== undefined && { result }),
+      },
+    });
+  }
+
+  static async skip(id: string, input: { code: string; message: string; logs?: Prisma.InputJsonValue }, db: DbClient = prisma) {
+    return db.importJob.update({
+      where: { id },
+      data: {
+        status: ImportJobStatus.SKIPPED, stage: 'SKIPPED', progress: 100, retryable: false,
+        completedAt: new Date(), heartbeatAt: new Date(), lockedUntil: null, nextAttemptAt: null,
+        errorCode: input.code, errorMessage: input.message.slice(0, 10_000),
+        ...(input.logs !== undefined && { logs: input.logs }),
+      },
+    });
+  }
+
+  static async cancelPendingForBatch(importBatchId: string, db: DbClient = prisma) {
+    return db.importJob.updateMany({
+      where: {
+        importBatchId,
+        status: { in: [ImportJobStatus.PENDING, ImportJobStatus.PARTIAL] },
+      },
+      data: {
+        status: ImportJobStatus.CANCELED, stage: 'CANCELED', progress: 100,
+        retryable: false, completedAt: new Date(), lockedUntil: null, nextAttemptAt: null,
+        errorCode: 'BATCH_CANCELED', errorMessage: 'Canceled by an administrator before processing started.',
       },
     });
   }
@@ -174,7 +286,10 @@ export class ImportRepository {
 
   static async cleanupCompleted(retentionDays = 90, db: DbClient = prisma) {
     return db.importJob.deleteMany({
-      where: { status: ImportJobStatus.COMPLETED, completedAt: { lt: new Date(Date.now() - retentionDays * 86_400_000) } },
+      where: {
+        status: { in: [ImportJobStatus.COMPLETED, ImportJobStatus.SKIPPED, ImportJobStatus.CANCELED] },
+        completedAt: { lt: new Date(Date.now() - retentionDays * 86_400_000) },
+      },
     });
   }
 }

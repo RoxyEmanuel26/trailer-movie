@@ -35,6 +35,14 @@ export abstract class BaseWorker<T = any> {
       const retryable = classified.retryable && attempt < this.maxRetries;
       this.tracker.error(`Attempt ${attempt} failed: ${classified.message}`);
       this.tracker.finish(false);
+      if (classified.code === 'TMDB_404' || (classified.code === 'NON_RETRYABLE' && /not found on TMDB/i.test(classified.message))) {
+        await ImportRepository.skip(this.jobId, {
+          code: classified.code,
+          message: classified.message,
+          logs: this.tracker.getState() as any,
+        });
+        return;
+      }
       await ImportRepository.fail(this.jobId, {
         code: classified.code,
         message: classified.message,

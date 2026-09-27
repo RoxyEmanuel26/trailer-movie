@@ -16,7 +16,13 @@ export function getTmdbImageUrl(src: string, width: number) {
 
 export default function tmdbImageLoader({ src, width, quality }: ImageLoaderProps) {
   if (src.startsWith('https://image.tmdb.org/t/p/')) {
-    return getTmdbImageUrl(src, width);
+    const url = new URL(getTmdbImageUrl(src, width));
+    // TMDB exposes discrete widths, while Next.js expects each generated
+    // srcset candidate to vary with the requested width. The query value keeps
+    // candidates deterministic even when adjacent widths map to one TMDB size.
+    url.searchParams.set('w', String(width));
+    if (quality) url.searchParams.set('q', String(quality));
+    return url.toString();
   }
 
   if (src.startsWith('/')) return `${src}?w=${width}&q=${quality || 75}`;

@@ -25,7 +25,7 @@ export default async function AnalyticsOverviewPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Trailer Plays</CardTitle>
+            <CardTitle className="text-sm font-medium">Qualified Trailer Plays</CardTitle>
             <Play className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -88,7 +88,7 @@ export default async function AnalyticsOverviewPage() {
 
         <Card className="col-span-3">
           <CardHeader>
-            <CardTitle>Top Movies</CardTitle>
+            <CardTitle>Top Movies by Qualified Views</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -99,7 +99,7 @@ export default async function AnalyticsOverviewPage() {
                     <div className="h-10 w-10 bg-muted rounded-md bg-cover bg-center" style={{ backgroundImage: movie.posterUrl ? `url(${movie.posterUrl})` : undefined }} />
                     <div className="space-y-1">
                       <p className="text-sm font-medium leading-none">{movie.title}</p>
-                      <p className="text-sm text-muted-foreground">{movie.count} views</p>
+                      <p className="text-sm text-muted-foreground">{movie.count} qualified views</p>
                     </div>
                   </div>
                   <Link href={`/admin/analytics/movies?movieId=${movie.id}`} className="text-sm text-blue-500 hover:underline">

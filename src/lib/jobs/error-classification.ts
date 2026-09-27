@@ -9,7 +9,7 @@ export type ClassifiedJobError = {
 };
 
 export function classifyJobError(error: unknown): ClassifiedJobError {
-  const candidate = error as { code?: string; status?: number; message?: string; retryAfter?: number };
+  const candidate = error as { code?: string; status?: number; statusCode?: number; message?: string; retryAfter?: number };
   const message = candidate?.message || String(error);
 
   if (error instanceof NonRetryableJobError) {
@@ -27,13 +27,19 @@ export function classifyJobError(error: unknown): ClassifiedJobError {
     }
     return { code: `TMDB_${error.status}`, message, retryable: error.status >= 500 };
   }
+  // secureFetch represents request timeouts as an operational AppError with a
+  // 504 statusCode. Keep this transient so a brief TMDB/network stall does not
+  // permanently discard an otherwise valid import job.
+  if (candidate?.statusCode === 504) {
+    return { code: 'UPSTREAM_TIMEOUT', message, retryable: true };
+  }
   if (candidate?.code && ['P1001', 'P1002', 'P1008', 'P1017', 'P2024', 'P2034'].includes(candidate.code)) {
     return { code: candidate.code, message, retryable: true };
   }
   if (candidate?.code?.startsWith('P')) {
     return { code: candidate.code, message, retryable: false };
   }
-  if (/timeout|connection|socket|fetch failed/i.test(message)) {
+  if (/timed?\s*out|connection|socket|fetch failed/i.test(message)) {
     return { code: candidate.code || 'TRANSIENT_IO', message, retryable: true };
   }
   return { code: candidate?.code || 'UNKNOWN', message, retryable: false };

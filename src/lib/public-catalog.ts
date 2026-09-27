@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 
-export type PopularMode = 'most-popular' | 'top-rated' | 'latest-releases' | 'recently-added';
+export type PopularMode = 'most-popular' | 'top-rated' | 'latest-releases';
 
 export interface PopularCatalogItem {
   slug: PopularMode;
@@ -20,7 +20,7 @@ export const POPULAR_CATALOG: PopularCatalogItem[] = [
   {
     slug: 'most-popular',
     label: 'Most popular',
-    description: 'Discover the movies drawing the most audience interest across MovieFlix, ordered by locally stored TMDB popularity and vote activity.',
+    description: 'Explore the movies attracting the strongest audience interest across MovieFlix, with widely discovered favorites brought to the front.',
     orderBy: [{ popularity: 'desc' }, { voteCount: 'desc' }],
   },
   {
@@ -33,12 +33,6 @@ export const POPULAR_CATALOG: PopularCatalogItem[] = [
     label: 'Latest releases',
     description: 'Browse movies that have already reached their release date, ordered from the newest release backward without mixing in upcoming titles.',
     orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
-  },
-  {
-    slug: 'recently-added',
-    label: 'Recently added',
-    description: 'Explore the movies most recently added to the local MovieFlix catalog, independent of when each title originally reached theaters.',
-    orderBy: [{ createdAt: 'desc' }, { popularity: 'desc' }],
   },
 ];
 

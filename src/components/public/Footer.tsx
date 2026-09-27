@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { MovieFlixLogo } from '@/components/brand/MovieFlixLogo';
+import { AnalyticsPreferencesButton } from './AnalyticsPreferencesButton';
 
 export function Footer() {
   return (
@@ -10,8 +11,8 @@ export function Footer() {
             <MovieFlixLogo markClassName="h-8 w-8" wordmarkClassName="text-lg" />
           </Link>
           <p className="text-sm text-muted-foreground">
-            A focused movie discovery guide powered by a locally indexed catalog—trailers, cast,
-            reviews, and where to watch in one place.
+            MovieFlix brings trailers, stories, cast, ratings, and official viewing options together
+            in one focused discovery experience.
           </p>
         </div>
 
@@ -55,6 +56,7 @@ export function Footer() {
           <ul className="flex flex-col text-sm text-muted-foreground">
             <li><Link href="/about" className="flex min-h-11 items-center hover:text-foreground">About</Link></li>
             <li><Link href="/methodology" className="flex min-h-11 items-center hover:text-foreground">Methodology</Link></li>
+            <li><Link href="/about#data-attribution" className="flex min-h-11 items-center hover:text-foreground">Data credits</Link></li>
             <li><Link href="/contact" className="flex min-h-11 items-center hover:text-foreground">Contact</Link></li>
             <li>
               <Link href="/privacy" className="flex min-h-11 items-center hover:text-foreground">
@@ -84,7 +86,7 @@ export function Footer() {
           <Link href="/sitemap.xml" className="flex min-h-8 items-center hover:text-foreground">
             Sitemap
           </Link>
-          <p className="basis-full sm:basis-auto">Metadata provided by TMDB.</p>
+          <AnalyticsPreferencesButton />
         </div>
       </div>
     </footer>

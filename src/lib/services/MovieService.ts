@@ -6,7 +6,13 @@ import { prisma } from '../prisma';
 import type { Prisma } from '@prisma/client';
 import { moviePath, publicMovieSlug } from '../public-routes';
 
+const RELATED_MOVIE_LIMIT = 8;
+
 export class MovieService {
+  static countOriginGroups = cache(async (
+    origins: Array<{ slug: string; countryCodes: string[]; languageCodes: string[] }>,
+  ) => MovieRepository.countOriginGroups(origins));
+
   static listPublishedReleaseYears = cache(async () => {
     return MovieRepository.listPublishedReleaseYears();
   });
@@ -55,7 +61,7 @@ export class MovieService {
           targetMovie: { status: 'PUBLISHED', deletedAt: null },
         },
         orderBy: { sortOrder: 'asc' },
-        take: 5,
+        take: RELATED_MOVIE_LIMIT,
         include: {
           targetMovie: {
             include: {
@@ -66,13 +72,13 @@ export class MovieService {
       });
 
       const recommendedMovies = recs.map((r) => r.targetMovie);
-      if (recommendedMovies.length >= 5) {
+      if (recommendedMovies.length >= RELATED_MOVIE_LIMIT) {
         return recommendedMovies;
       }
 
-      // If we have fewer than 5 curated recommendations, supplement with genre matches
+      // Supplement incomplete curated recommendations with genre matches.
       const excludeIds = new Set([movieId, ...recommendedMovies.map((m) => m.id)]);
-      const needed = 5 - recommendedMovies.length;
+      const needed = RELATED_MOVIE_LIMIT - recommendedMovies.length;
 
       if (genreIds && genreIds.length > 0) {
         const { data } = await MovieRepository.search({
@@ -85,22 +91,22 @@ export class MovieService {
           if (!excludeIds.has(m.id)) {
             recommendedMovies.push(m);
             excludeIds.add(m.id);
-            if (recommendedMovies.length >= 5) break;
+            if (recommendedMovies.length >= RELATED_MOVIE_LIMIT) break;
           }
         }
       }
 
-      if (recommendedMovies.length < 5) {
+      if (recommendedMovies.length < RELATED_MOVIE_LIMIT) {
         const { data } = await MovieRepository.list({
           status: 'PUBLISHED',
-          take: 5 - recommendedMovies.length + 3,
+          take: RELATED_MOVIE_LIMIT - recommendedMovies.length + 3,
           excludeId: movieId,
         });
         for (const m of data) {
           if (!excludeIds.has(m.id)) {
             recommendedMovies.push(m);
             excludeIds.add(m.id);
-            if (recommendedMovies.length >= 5) break;
+            if (recommendedMovies.length >= RELATED_MOVIE_LIMIT) break;
           }
         }
       }
@@ -114,7 +120,7 @@ export class MovieService {
     if (genreIds && genreIds.length > 0) {
       const { data } = await MovieRepository.search({
         status: 'PUBLISHED',
-        take: 5,
+        take: RELATED_MOVIE_LIMIT,
         excludeId: movieId,
         genreIds,
       });
@@ -124,7 +130,7 @@ export class MovieService {
     // 3. Fallback: Recently added movies
     const { data } = await MovieRepository.list({
       status: 'PUBLISHED',
-      take: 5,
+      take: RELATED_MOVIE_LIMIT,
       excludeId: movieId,
     });
     return data;

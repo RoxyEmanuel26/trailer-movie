@@ -5,7 +5,7 @@ import { SeoService } from '@/lib/services/SeoService';
 import { MovieService } from '@/lib/services/MovieService';
 
 export async function generateMetadata(): Promise<Metadata> {
-  return SeoService.generateMetadata('Page', 'popular', { title: 'Popular Movie Rankings', description: 'Compare MovieFlix rankings for popular, top-rated, newly released, and recently added movies using clearly defined local catalog signals.', path: '/popular' });
+  return SeoService.generateMetadata('Page', 'popular', { title: 'Popular Movie Rankings', description: 'Explore MovieFlix rankings for audience favorites, highly rated movies, and the latest releases.', path: '/popular' });
 }
 export default async function PopularHubPage() {
   const counts = await Promise.all(POPULAR_CATALOG.map(async (item) => {
@@ -15,5 +15,5 @@ export default async function PopularHubPage() {
     return [item.slug, result.total] as const;
   }));
   const countBySlug = new Map(counts);
-  return <CatalogHub eyebrow="Movie rankings" title="Popular ways to discover movies" description="Choose a ranking based on catalog popularity, audience ratings, release date, or the date a title was added to MovieFlix." path="/popular" items={POPULAR_CATALOG.map((item) => ({ href: `/popular/${item.slug}`, title: item.label, description: item.description, count: countBySlug.get(item.slug) }))} />;
+  return <CatalogHub eyebrow="Movie rankings" title="Popular ways to discover movies" description="Choose how you want to explore: audience favorites, highly rated movies, or the latest releases." path="/popular" items={POPULAR_CATALOG.map((item) => ({ href: `/popular/${item.slug}`, title: item.label, description: item.description, count: countBySlug.get(item.slug) }))} />;
 }

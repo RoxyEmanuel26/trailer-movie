@@ -19,7 +19,28 @@ export class ImportBatchService {
   }
 
   static async list() {
-    return prisma.importBatch.findMany({ take: 20, orderBy: { createdAt: 'desc' } });
+    return prisma.importBatch.findMany({ take: 40, orderBy: { createdAt: 'desc' } });
+  }
+
+  static async getWorkState() {
+    const now = new Date();
+    const activeStatuses = [ImportBatchStatus.PENDING, ImportBatchStatus.RUNNING];
+    const [remaining, ready, nextBatch] = await Promise.all([
+      prisma.importBatch.count({ where: { status: { in: activeStatuses } } }),
+      prisma.importBatch.count({
+        where: {
+          status: ImportBatchStatus.PENDING,
+          OR: [{ nextRunAt: null }, { nextRunAt: { lte: now } }],
+        },
+      }),
+      prisma.importBatch.findFirst({
+        where: { status: ImportBatchStatus.PENDING, nextRunAt: { not: null } },
+        orderBy: { nextRunAt: 'asc' },
+        select: { nextRunAt: true },
+      }),
+    ]);
+
+    return { remaining, ready, nextRunAt: nextBatch?.nextRunAt ?? null };
   }
 
   static async find(id: string) {
@@ -27,14 +48,73 @@ export class ImportBatchService {
   }
 
   static async pause(id: string) {
-    return prisma.importBatch.update({ where: { id }, data: { status: ImportBatchStatus.PAUSED } });
+    await prisma.importBatch.updateMany({
+      where: { id, status: { in: [ImportBatchStatus.PENDING, ImportBatchStatus.RUNNING] } },
+      data: { status: ImportBatchStatus.PAUSED, nextRunAt: null },
+    });
+    return this.find(id);
   }
 
   static async resume(id: string) {
-    return prisma.importBatch.update({
-      where: { id },
+    await prisma.importBatch.updateMany({
+      where: { id, status: ImportBatchStatus.PAUSED },
       data: { status: ImportBatchStatus.PENDING, nextRunAt: new Date(), errorMessage: null, completedAt: null },
     });
+    return this.find(id);
+  }
+
+  static async cancel(id: string) {
+    return prisma.$transaction(async (tx) => {
+      const batch = await tx.importBatch.findUnique({ where: { id }, select: { status: true } });
+      if (!batch) return null;
+      const terminalStatuses: ImportBatchStatus[] = [ImportBatchStatus.COMPLETED, ImportBatchStatus.FAILED, ImportBatchStatus.CANCELED];
+      if (terminalStatuses.includes(batch.status)) {
+        return tx.importBatch.findUnique({ where: { id } });
+      }
+      await ImportRepository.cancelPendingForBatch(id, tx);
+      return tx.importBatch.update({
+        where: { id },
+        data: {
+          status: ImportBatchStatus.CANCELED,
+          nextRunAt: null,
+          canceledAt: new Date(),
+          completedAt: new Date(),
+          errorMessage: null,
+        },
+      });
+    });
+  }
+
+  static async finalizeImporting() {
+    const batches = await prisma.importBatch.findMany({
+      where: { status: ImportBatchStatus.IMPORTING },
+      select: {
+        id: true,
+        jobs: { select: { status: true } },
+      },
+    });
+    let finalized = 0;
+    for (const batch of batches) {
+      const importedCount = batch.jobs.filter((job) => job.status === 'COMPLETED').length;
+      const failedCount = batch.jobs.filter((job) => job.status === 'FAILED').length;
+      const unavailableCount = batch.jobs.filter((job) => job.status === 'SKIPPED').length;
+      const stillRunning = batch.jobs.some((job) => ['PENDING', 'IN_PROGRESS', 'PARTIAL'].includes(job.status));
+      await prisma.importBatch.update({
+        where: { id: batch.id },
+        data: {
+          importedCount,
+          failedCount,
+          unavailableCount,
+          ...(stillRunning ? {} : {
+            status: failedCount > 0 ? ImportBatchStatus.FAILED : ImportBatchStatus.COMPLETED,
+            completedAt: new Date(),
+            errorMessage: failedCount > 0 ? `${failedCount} movie import job(s) require attention.` : null,
+          }),
+        },
+      });
+      if (!stillRunning) finalized += 1;
+    }
+    return finalized;
   }
 
   static async claimNext() {
@@ -74,41 +154,53 @@ export class ImportBatchService {
       });
       const movies = Array.isArray(response.results) ? response.results : [];
       const ids = movies.map((movie: any) => movie.id).filter((id: unknown): id is number => Number.isSafeInteger(id));
-      const [existingMovies, existingJobs] = await Promise.all([
-        prisma.movie.findMany({ where: { tmdbId: { in: ids } }, select: { tmdbId: true } }),
-        prisma.importJob.findMany({
-          where: { tmdbId: { in: ids }, entityType: 'Movie' },
-          select: { tmdbId: true },
-        }),
-      ]);
-      const existingIds = new Set([
-        ...existingMovies.map((movie) => movie.tmdbId),
-        ...existingJobs.map((job) => job.tmdbId),
-      ]);
-      let queued = 0;
-      let skipped = 0;
-      for (const tmdbId of ids) {
-        if (existingIds.has(tmdbId)) { skipped += 1; continue; }
-        await ImportRepository.enqueue(tmdbId, 'Movie');
-        queued += 1;
-      }
-
       const totalPages = Math.min(Number(response.total_pages) || 1, 500);
       const completed = batch.currentPage >= totalPages;
-      await prisma.importBatch.update({
-        where: { id: batch.id },
-        data: {
-          totalPages,
-          currentPage: completed ? batch.currentPage : batch.currentPage + 1,
-          queuedCount: { increment: queued },
-          skippedCount: { increment: skipped },
-          status: completed ? ImportBatchStatus.COMPLETED : ImportBatchStatus.PENDING,
-          completedAt: completed ? new Date() : null,
-          nextRunAt: completed ? null : new Date(Date.now() + 5_000),
-          errorMessage: null,
-        },
+      const pageResult = await prisma.$transaction(async (tx) => {
+        // Pause/cancel can be requested while the TMDB request is in flight.
+        // Holding this check and all page writes in one transaction guarantees
+        // that cancel either wins before this page or cancels every job created
+        // by it immediately afterwards.
+        const current = await tx.importBatch.findUnique({ where: { id: batch.id }, select: { status: true } });
+        if (current?.status !== ImportBatchStatus.RUNNING) return null;
+
+        const [existingMovies, existingJobs] = await Promise.all([
+          tx.movie.findMany({ where: { tmdbId: { in: ids } }, select: { tmdbId: true } }),
+          tx.importJob.findMany({
+            where: { tmdbId: { in: ids }, entityType: 'Movie' },
+            select: { tmdbId: true },
+          }),
+        ]);
+        const existingIds = new Set([
+          ...existingMovies.map((movie) => movie.tmdbId),
+          ...existingJobs.map((job) => job.tmdbId),
+        ]);
+        let queued = 0;
+        let skipped = 0;
+        for (const tmdbId of ids) {
+          if (existingIds.has(tmdbId)) { skipped += 1; continue; }
+          const job = await ImportRepository.enqueue(tmdbId, 'Movie', false, tx, batch.id);
+          if (job.importBatchId === batch.id) queued += 1;
+          else skipped += 1;
+        }
+
+        await tx.importBatch.update({
+          where: { id: batch.id },
+          data: {
+            totalPages,
+            currentPage: completed ? batch.currentPage : batch.currentPage + 1,
+            queuedCount: { increment: queued },
+            skippedCount: { increment: skipped },
+            status: completed ? ImportBatchStatus.IMPORTING : ImportBatchStatus.PENDING,
+            completedAt: null,
+            nextRunAt: completed ? null : new Date(Date.now() + 5_000),
+            errorMessage: null,
+          },
+        });
+        return { queued, skipped };
       });
-      return { processed: true, batchId: batch.id, queued, skipped, completed };
+      if (!pageResult) return { processed: false, batchId: batch.id, queued: 0, skipped: 0, completed: false };
+      return { processed: true, batchId: batch.id, ...pageResult, completed };
     } catch (error) {
       const classified = classifyJobError(error);
       await prisma.importBatch.update({

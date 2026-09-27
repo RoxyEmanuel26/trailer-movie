@@ -33,6 +33,7 @@ export const ImportListSchema = z.object({
   entityType: z.enum(['Movie', 'Person']).optional(),
   stage: z.string().trim().max(50).optional(),
   retryable: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  includeCompleted: z.enum(['true', 'false']).transform((value) => value === 'true').optional().default(false),
 });
 
 const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
@@ -146,6 +147,7 @@ export const UserUpdateSchema = z.object({
  * Homepage Schemas
  */
 export const HomepageSectionInputSchema = z.object({
+  systemKey: z.string().min(1).max(80).optional().nullable(),
   title: z.string().min(1, "Title is required"),
   type: z.enum([
     "AUTO_RECENT",

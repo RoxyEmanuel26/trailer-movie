@@ -19,7 +19,7 @@ export function escapeCdata(value: string) {
 }
 
 function normalizeLegacyBrand(value: string) {
-  return value.replace(/TrailerTube|Trailer Movie/gi, siteConfig.name);
+  return value.replace(/TrailerTube|Trailer Movie|Trailer CMS|TrailerMovie/gi, siteConfig.name);
 }
 
 export class SeoService {
@@ -284,24 +284,16 @@ export class SeoService {
    * Generate Sitemap Data
    */
   static async generateSitemapData() {
-    const [{ genres, collections }, years, originCounts] = await Promise.all([
+    const [{ genres, collections }, years, originCountMap, homepageLastModified] = await Promise.all([
       SeoRepository.getCoreSitemapData(),
       MovieRepository.listPublishedReleaseYearStats(),
-      Promise.all(
-        ORIGIN_CATALOG.map(async (item) => {
-          const { total } = await MovieRepository.search({
-            status: 'PUBLISHED',
-            countryCodes: item.countryCodes,
-            languageCodes: item.languageCodes,
-            take: 1,
-          });
-          return { item, total };
-        })
-      ),
+      MovieRepository.countOriginGroups(ORIGIN_CATALOG),
+      SeoRepository.getHomepageLastModified(),
     ]);
+    const originCounts = ORIGIN_CATALOG.map((item) => ({ item, total: originCountMap.get(item.slug) || 0 }));
 
     const sitemap: SitemapEntry[] = [
-      { url: siteConfig.url, changeFrequency: 'daily', priority: 1.0 },
+      { url: siteConfig.url, lastModified: homepageLastModified, changeFrequency: 'daily', priority: 1.0 },
       { url: absoluteUrl('/movies'), changeFrequency: 'daily', priority: 0.8 },
       { url: absoluteUrl('/genres'), changeFrequency: 'weekly', priority: 0.7 },
       { url: absoluteUrl('/countries'), changeFrequency: 'weekly', priority: 0.7 },

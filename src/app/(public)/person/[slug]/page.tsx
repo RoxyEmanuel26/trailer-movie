@@ -64,7 +64,6 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
       deathDate: person.deathday?.toISOString().split('T')[0],
       birthPlace: person.placeOfBirth,
       jobTitle: person.knownForDepartment,
-      sameAs: person.imdbId ? [`https://www.imdb.com/name/${person.imdbId}`] : [],
     });
   const personUrl = absoluteUrl(canonicalPath);
   const jsonLd = [
@@ -169,21 +168,6 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
                   <div className="flex flex-col">
                     <dt className="text-muted-foreground font-medium">Popularity Score</dt>
                     <dd className="font-semibold">{person.popularity.toFixed(1)}</dd>
-                  </div>
-                )}
-                {person.imdbId && (
-                  <div className="flex flex-col">
-                    <dt className="text-muted-foreground font-medium">IMDb</dt>
-                    <dd className="font-semibold">
-                      <a
-                        href={`https://www.imdb.com/name/${person.imdbId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex min-h-11 items-center text-xs text-primary hover:underline"
-                      >
-                        View IMDb Profile &rarr;
-                      </a>
-                    </dd>
                   </div>
                 )}
               </dl>

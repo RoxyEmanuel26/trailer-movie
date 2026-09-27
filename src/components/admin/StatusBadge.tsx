@@ -9,6 +9,9 @@ export function StatusBadge({ status }: { status: string }) {
     PENDING: "outline",
     IN_PROGRESS: "secondary",
     PARTIAL: "secondary",
+    IMPORTING: "secondary",
+    SKIPPED: "outline",
+    CANCELED: "outline",
     ARCHIVED: "destructive",
     FAILED: "destructive",
   } as const

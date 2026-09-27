@@ -140,11 +140,11 @@ export default async function MovieDetailPage({ params }: PageProps) {
 
       {/* Media Player Section */}
       <section className="w-full bg-[#080908]">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+        <div className="mx-auto max-w-7xl py-0 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
           {youtubeId ? (
-            <YouTubePlayer videoId={youtubeId} movieId={movie.id} />
+            <YouTubePlayer videoId={youtubeId} movieId={movie.id} className="rounded-none sm:rounded-xl" />
           ) : (
-            <div className="flex aspect-video w-full flex-col items-center justify-center rounded-2xl border border-white/10 bg-[#151613]">
+            <div className="flex aspect-video w-full flex-col items-center justify-center border border-white/10 bg-[#151613] sm:rounded-2xl">
               <Film className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
               <p className="font-medium text-white/60">Trailer not available yet</p>
             </div>
@@ -152,9 +152,9 @@ export default async function MovieDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
-        <div className="grid gap-7 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)]">
-          <div className="order-1 min-w-0 md:col-start-2 md:row-start-1">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8 lg:py-14">
+        <div className="grid gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] lg:gap-10">
+          <div className="order-1 min-w-0 lg:col-start-2 lg:row-start-1">
             {movie.logoUrl ? (
               <div className="relative mb-6 h-14 w-full max-w-xs">
                 <Image
@@ -168,7 +168,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
             ) : (
               <p className="eyebrow mb-3">Movie spotlight</p>
             )}
-            <h1 className="mb-3 break-words text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-5xl lg:text-6xl">
+            <h1 className="mb-3 break-words text-balance text-[2.15rem] font-semibold leading-[1.04] tracking-[-0.05em] sm:text-5xl lg:text-6xl">
               {movie.title}{' '}
               {year && <span className="font-normal text-muted-foreground">({year})</span>}
             </h1>
@@ -218,7 +218,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="order-2 max-w-none md:col-start-2 md:row-start-2 md:prose-base dark:prose-invert">
+          <div className="order-2 max-w-none lg:col-start-2 lg:row-start-2 lg:prose-base dark:prose-invert">
             <h2 className="mb-3 text-2xl font-semibold tracking-[-0.035em]">The story</h2>
             <p className="max-w-[68ch] text-base leading-7 text-muted-foreground sm:leading-8">
               {movie.synopsis || 'A synopsis has not been added yet.'}
@@ -227,18 +227,17 @@ export default async function MovieDetailPage({ params }: PageProps) {
               {year ? <Link href={`/year/${year}`} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">More from {year}</Link> : null}
               {matchingOrigins.map((origin) => <Link key={origin.slug} href={`/origin/${origin.slug}`} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">{origin.label}</Link>)}
             </div>
-            <p className="mt-4 text-xs leading-5 text-muted-foreground">Catalog metadata provided by TMDB and stored locally by MovieFlix. Last updated {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'UTC' }).format(movie.updatedAt)}.</p>
           </div>
 
           {/* Sidebar / Poster */}
-          <aside className="order-3 flex flex-col md:col-start-1 md:row-span-3 md:row-start-1">
-            <div className="relative order-3 mx-auto aspect-[2/3] w-full max-w-[13rem] overflow-hidden rounded-[1.15rem] shadow-2xl ring-1 ring-black/10 sm:max-w-[17rem] md:max-w-none md:rounded-[1.35rem] dark:ring-white/10">
+          <aside className="order-3 flex flex-col lg:col-start-1 lg:row-span-3 lg:row-start-1">
+            <div className="relative order-3 mx-auto aspect-[2/3] w-full max-w-[10rem] overflow-hidden rounded-[1.15rem] shadow-2xl ring-1 ring-black/10 sm:max-w-[14rem] lg:max-w-none lg:rounded-[1.35rem] dark:ring-white/10">
               {movie.posterUrl ? (
                 <Image
                   src={movie.posterUrl}
                   alt={movie.title}
                   fill
-                  sizes="(max-width: 639px) 208px, (max-width: 767px) 272px, 33vw"
+                  sizes="(max-width: 639px) 160px, (max-width: 1023px) 224px, 25vw"
                   className="object-cover"
                 />
               ) : (
@@ -248,11 +247,11 @@ export default async function MovieDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            <div className="order-11 md:mt-6">
+            <div className="order-11 mt-4 sm:mt-5 lg:mt-6">
               <ResponsiveDetails label="More movie details">
                 {((movie.originalTitle && movie.originalTitle !== movie.title) ||
                   movie.mpaaRating ||
-                  movie.companies.length > 0) && (
+                  (movie.alternativeTitles && movie.alternativeTitles.length > 0)) && (
                   <div className="cinema-panel flex flex-col gap-4 rounded-2xl p-5">
                     <div>
                       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
@@ -269,14 +268,6 @@ export default async function MovieDetailPage({ params }: PageProps) {
                           <div className="flex flex-col">
                             <dt className="text-muted-foreground">Rating</dt>
                             <dd className="font-medium">{movie.mpaaRating}</dd>
-                          </div>
-                        )}
-                        {movie.companies.length > 0 && (
-                          <div className="flex flex-col mt-2">
-                            <dt className="text-muted-foreground">Studios</dt>
-                            <dd className="font-medium">
-                              {movie.companies.map((c) => c.company.name).join(', ')}
-                            </dd>
                           </div>
                         )}
                         {movie.alternativeTitles && movie.alternativeTitles.length > 0 && (
@@ -305,18 +296,14 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   keywords={movie.keywords}
                   countries={movie.countries}
                   languages={movie.languages}
-                  originalLanguage={movie.originalLanguage}
-                  productionStatus={movie.productionStatus}
                   homepage={movie.homepage}
-                  imdbId={movie.imdbId}
-                  movieSlug={movie.slug}
                 />
               </ResponsiveDetails>
             </div>
 
             {(movie.watchProviders ||
               (movie.watchProviderLinks && movie.watchProviderLinks.length > 0)) && (
-              <div className="order-4 md:order-none">
+              <div className="order-4 mt-5">
                 <WatchProviders
                   providers={movie.watchProviders}
                   links={movie.watchProviderLinks as any}
@@ -328,9 +315,9 @@ export default async function MovieDetailPage({ params }: PageProps) {
           </aside>
 
           {/* Main Content */}
-          <div className="order-4 flex min-w-0 flex-col gap-8 md:col-start-2 md:row-start-3">
+          <div className="order-4 flex min-w-0 flex-col gap-8 lg:col-start-2 lg:row-start-3">
             {directors.length > 0 && (
-              <div className="order-5 md:order-none">
+              <div className="order-5 lg:order-none">
                 <h2 className="text-xl font-semibold mb-3">Directed By</h2>
                 <div className="flex flex-wrap gap-4">
                   {directors.map((d) => (
@@ -360,14 +347,17 @@ export default async function MovieDetailPage({ params }: PageProps) {
             )}
 
             {cast.length > 0 && (
-              <div className="order-6 md:order-none">
-                <h2 className="text-xl font-semibold mb-3">Top Cast</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="order-6 lg:order-none">
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <h2 className="text-xl font-semibold">Top Cast</h2>
+                  <span className="text-xs text-muted-foreground sm:hidden">Swipe to explore</span>
+                </div>
+                <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3">
                   {cast.map((c) => (
                     <Link
                       href={personPath(c.person.slug)}
                       key={c.personId}
-                      className="flex min-h-16 items-center gap-3 rounded-xl border bg-card p-2 transition-colors hover:bg-muted/50"
+                      className="flex min-h-16 w-[78vw] max-w-[18rem] shrink-0 snap-start items-center gap-3 rounded-xl border bg-card p-2 transition-colors hover:bg-muted/50 sm:w-auto sm:max-w-none"
                     >
                       {c.person.headshotUrl ? (
                         <Image
@@ -395,14 +385,17 @@ export default async function MovieDetailPage({ params }: PageProps) {
             )}
 
             {otherCrew.length > 0 && (
-              <div className="order-7 md:order-none">
-                <h2 className="text-xl font-semibold mb-3">Key Crew</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="order-7 lg:order-none">
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <h2 className="text-xl font-semibold">Key Crew</h2>
+                  <span className="text-xs text-muted-foreground sm:hidden">Swipe to explore</span>
+                </div>
+                <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3">
                   {otherCrew.map((c) => (
                     <Link
                       href={personPath(c.person.slug)}
                       key={c.personId}
-                      className="flex min-h-16 items-center gap-3 rounded-xl border bg-card p-2 transition-colors hover:bg-muted/50"
+                      className="flex min-h-16 w-[78vw] max-w-[18rem] shrink-0 snap-start items-center gap-3 rounded-xl border bg-card p-2 transition-colors hover:bg-muted/50 sm:w-auto sm:max-w-none"
                     >
                       {c.person.headshotUrl ? (
                         <Image
@@ -430,13 +423,13 @@ export default async function MovieDetailPage({ params }: PageProps) {
             )}
 
             {movie.images && movie.images.length > 0 && (
-              <div className="order-8 md:order-none">
+              <div className="order-8 lg:order-none">
                 <MovieGallery images={movie.images as any} movieTitle={movie.title} />
               </div>
             )}
 
             {movie.collections.length > 0 && (
-              <div className="order-9 mt-4 md:order-none">
+              <div className="order-9 mt-4 lg:order-none">
                 <h2 className="text-xl font-semibold mb-3">Featured In</h2>
                 <div className="flex flex-wrap gap-2">
                   {movie.collections.map((c) => (
@@ -453,7 +446,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
             )}
 
             {((movie.movieReviews && movie.movieReviews.length > 0) || movie.reviews) && (
-              <div className="order-10 md:order-none">
+              <div className="order-10 lg:order-none">
                 <MovieReviews
                   reviews={
                     movie.movieReviews && movie.movieReviews.length > 0

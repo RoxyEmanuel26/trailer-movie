@@ -5,6 +5,10 @@ import { classifyJobError } from '../src/lib/jobs/error-classification';
 import { NonRetryableJobError, PartialJobError, RetryableJobError } from '../src/lib/jobs/retry';
 import { evaluateLegacyMovieQuality, evaluateMovieQuality } from '../src/lib/services/ImportQualityService';
 import { TmdbError } from '../src/lib/tmdb/errors';
+import { getImportThroughput, runBounded } from '../src/lib/jobs/throughput';
+import { ImportRepository } from '../src/lib/repositories/ImportRepository';
+import { ImportJobStatus } from '@prisma/client';
+import { safeUpsertCompany, safeUpsertKeyword } from '../src/lib/services/import-service';
 
 const completeMovie = {
   title: 'Complete movie',
@@ -55,6 +59,12 @@ test('retry classification distinguishes permanent, transient, and partial error
   });
   assert.equal(classifyJobError({ code: 'P2024', message: 'connection pool timeout' }).retryable, true);
   assert.equal(classifyJobError({ code: 'P2002', message: 'unique constraint' }).retryable, false);
+  assert.deepEqual(classifyJobError({ statusCode: 504, message: 'Request to api.themoviedb.org timed out after 10000ms.' }), {
+    code: 'UPSTREAM_TIMEOUT',
+    message: 'Request to api.themoviedb.org timed out after 10000ms.',
+    retryable: true,
+  });
+  assert.equal(classifyJobError(new Error('The upstream request timed out')).retryable, true);
 });
 
 test('bulk discovery rejects invalid date ranges and country codes', () => {
@@ -62,4 +72,153 @@ test('bulk discovery rejects invalid date ranges and country codes', () => {
   assert.equal(ImportBatchSchema.safeParse({ startDate: '2026-03-02', endDate: '2026-03-01' }).success, false);
   assert.equal(ImportBatchSchema.safeParse({ startDate: '2026-03-01', endDate: '2026-03-02', country: 'id' }).success, false);
   assert.equal(ImportBatchSchema.safeParse({ startDate: '2026-03-01', endDate: '2026-03-02', country: 'ID' }).success, true);
+});
+
+test('import worker uses measured fast batch defaults with bounded concurrency', () => {
+  assert.deepEqual(getImportThroughput({}), {
+    movieBatchSize: 20,
+    personBatchSize: 40,
+    movieConcurrency: 10,
+    personConcurrency: 20,
+  });
+  assert.deepEqual(getImportThroughput({
+    IMPORT_MOVIE_BATCH_SIZE: '3', IMPORT_PERSON_BATCH_SIZE: '4',
+    IMPORT_MOVIE_CONCURRENCY: '10', IMPORT_PERSON_CONCURRENCY: '10',
+  }), {
+    movieBatchSize: 3, personBatchSize: 4, movieConcurrency: 3, personConcurrency: 4,
+  });
+  assert.equal(getImportThroughput({ IMPORT_MOVIE_BATCH_SIZE: '-1' }).movieBatchSize, 20);
+  assert.equal(getImportThroughput({ IMPORT_PERSON_BATCH_SIZE: '1000' }).personBatchSize, 40);
+});
+
+test('bounded runner never exceeds its concurrency and retains failed results', async () => {
+  let active = 0;
+  let peak = 0;
+  const results = await runBounded([1, 2, 3, 4, 5, 6], 2, async (value) => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active--;
+    if (value === 4) throw new Error('test failure');
+  });
+  assert.equal(peak, 2);
+  assert.deepEqual(results.map((result) => result.status), [
+    'fulfilled', 'fulfilled', 'fulfilled', 'rejected', 'fulfilled', 'fulfilled',
+  ]);
+});
+
+test('person bulk enqueue deduplicates IDs without requeueing recently completed or permanent jobs', async () => {
+  const calls: Array<{ operation: string; args: unknown }> = [];
+  const db = {
+    importJob: {
+      createMany: async (args: unknown) => { calls.push({ operation: 'createMany', args }); },
+      updateMany: async (args: unknown) => { calls.push({ operation: 'updateMany', args }); },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.enqueuePersons>[1]>;
+  await ImportRepository.enqueuePersons([976, 976, 31, -1, 0], db);
+  assert.equal(calls.length, 2);
+  assert.deepEqual((calls[0].args as { data: Array<{ tmdbId: number }> }).data.map((job) => job.tmdbId), [976, 31]);
+  const filter = (calls[1].args as { where: { OR: Array<Record<string, unknown>> } }).where.OR;
+  assert.deepEqual(filter[0], { status: { in: ['FAILED', 'PARTIAL'] }, retryable: true });
+  assert.equal(filter[1].status, 'COMPLETED');
+});
+
+test('queue listing excludes completed history unless it is explicitly requested', async () => {
+  const capturedWhere: unknown[] = [];
+  const db = {
+    importJob: {
+      findMany: async ({ where }: { where: unknown }) => {
+        capturedWhere.push(where);
+        return [];
+      },
+      count: async ({ where }: { where: unknown }) => {
+        capturedWhere.push(where);
+        return 0;
+      },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.list>[1]>;
+
+  await ImportRepository.list({ take: 50, includeCompleted: false }, db);
+  assert.deepEqual(capturedWhere[0], { status: { notIn: ['COMPLETED', 'SKIPPED', 'CANCELED'] } });
+  assert.deepEqual(capturedWhere[1], { status: { notIn: ['COMPLETED', 'SKIPPED', 'CANCELED'] } });
+
+  capturedWhere.length = 0;
+  await ImportRepository.list({ take: 50, status: ImportJobStatus.COMPLETED }, db);
+  assert.deepEqual(capturedWhere[0], { status: ImportJobStatus.COMPLETED });
+});
+
+test('legacy UNKNOWN timeout jobs are made retryable without touching other failures', async () => {
+  let captured: unknown;
+  const db = {
+    importJob: {
+      updateMany: async (args: unknown) => {
+        captured = args;
+        return { count: 1 };
+      },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.recoverMisclassifiedTimeouts>[0]>;
+  const result = await ImportRepository.recoverMisclassifiedTimeouts(db);
+  assert.equal(result.count, 1);
+  assert.deepEqual(captured, {
+    where: {
+      status: 'FAILED',
+      retryable: false,
+      errorCode: 'UNKNOWN',
+      errorMessage: { contains: 'timed out', mode: 'insensitive' },
+    },
+    data: {
+      status: 'PENDING',
+      stage: 'QUEUED',
+      retryable: true,
+      nextAttemptAt: (captured as { data: { nextAttemptAt: Date } }).data.nextAttemptAt,
+      lockedUntil: null,
+      errorCode: 'UPSTREAM_TIMEOUT',
+    },
+  });
+  assert.ok((captured as { data: { nextAttemptAt: unknown } }).data.nextAttemptAt instanceof Date);
+});
+
+test('keyword creation tolerates a concurrent insert without emitting P2002', async () => {
+  const created = { id: 'keyword-1', tmdbId: 123, name: 'Time travel' };
+  let lookupCount = 0;
+  let createManyArgs: unknown;
+  const db = {
+    keyword: {
+      findUnique: async () => (++lookupCount === 1 ? null : created),
+      findFirst: async () => null,
+      createMany: async (args: unknown) => {
+        createManyArgs = args;
+        return { count: 0 };
+      },
+    },
+  };
+  assert.equal(await safeUpsertKeyword(db, { id: 123, name: 'Time travel' }), created);
+  assert.deepEqual(createManyArgs, {
+    data: [{ name: 'Time travel', tmdbId: 123 }],
+    skipDuplicates: true,
+  });
+});
+
+test('production-company creation tolerates a concurrent insert without emitting P2002', async () => {
+  const created = { id: 'company-1', tmdbId: 456, name: 'Studio', logoUrl: null, slug: 'studio-456' };
+  let tmdbLookupCount = 0;
+  let createManyArgs: unknown;
+  const db = {
+    productionCompany: {
+      findUnique: async ({ where }: { where: { tmdbId?: number; slug?: string } }) => {
+        if (where.tmdbId) return ++tmdbLookupCount === 1 ? null : created;
+        return null;
+      },
+      findFirst: async () => null,
+      createMany: async (args: unknown) => {
+        createManyArgs = args;
+        return { count: 0 };
+      },
+    },
+  };
+  assert.equal(await safeUpsertCompany(db, { id: 456, name: 'Studio' }), created);
+  assert.deepEqual(createManyArgs, {
+    data: [{ name: 'Studio', tmdbId: 456, logoUrl: null, slug: 'studio-456' }],
+    skipDuplicates: true,
+  });
 });

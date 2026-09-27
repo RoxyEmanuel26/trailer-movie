@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MovieFlixMark } from '@/components/brand/MovieFlixLogo';
 
 export default function ErrorPage({
   error,
@@ -18,6 +19,10 @@ export default function ErrorPage({
 
   return (
     <div className="flex min-h-[60dvh] flex-col items-center justify-center px-4 py-16 text-center sm:min-h-[70vh]">
+      <div className="mb-8 flex items-center gap-2 text-sm font-semibold tracking-[-0.03em] text-muted-foreground">
+        <MovieFlixMark className="h-7 w-7 text-primary" />
+        MovieFlix
+      </div>
       <div className="bg-destructive/10 p-6 rounded-full mb-6">
         <AlertTriangle className="w-16 h-16 text-destructive" />
       </div>
@@ -25,7 +30,7 @@ export default function ErrorPage({
         Something went wrong
       </h1>
       <p className="mb-8 max-w-md text-base leading-7 text-muted-foreground sm:text-lg">
-        We encountered an unexpected error while loading this page. Our team has been notified.
+        MovieFlix encountered an unexpected error while loading this page. Please try again.
       </p>
       <div className="flex gap-4">
         <Button onClick={() => reset()} size="lg">

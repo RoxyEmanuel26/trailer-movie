@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { MovieFlixLogo } from "@/components/brand/MovieFlixLogo"
 
 const navItems = [
   { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
@@ -44,9 +45,9 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
       )}
     >
       <div className="flex h-16 items-center border-b px-6">
-        <Link href="/admin/dashboard" className="flex items-center gap-2 font-semibold">
-          <Film className="h-5 w-5" />
-          <span>Trailer CMS</span>
+        <Link href="/admin/dashboard" className="flex items-center" aria-label="MovieFlix Studio dashboard">
+          <MovieFlixLogo markClassName="h-7 w-7" wordmarkClassName="text-base" />
+          <span className="ml-1.5 text-xs font-medium text-muted-foreground">Studio</span>
         </Link>
       </div>
       <div className="flex-1 overflow-auto py-4">

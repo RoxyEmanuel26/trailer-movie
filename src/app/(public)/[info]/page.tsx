@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { notFound } from 'next/navigation';
@@ -14,12 +15,13 @@ const pages = {
       'MovieFlix is an independent movie discovery catalog for exploring trailers, cast and crew, ratings, and viewing options in one place.',
     sections: [
       ['What we do', 'MovieFlix organizes movie information into accessible discovery pages that help viewers understand a title before choosing what to watch. Each eligible film page brings together its official trailer, synopsis, release year, runtime, genres, production origins, spoken languages, cast, crew, ratings, and locally stored viewing-provider information. The catalog is designed for exploration rather than playback, so the emphasis remains on clear facts, useful connections, and direct paths to related movies and people.'],
-      ['How the catalog works', 'Movie records enter MovieFlix through authenticated administrative imports and persistent background jobs. Those jobs request data from TMDB, validate the result, save relationships in the local database, and record whether a movie meets the publication quality gate. Public pages read only that local database. Browsing a movie, actor, genre, country, or year page therefore does not create a new TMDB API request, which keeps the public experience predictable and reduces unnecessary dependency on an external API.'],
-      ['What gets published', 'A newly imported movie is eligible for publication only when it is released and has a title, release date, synopsis, poster, genre, and active YouTube trailer. Records that do not meet those requirements remain drafts for administrative review. Person pages use a separate search-index quality rule based on a usable headshot and meaningful biography or filmography. These rules do not claim that every record is complete; they prevent obviously incomplete pages from being promoted as finished discovery destinations.'],
-      ['How discovery is organized', 'Visitors can browse the catalog by genre, release year, production country, spoken language, popularity, rating, and date added. Country and language pages deliberately use an inclusive rule: a Japanese production spoken in English can appear in both the Japan group and the English group. Popularity and audience ratings are kept distinct, and the top-rated list requires a meaningful vote threshold before a title can qualify. Related links connect movies with their directors, actors, genres, origins, years, and recommendations.'],
-      ['Our independence', 'MovieFlix is an independent discovery catalog. It is not a streaming platform, does not host feature films, and does not sell access to third-party services. Trailer embeds are served by YouTube after the visitor chooses to play them, while provider links lead to destinations operated under their own terms. TMDB supplies source metadata and artwork through the administrative import process, but TMDB does not endorse or certify MovieFlix.'],
+      ['How the catalog works', 'Movie records enter MovieFlix through authenticated administrative imports and persistent background jobs. Each record is validated, connected to its related catalog entities, and checked against a publication quality gate before it can appear publicly. MovieFlix serves browsing pages from its own catalog database, which keeps discovery fast, consistent, and independent from live third-party requests.'],
+      ['What gets published', 'A newly imported movie is eligible for publication only when it is released and has a title, release date, synopsis, poster, genre, and active trailer. Records that do not meet those requirements remain drafts for administrative review. Person pages use a separate search-index quality rule based on a usable headshot and meaningful biography or filmography. These rules do not claim that every record is complete; they prevent obviously incomplete pages from being promoted as finished discovery destinations.'],
+      ['How discovery is organized', 'Visitors can browse the catalog by genre, release year, production country, spoken language, popularity, and rating. Country and language pages deliberately use an inclusive rule: a Japanese production spoken in English can appear in both the Japan group and the English group. Popularity and audience ratings are kept distinct, and the top-rated list requires a meaningful vote threshold before a title can qualify. Related links connect movies with their directors, actors, genres, origins, years, and recommendations.'],
+      ['Our independence', 'MovieFlix is an independent discovery catalog. It is not a streaming platform, does not host feature films, and does not sell access to third-party services. Trailer players load only after a visitor chooses to play them, while viewing-provider links lead to destinations operated under their own terms. MovieFlix controls its own discovery experience, publication rules, navigation, and presentation.'],
       ['Accuracy and corrections', 'Release information, credits, ratings, trailers, and streaming availability can change over time. MovieFlix displays the latest data successfully stored by its background synchronization process and shows freshness information on movie pages. When a record appears incorrect, visitors can send the exact MovieFlix URL, identify the field in question, and provide a reliable supporting source. Corrections are reviewed rather than copied automatically into the public catalog.'],
-      ['Privacy and performance', 'The public website is designed to work without an account. MovieFlix may record limited operational events such as page views, searches, trailer plays, errors, and sampled Core Web Vitals so the catalog can be improved. Search text is normalized and obvious email addresses or phone numbers are redacted before analytics storage. Heavy video players are not loaded before interaction, and responsive image sizes are used to reduce bandwidth and layout movement.'],
+      ['Privacy and performance', 'The public website is designed to work without an account and optional analytics remains off until a visitor accepts it. With consent, MovieFlix records limited anonymous events such as page views, searches, qualified movie views, trailer plays, and sampled Core Web Vitals so the catalog can be improved. Search text is normalized and obvious email addresses or phone numbers are redacted before analytics storage. Heavy video players are not loaded before interaction, and responsive image sizes are used to reduce bandwidth and layout movement.'],
+      ['Data attribution', 'This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming availability data is attributed to JustWatch where it is displayed. These source acknowledgements do not imply sponsorship of, control over, or ownership of MovieFlix.'],
     ],
   },
   methodology: {
@@ -28,12 +30,12 @@ const pages = {
     intro:
       'We use transparent quality rules to decide which movie and person pages are ready for public discovery and search indexing.',
     sections: [
-      ['Data sources', 'Movie metadata, credits, artwork, keywords, countries, languages, companies, collections, reviews, recommendations, and provider information originate from TMDB responses requested by authenticated administrative or background processes. Trailer records point to YouTube videos. MovieFlix stores the accepted response locally and serves public pages from that database. A public visit never triggers a TMDB refresh, and a missing TMDB subresponse does not silently erase previously valid local relationships.'],
-      ['Import and synchronization', 'Each movie import is handled as a persistent job with recorded stages, progress, attempts, heartbeat, completion state, and errors. Core movie data is collected with an enriched TMDB request, while detailed person enrichment runs separately so the same actor or crew profile does not require repeated requests for every movie. Retryable network or service failures are deferred with controlled retries; permanent validation, authentication, and not-found failures remain visible for administrative review.'],
-      ['Publishing quality', 'A new movie must have TMDB production status Released, a non-empty title, release date, synopsis, poster, at least one genre, and an effective active YouTube trailer before automatic publication. An effective trailer can come from the movie trailer identifier or an active YouTube Trailer record. Movies that fail the full rule remain drafts with explicit quality issues. Existing published movies are re-evaluated when essential poster or trailer media disappears.'],
+      ['Catalog sources', 'MovieFlix combines accepted catalog information, credits, artwork, classifications, recommendations, and viewing-provider records in its own database. Source data is requested only by authenticated administrative or background processes. A public visit never starts a source refresh, and an incomplete source response does not silently erase previously valid catalog relationships.'],
+      ['Import and synchronization', 'Each movie import is handled as a persistent job with recorded stages, progress, attempts, heartbeat, completion state, and errors. Core movie data and detailed person enrichment run as separate stages so the same actor or crew profile does not require repeated work for every movie. Retryable network or service failures are deferred with controlled retries; permanent validation, authentication, and not-found failures remain visible for administrative review.'],
+      ['Publishing quality', 'A new movie must have a released production status, a non-empty title, release date, synopsis, poster, at least one genre, and an effective active trailer before automatic publication. Movies that fail the full rule remain drafts with explicit quality issues. Existing published movies are re-evaluated when essential poster or trailer media disappears.'],
       ['Person and catalog indexing', 'Publication and search indexing are separate decisions. A person profile can remain accessible to users but receives noindex when it lacks a headshot or enough substantive information. To enter the person sitemap, a profile needs a headshot, at least one relationship to a published movie, and either a biography of at least 160 characters or three published movie credits. Genre, origin, year, and similar catalog pages need at least three published movies and suitable introductory information before indexing.'],
-      ['Top-rated ranking', 'The Top Rated list requires at least 50 recorded audience votes. Eligible movies are ordered with a Bayesian weighted rating that combines each movie’s vote average, vote count, the minimum-vote parameter, and the mean rating across the eligible catalog. This dampens small-sample extremes without replacing the displayed audience rating. Popularity, latest releases, and recently added lists use their own explicit ordering rules and should not be interpreted as editorial endorsements.'],
-      ['Dates, availability, and trailers', 'Latest Releases excludes dates later than the current day, while year pages use an inclusive start-of-year and exclusive start-of-next-year range. Provider availability is informational and may vary by country, account, subscription, or time. MovieFlix does not create price Offer schema when a specific destination, currency, price, and availability cannot be verified. YouTube trailer schema uses the stored video identifier, thumbnail, and publication date when available.'],
+      ['Top-rated ranking', 'The Top Rated list requires at least 50 recorded audience votes. Eligible movies are ordered with a Bayesian weighted rating that combines each movie’s vote average, vote count, the minimum-vote parameter, and the mean rating across the eligible catalog. This dampens small-sample extremes without replacing the displayed audience rating. Popularity and latest-release lists use their own explicit ordering rules and should not be interpreted as editorial endorsements.'],
+      ['Dates, availability, and trailers', 'Latest Releases excludes dates later than the current day, while year pages use an inclusive start-of-year and exclusive start-of-next-year range. Provider availability is informational and may vary by country, account, subscription, or time. MovieFlix does not create price Offer schema when a specific destination, currency, price, and availability cannot be verified. Trailer schema uses the stored video identifier, thumbnail, and publication date when available.'],
       ['Corrections and freshness', 'Movie pages show when their local record was last updated. Background jobs refresh eligible records according to administrative scheduling and stale-data rules; a newer timestamp means the local record changed, not that every external source changed at that moment. Correction requests should include the exact MovieFlix URL, the disputed field, the proposed value, and a reliable primary or authoritative source. Requests are reviewed before protected or manually edited fields are changed.'],
     ],
   },
@@ -56,19 +58,19 @@ const pages = {
     sections: [
       [
         'Information we collect',
-        'We may record anonymous page views, searches, trailer plays, device details, and basic technical diagnostics. Account information is stored only when you create or administer an account.',
+        'Optional analytics remains disabled until you choose Accept analytics. If accepted, MovieFlix may record anonymous page views, searches, qualified movie views, trailer plays, sampled Core Web Vitals, and basic technical diagnostics. Account information is stored only when you create or administer an account.',
       ],
       [
         'How we use it',
-        'Usage data helps us improve discovery, diagnose errors, protect the service, and understand which catalog features are useful. We do not sell personal information.',
+        'Consented usage data helps us improve discovery, diagnose errors, protect the service, and understand which catalog features are useful. A qualified movie view requires at least eight seconds on an active page and is counted once per browser, movie, and UTC day. Raw anonymous analytics events are retained for 90 days while aggregated daily totals may be kept longer. We do not sell personal information.',
       ],
       [
         'Third-party services',
-        'Trailer playback and external watch links can take you to services such as YouTube or a streaming provider. Their own privacy terms apply once you leave MovieFlix.',
+        'Trailer playback and external watch links can take you to a video host or viewing provider. Their own privacy terms apply once you leave MovieFlix.',
       ],
       [
         'Your choices',
-        'You can browse the public catalog without an account. For questions about stored account information, contact the site administrator.',
+        'You can browse the public catalog without an account or optional analytics. Use Privacy choices in the footer at any time to accept or decline analytics. The necessary preference cookie lasts up to 12 months so the site can remember your decision. For questions about stored account information, contact the site administrator.',
       ],
     ],
   },
@@ -112,7 +114,7 @@ const pages = {
       ],
       [
         'Metadata attribution',
-        'Movie metadata and artwork are sourced from TMDB. Trailer playback and streaming destinations remain under their respective owners.',
+        'Catalog data, artwork, trailer playback, and viewing destinations remain subject to the rights and terms of their respective owners. Required source acknowledgements are listed on the About page.',
       ],
     ],
   },
@@ -197,10 +199,22 @@ export default async function InfoPage({ params }: { params: Promise<{ info: str
         {page.sections.map(([title, body]) => (
           <section
             key={title}
+            id={title === 'Data attribution' ? 'data-attribution' : undefined}
             className="grid gap-3 py-6 sm:grid-cols-[12rem_1fr] sm:gap-6 sm:py-8 lg:grid-cols-[14rem_1fr]"
           >
             <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-            <p className="max-w-[65ch] break-words leading-7 text-muted-foreground">{body}</p>
+            <div className="max-w-[65ch]">
+              <p className="break-words leading-7 text-muted-foreground">{body}</p>
+              {title === 'Data attribution' ? (
+                <Image
+                  src="/brand/tmdb-logo.svg"
+                  alt="TMDB"
+                  width="74"
+                  height="54"
+                  className="mt-5 h-auto w-14 opacity-80"
+                />
+              ) : null}
+            </div>
           </section>
         ))}
       </div>

@@ -79,7 +79,7 @@ export default async function MovieAnalyticsPage({
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Page Views</CardTitle>
+            <CardTitle className="text-sm font-medium">Qualified Movie Views</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{views.toLocaleString()}</div>
@@ -87,7 +87,7 @@ export default async function MovieAnalyticsPage({
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Trailer Plays</CardTitle>
+            <CardTitle className="text-sm font-medium">Qualified Trailer Plays</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{trailerPlays.toLocaleString()}</div>
@@ -102,6 +102,9 @@ export default async function MovieAnalyticsPage({
           </CardContent>
         </Card>
       </div>
+      <p className="text-sm text-muted-foreground">
+        A qualified movie view requires eight active seconds and is counted once per consented browser, movie, and UTC day.
+      </p>
     </div>
   );
 }

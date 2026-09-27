@@ -59,7 +59,7 @@ export default async function OriginPage({ params, searchParams }: PageProps) {
     countryCodes: item.countryCodes,
     languageCodes: item.languageCodes,
   });
-  const description = `Movies connected to ${item.label} through their production country or spoken language, sourced from the local catalog.`;
+  const description = `Explore MovieFlix titles connected to ${item.label} through their production country or spoken language.`;
 
   return (
     <CatalogPage

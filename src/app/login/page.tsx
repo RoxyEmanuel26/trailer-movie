@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Lock } from "lucide-react";
+import { MovieFlixLogo } from "@/components/brand/MovieFlixLogo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -47,14 +48,14 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4">
       <div className="w-full max-w-md space-y-8 rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 shadow-xl backdrop-blur-xl">
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800">
-            <Lock className="h-6 w-6 text-zinc-400" />
+          <div className="flex justify-center text-white">
+            <MovieFlixLogo markClassName="h-11 w-11" wordmarkClassName="text-2xl" />
           </div>
           <h2 className="mt-6 text-3xl font-bold tracking-tight text-zinc-100">
-            Sign in to your account
+            MovieFlix Studio
           </h2>
           <p className="mt-2 text-sm text-zinc-400">
-            Admin access is required
+            Sign in to manage the MovieFlix catalog
           </p>
         </div>
 
@@ -101,6 +102,7 @@ export default function LoginPage() {
               disabled={loading}
             >
               {loading ? "Signing in..." : "Sign in"}
+              {!loading ? <Lock className="ml-2 h-4 w-4" aria-hidden="true" /> : null}
             </Button>
           </div>
         </form>

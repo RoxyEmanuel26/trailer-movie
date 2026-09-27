@@ -22,8 +22,18 @@ function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
   const andFilters: Prisma.MovieWhereInput[] = [];
 
   if (params.search) {
-    const searchStr = params.search.split(' ').map((part) => `${part}:*`).join(' | ');
-    andFilters.push({ OR: [{ title: { search: searchStr } }, { originalTitle: { search: searchStr } }, { synopsis: { search: searchStr } }] });
+    const terms = params.search.trim().split(/\s+/).filter(Boolean).slice(0, 8);
+    if (terms.length) {
+      // The existing pg_trgm indexes support ILIKE, whereas Prisma's search
+      // expression builds an unindexed tsvector and scans every movie row.
+      andFilters.push({
+        OR: terms.flatMap((term) => [
+          { title: { contains: term, mode: 'insensitive' as const } },
+          { originalTitle: { contains: term, mode: 'insensitive' as const } },
+          { synopsis: { contains: term, mode: 'insensitive' as const } },
+        ]),
+      });
+    }
   }
   if (params.status) where.status = params.status;
   if (params.excludeId) where.id = { not: params.excludeId };
@@ -44,6 +54,56 @@ function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
 }
 
 export class MovieRepository {
+  static async countOriginGroups(
+    origins: Array<{ slug: string; countryCodes: string[]; languageCodes: string[] }>,
+    db: DbClient = prisma,
+  ) {
+    if (!origins.length) return new Map<string, number>();
+    const payload = JSON.stringify(origins);
+    const rows = await db.$queryRaw<Array<{ slug: string; total: number }>>(Prisma.sql`
+      WITH origin_filters AS (
+        SELECT "slug", "countryCodes", "languageCodes"
+        FROM jsonb_to_recordset(${payload}::jsonb)
+          AS item("slug" text, "countryCodes" jsonb, "languageCodes" jsonb)
+      ), eligible_movies AS (
+        SELECT movie."id"
+        FROM "movies" movie
+        WHERE movie."status" = 'PUBLISHED'
+          AND movie."deletedAt" IS NULL
+          AND movie."importQualityStatus" = 'READY'
+          AND movie."posterUrl" IS NOT NULL
+          AND movie."releaseDate" <= CURRENT_TIMESTAMP
+          AND (
+            movie."youtubeTrailerId" IS NOT NULL
+            OR EXISTS (
+              SELECT 1 FROM "trailers" trailer
+              WHERE trailer."movieId" = movie."id"
+                AND trailer."sourceType" = 'YOUTUBE'
+                AND trailer."status" = 'ACTIVE'
+            )
+          )
+      ), movie_codes AS (
+        SELECT eligible."id" AS "movieId", 'country'::text AS "kind", country."isoCode" AS "code"
+        FROM eligible_movies eligible
+        JOIN "movie_countries" movie_country ON movie_country."movieId" = eligible."id"
+        JOIN "countries" country ON country."id" = movie_country."countryId"
+        UNION ALL
+        SELECT eligible."id" AS "movieId", 'language'::text AS "kind", language."isoCode" AS "code"
+        FROM eligible_movies eligible
+        JOIN "movie_languages" movie_language ON movie_language."movieId" = eligible."id"
+        JOIN "languages" language ON language."id" = movie_language."languageId"
+      )
+      SELECT filters."slug", COUNT(DISTINCT codes."movieId")::int AS "total"
+      FROM origin_filters filters
+      JOIN movie_codes codes ON (
+        (codes."kind" = 'country' AND filters."countryCodes" ? codes."code")
+        OR (codes."kind" = 'language' AND filters."languageCodes" ? codes."code")
+      )
+      GROUP BY filters."slug"
+    `);
+    return new Map(rows.map((row) => [row.slug, Number(row.total)]));
+  }
+
   static async resolveCanonicalSlug(routeParam: string, db: DbClient = prisma) {
     const bySlug = await db.movie.findFirst({ where: { slug: routeParam, deletedAt: null }, select: { slug: true } });
     if (bySlug) return bySlug.slug;

@@ -2,6 +2,13 @@ import { HomepageRepository } from '../repositories/HomepageRepository';
 import { Prisma } from '@prisma/client';
 import { cache } from 'react';
 import { requireAdmin } from '../auth/utils';
+import { revalidatePath } from 'next/cache';
+
+function revalidateHomepage() {
+  revalidatePath('/', 'page');
+  revalidatePath('/opengraph-image', 'page');
+  revalidatePath('/sitemap.xml', 'page');
+}
 
 export class HomepageService {
   // ---------------------------------------------------------------------------
@@ -9,6 +16,7 @@ export class HomepageService {
   // ---------------------------------------------------------------------------
 
   static listSections = cache(async () => {
+    await HomepageRepository.ensureSystemSections();
     return HomepageRepository.listSections();
   });
 
@@ -25,23 +33,35 @@ export class HomepageService {
       const existing = await HomepageRepository.listSections();
       data.sortOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
     }
-    return HomepageRepository.createSection(data);
+    const section = await HomepageRepository.createSection(data);
+    revalidateHomepage();
+    return section;
   }
 
   static async updateSection(id: string, data: Prisma.HomepageSectionUncheckedUpdateInput) {
     await requireAdmin('write:homepage');
-    return HomepageRepository.updateSection(id, data);
+    const section = await HomepageRepository.updateSection(id, data);
+    revalidateHomepage();
+    return section;
   }
 
   static async deleteSection(id: string) {
     await requireAdmin('write:homepage');
-    return HomepageRepository.deleteSection(id);
+    const existing = await HomepageRepository.getSection(id);
+    if (!existing) throw new Error(`Section not found: ${id}`);
+    const section = existing.systemKey
+      ? await HomepageRepository.updateSection(id, { isActive: false })
+      : await HomepageRepository.deleteSection(id);
+    revalidateHomepage();
+    return section;
   }
 
   static async reorderSections(orderedIds: string[]) {
     await requireAdmin('write:homepage');
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
-    return HomepageRepository.updateSectionOrder(updates);
+    const sections = await HomepageRepository.updateSectionOrder(updates);
+    revalidateHomepage();
+    return sections;
   }
 
   // ---------------------------------------------------------------------------
@@ -58,23 +78,31 @@ export class HomepageService {
       const existing = await HomepageRepository.listFeaturedItems();
       data.sortOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
     }
-    return HomepageRepository.createFeaturedItem(data);
+    const item = await HomepageRepository.createFeaturedItem(data);
+    revalidateHomepage();
+    return item;
   }
 
   static async updateFeaturedItem(id: string, data: Prisma.FeaturedItemUncheckedUpdateInput) {
     await requireAdmin('write:homepage');
-    return HomepageRepository.updateFeaturedItem(id, data);
+    const item = await HomepageRepository.updateFeaturedItem(id, data);
+    revalidateHomepage();
+    return item;
   }
 
   static async removeFeaturedItem(id: string) {
     await requireAdmin('write:homepage');
-    return HomepageRepository.deleteFeaturedItem(id);
+    const item = await HomepageRepository.deleteFeaturedItem(id);
+    revalidateHomepage();
+    return item;
   }
 
   static async reorderFeaturedItems(orderedIds: string[]) {
     await requireAdmin('write:homepage');
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
-    return HomepageRepository.updateFeaturedItemOrder(updates);
+    const items = await HomepageRepository.updateFeaturedItemOrder(updates);
+    revalidateHomepage();
+    return items;
   }
 
   // ---------------------------------------------------------------------------
@@ -87,5 +115,9 @@ export class HomepageService {
 
   static getPublicDiscoveryData = cache(async () => {
     return HomepageRepository.getPublicDiscoveryData();
+  });
+
+  static getSmartHomepageData = cache(async () => {
+    return HomepageRepository.getSmartHomepageData();
   });
 }

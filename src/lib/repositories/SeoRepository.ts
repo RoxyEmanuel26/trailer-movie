@@ -161,4 +161,16 @@ export class SeoRepository {
       take: 20,
     });
   }
+
+  static async getHomepageLastModified(db: DbClient = prisma) {
+    const [movie, section] = await Promise.all([
+      db.movie.aggregate({
+        where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' },
+        _max: { updatedAt: true },
+      }),
+      db.homepageSection.aggregate({ _max: { updatedAt: true } }),
+    ]);
+    const dates = [movie._max.updatedAt, section._max.updatedAt].filter((value): value is Date => Boolean(value));
+    return dates.sort((left, right) => right.getTime() - left.getTime())[0];
+  }
 }

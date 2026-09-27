@@ -89,7 +89,7 @@ export function GlobalSeoClient({ initialData }: { initialData: any }) {
               value={data.ogSiteName}
               disabled
             />
-            <p className="text-xs text-muted-foreground">Controlled by NEXT_PUBLIC_SITE_NAME in the deployment environment.</p>
+            <p className="text-xs text-muted-foreground">Locked to the MovieFlix brand in application configuration.</p>
           </div>
           <div className="space-y-2">
             <Label>Twitter Handle</Label>

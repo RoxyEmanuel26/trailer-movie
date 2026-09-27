@@ -27,29 +27,34 @@ import { ImportJobDetailsDialog } from "./ImportJobDetailsDialog"
 
 interface ImportQueueTableProps {
   initialJobs: any[]
+  localMode?: boolean
 }
 
 type DrainProgress = {
   cycles: number
   claimed: number
   completed: number
+  skipped: number
   partial: number
   failed: number
   remaining: number | null
   readyRemaining: number | null
+  discoveryRemaining: number | null
 }
 
 const initialDrainProgress: DrainProgress = {
   cycles: 0,
   claimed: 0,
   completed: 0,
+  skipped: 0,
   partial: 0,
   failed: 0,
   remaining: null,
   readyRemaining: null,
+  discoveryRemaining: null,
 }
 
-export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
+export function ImportQueueTable({ initialJobs, localMode = false }: ImportQueueTableProps) {
   const [jobs, setJobs] = React.useState(initialJobs)
   const [selectedJob, setSelectedJob] = React.useState<any | null>(null)
   const [deletingJobId, setDeletingJobId] = React.useState<string | null>(null)
@@ -103,11 +108,12 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
 
   const fetchLatestJobs = React.useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/imports')
+      const res = await fetch('/api/admin/imports?includeCompleted=false', { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
-        setJobs(data.data.data)
-        return data.data.data
+        const visibleJobs = (data.data.data || []).filter((job: any) => !['COMPLETED', 'SKIPPED', 'CANCELED'].includes(job.status))
+        setJobs(visibleJobs)
+        return visibleJobs
       }
     } catch (e) {
       // ignore
@@ -243,14 +249,20 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
           cycles: current.cycles + 1,
           claimed: current.claimed + Number(summary.claimed || 0),
           completed: current.completed + Number(summary.completed || 0),
+          skipped: current.skipped + Number(summary.skipped || 0),
           partial: current.partial + Number(summary.partial || 0),
           failed: current.failed + Number(summary.failed || 0),
           remaining: Number(summary.remaining || 0),
           readyRemaining: Number(summary.readyRemaining || 0),
+          discoveryRemaining: Number(summary.discoveryRemaining || 0),
         }))
         await fetchLatestJobs()
 
-        if (!summary.busy && Number(summary.readyRemaining || 0) === 0) {
+        if (
+          !summary.busy
+          && Number(summary.readyRemaining || 0) === 0
+          && Number(summary.discoveryRemaining || 0) === 0
+        ) {
           if (Number(summary.remaining || 0) > 0) {
             toast.info(`${summary.remaining} job remain deferred for a scheduled retry.`)
           } else {
@@ -259,7 +271,10 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
           break
         }
 
-        noProgressCycles = Number(summary.claimed || 0) === 0 ? noProgressCycles + 1 : 0
+        const readyWorkMadeNoProgress = Number(summary.claimed || 0) === 0
+          && !summary.discoveryProcessed
+          && (Number(summary.readyRemaining || 0) > 0 || Number(summary.discoveryReady || 0) > 0)
+        noProgressCycles = readyWorkMadeNoProgress ? noProgressCycles + 1 : 0
         if (noProgressCycles >= 40) {
           throw new Error('Queue made no progress after several attempts. Please try again shortly.')
         }
@@ -288,11 +303,12 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
       <div className="flex flex-col justify-between gap-4 rounded-lg border bg-muted/50 p-4 sm:flex-row sm:items-center">
         <div>
           <p className="font-medium">Persistent database worker</p>
-          <p className="text-sm text-muted-foreground">Process All continues automatically until every currently eligible job is finished.</p>
+          <p className="text-sm text-muted-foreground">{localMode ? 'Jobs are processed locally. Run pnpm import:process-local on your computer; this page monitors the queue.' : 'Process All continues automatically until every currently eligible job is finished.'}</p>
           {isCurrentlyFetching && (
             <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
-              {drainProgress.claimed} claimed · {drainProgress.completed} completed · {drainProgress.partial} partial · {drainProgress.failed} failed
+              {drainProgress.claimed} claimed · {drainProgress.completed} completed · {drainProgress.skipped} unavailable · {drainProgress.partial} partial · {drainProgress.failed} failed
               {drainProgress.remaining !== null ? ` · ${drainProgress.remaining} remaining` : ''}
+              {drainProgress.discoveryRemaining ? ` · ${drainProgress.discoveryRemaining} bulk discovery` : ''}
             </p>
           )}
         </div>
@@ -312,7 +328,7 @@ export function ImportQueueTable({ initialJobs }: ImportQueueTableProps) {
               Retry Eligible ({failedJobsCount})
             </Button>
           )}
-          {isCurrentlyFetching ? (
+          {localMode ? null : isCurrentlyFetching ? (
             <Button onClick={stopProcessingQueue} variant="outline">
               <Square className="mr-2 h-4 w-4" /> Stop
             </Button>

@@ -11,6 +11,10 @@ interface FetchOptions extends RequestInit {
 const DEFAULT_RETRIES = 2;
 const TIMEOUT_MS = 10000;
 
+function retryDelay(retries: number) {
+  return Math.min(8000, 2 ** (DEFAULT_RETRIES - retries) * 1000) + Math.floor(Math.random() * 500);
+}
+
 export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const token = process.env.TMDB_ACCESS_TOKEN;
   const baseUrl = process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3';
@@ -59,7 +63,7 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
 
       // Handle 5xx errors with standard exponential backoff
       if (response.status >= 500 && retries > 0) {
-        const backoff = Math.min(8000, 2 ** (DEFAULT_RETRIES - retries) * 1000) + Math.floor(Math.random() * 500);
+        const backoff = retryDelay(retries);
         logger.warn(`TMDB Server Error ${response.status}. Retrying in ${backoff}ms...`);
         await new Promise((resolve) => setTimeout(resolve, backoff));
         return tmdbFetch<T>(endpoint, { ...options, retries: retries - 1 });
@@ -79,6 +83,13 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
 
     return (await response.json()) as T;
   } catch (error: any) {
+    const isTimeout = error?.name === 'AbortError' || error?.statusCode === 504 || /timed?\s*out/i.test(error?.message || '');
+    if (isTimeout && retries > 0) {
+      const backoff = retryDelay(retries);
+      logger.warn(`TMDB request timed out. Retrying in ${backoff}ms... (${retries} retries left)`);
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+      return tmdbFetch<T>(endpoint, { ...options, retries: retries - 1 });
+    }
     if (error.name === 'AbortError') {
       throw new Error(`TMDB API request timed out after ${TIMEOUT_MS}ms`);
     }

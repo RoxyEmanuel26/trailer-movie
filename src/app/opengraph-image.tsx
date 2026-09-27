@@ -1,11 +1,24 @@
 import { ImageResponse } from 'next/og';
 import { siteConfig } from '@/lib/site-config';
+import { HomepageService } from '@/lib/services/HomepageService';
+import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
 
 export const alt = 'MovieFlix — discover movies, trailers, cast and where to watch';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
+export const revalidate = 300;
 
-export default function OpenGraphImage() {
+export default async function OpenGraphImage() {
+  let heroTitle = 'Discover movies, trailers and where to watch.';
+  let heroImage = '';
+  try {
+    const homepage = await HomepageService.getSmartHomepageData();
+    heroTitle = homepage.hero ? `Discover ${homepage.hero.title} and what to watch next.` : heroTitle;
+    heroImage = homepage.heroBackdrop ? getTmdbImageUrl(homepage.heroBackdrop, 1280) : '';
+  } catch {
+    // The branded fallback remains valid while the catalog database is unavailable.
+  }
+
   return new ImageResponse(
     <div
       style={{
@@ -15,7 +28,12 @@ export default function OpenGraphImage() {
         flexDirection: 'column',
         justifyContent: 'space-between',
         padding: '72px',
-        background: '#0d0e0c',
+        backgroundColor: '#0d0e0c',
+        backgroundImage: heroImage
+          ? `linear-gradient(90deg, rgba(13,14,12,.98) 0%, rgba(13,14,12,.78) 52%, rgba(13,14,12,.35) 100%), url(${heroImage})`
+          : 'linear-gradient(135deg, #0d0e0c 0%, #24211d 100%)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         color: '#f8f4ec',
         fontFamily: 'Arial, sans-serif',
       }}
@@ -32,7 +50,7 @@ export default function OpenGraphImage() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: 980 }}>
         <div style={{ fontSize: 76, lineHeight: 1.02, letterSpacing: '-3px', fontWeight: 700 }}>
-          Discover movies, trailers and where to watch.
+          {heroTitle}
         </div>
         <div style={{ fontSize: 29, lineHeight: 1.4, color: '#b9b6ad' }}>
           Explore stories, cast, crew, ratings and viewing information from one curated catalog.

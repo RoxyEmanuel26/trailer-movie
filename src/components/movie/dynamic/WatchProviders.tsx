@@ -296,10 +296,10 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
 
   if (allProviders.length === 0) {
     return (
-      <div className="mt-6 p-4 rounded-xl border bg-card/50">
-        <h3 className="text-sm font-semibold mb-1 text-muted-foreground">Available on</h3>
-        <p className="text-xs text-muted-foreground/60 italic">
-          No streaming provider data found for this movie.
+      <div className="rounded-2xl border bg-card/50 p-4">
+        <h3 className="mb-1 text-sm font-semibold text-muted-foreground">Available on</h3>
+        <p className="text-xs text-muted-foreground/70">
+          Streaming availability is not listed for this movie.
         </p>
       </div>
     );
@@ -317,7 +317,7 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
   const rentBuyCount = allProviders.filter((p) => p.types.has('rent') || p.types.has('buy')).length;
 
   // Collapse / Expand threshold
-  const INITIAL_LIMIT = 12;
+  const INITIAL_LIMIT = 6;
   const shouldTruncate = filteredProviders.length > INITIAL_LIMIT;
   const displayProviders =
     isExpanded || !shouldTruncate ? filteredProviders : filteredProviders.slice(0, INITIAL_LIMIT);
@@ -325,26 +325,27 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
   const hiddenCount = filteredProviders.length - INITIAL_LIMIT;
 
   return (
-    <div className="mt-6 p-4 rounded-xl border bg-card shadow-sm">
+    <section aria-labelledby="watch-providers-heading" className="overflow-hidden rounded-2xl border bg-card shadow-sm">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
         <div>
-          <h3 className="text-sm font-bold tracking-tight text-foreground">Available on</h3>
-          <p className="text-[11px] text-muted-foreground">Watch directly on official platforms</p>
+          <h3 id="watch-providers-heading" className="text-base font-bold tracking-tight text-foreground">Available on</h3>
+          <p className="mt-1 text-xs leading-4 text-muted-foreground">Watch directly on official platforms</p>
         </div>
-        <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+        <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary">
           {allProviders.length} {allProviders.length === 1 ? 'service' : 'services'}
         </span>
       </div>
 
       {/* Filter Tabs if both stream and rent/buy exist */}
       {streamCount > 0 && rentBuyCount > 0 && (
-        <div className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/60 p-1 text-xs font-medium sm:flex sm:items-center">
+        <div className="mx-4 grid grid-cols-3 gap-1 rounded-xl border bg-muted/60 p-1 text-xs font-medium">
           <button
             type="button"
             onClick={() => setFilter('all')}
-            className={`min-h-11 rounded-md px-1 py-1 text-center text-[10px] transition-all sm:flex-1 sm:px-2 sm:text-[11px] ${
+            aria-pressed={filter === 'all'}
+            className={`min-h-11 rounded-lg px-1 py-1 text-center text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-[11px] ${
               filter === 'all'
                 ? 'bg-background shadow-xs text-foreground font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -355,7 +356,8 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
           <button
             type="button"
             onClick={() => setFilter('stream')}
-            className={`min-h-11 rounded-md px-1 py-1 text-center text-[10px] transition-all sm:flex-1 sm:px-2 sm:text-[11px] ${
+            aria-pressed={filter === 'stream'}
+            className={`min-h-11 rounded-lg px-1 py-1 text-center text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-[11px] ${
               filter === 'stream'
                 ? 'bg-background shadow-xs text-foreground font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -366,7 +368,8 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
           <button
             type="button"
             onClick={() => setFilter('rent_buy')}
-            className={`min-h-11 rounded-md px-1 py-1 text-center text-[10px] transition-all sm:flex-1 sm:px-2 sm:text-[11px] ${
+            aria-pressed={filter === 'rent_buy'}
+            className={`min-h-11 rounded-lg px-1 py-1 text-center text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-[11px] ${
               filter === 'rent_buy'
                 ? 'bg-background shadow-xs text-foreground font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -378,7 +381,7 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
       )}
 
       {/* Provider Grid */}
-      <div className="grid grid-cols-2 gap-2.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-3" aria-live="polite">
         {displayProviders.map((provider) => {
           const isStream = provider.types.has('stream');
           const isRentBuy = provider.types.has('rent') || provider.types.has('buy');
@@ -392,16 +395,17 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
               target="_blank"
               rel="noopener noreferrer"
               title={`Watch "${effectiveTitle}" on ${provider.name} ↗`}
-              className="group relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl border bg-muted/20 p-1.5 shadow-xs transition-all duration-200 hover:border-primary/50 hover:bg-muted/80 active:scale-[.98] [@media(hover:hover)]:hover:scale-[1.04]"
+              aria-label={`Watch ${effectiveTitle} on ${provider.name} (${badgeText})`}
+              className="group relative flex min-h-[3.75rem] min-w-0 items-center gap-2 rounded-xl border bg-background p-2 shadow-xs transition-[border-color,background-color,transform] hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.03] active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transform-none sm:min-h-16 sm:gap-2.5 sm:p-2.5"
             >
               {/* Logo / Thumbnail */}
-              <div className="relative w-11 h-11 rounded-lg overflow-hidden border bg-background shadow-xs flex items-center justify-center shrink-0">
+              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted shadow-xs sm:h-10 sm:w-10">
                 {provider.logoUrl ? (
                   <Image
                     src={provider.logoUrl}
                     alt={provider.name}
                     fill
-                    sizes="44px"
+                    sizes="(max-width: 639px) 36px, 40px"
                     className="object-cover transition-transform group-hover:scale-105 duration-200"
                   />
                 ) : (
@@ -409,21 +413,17 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
                     {provider.name.slice(0, 4)}
                   </div>
                 )}
-                {/* External link indicator badge on hover */}
-                <div className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 rounded-full p-0.5 text-white shadow-xs">
-                  <ExternalLink className="w-2.5 h-2.5" />
-                </div>
               </div>
 
-              {/* Provider Name */}
-              <span className="text-[10px] font-semibold text-center truncate w-full leading-tight text-foreground/90 group-hover:text-primary transition-colors">
-                {provider.name}
-              </span>
-
-              {/* Type pill */}
-              <span className="text-[8px] tracking-tight uppercase text-muted-foreground/80 font-medium scale-95 -mt-0.5 truncate">
-                {badgeText}
-              </span>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-semibold leading-tight text-foreground group-hover:text-primary sm:pr-3 sm:text-sm">
+                  {provider.name}
+                </span>
+                <span className="mt-1 block truncate text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {badgeText}
+                </span>
+              </div>
+              <ExternalLink className="absolute right-2 top-2 hidden h-3 w-3 text-muted-foreground/60 transition-colors group-hover:text-primary sm:block" aria-hidden="true" />
             </a>
           );
         })}
@@ -434,7 +434,7 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-3 flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="mx-4 mb-4 flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl border bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {isExpanded ? (
             <>
@@ -450,24 +450,23 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
         </button>
       )}
 
-      {/* Footer disclaimer */}
-      <div className="mt-3 pt-2.5 border-t flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>Click to watch on platform ↗</span>
-        <span className="opacity-70">JustWatch / TMDB</span>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t bg-muted/20 px-4 py-3 text-[10px] leading-4 text-muted-foreground">
+        <span>Availability varies by region</span>
+        <span className="opacity-70">Data by JustWatch</span>
       </div>
-    </div>
+    </section>
   );
 }
 
 export function WatchProvidersSkeleton() {
   return (
-    <div className="mt-6 p-4 rounded-xl border bg-card animate-pulse">
+    <div className="overflow-hidden rounded-2xl border bg-card p-4 animate-pulse">
       <div className="h-4 w-24 bg-muted rounded mb-3"></div>
-      <div className="grid grid-cols-2 gap-2.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
-        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-          <div key={i} className="flex flex-col items-center gap-1">
-            <div className="w-11 h-11 bg-muted rounded-lg"></div>
-            <div className="w-10 h-2 bg-muted rounded"></div>
+      <div className="grid grid-cols-2 gap-2.5">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div key={i} className="flex min-h-[3.75rem] items-center gap-2 rounded-xl border p-2">
+            <div className="h-9 w-9 shrink-0 bg-muted rounded-lg"></div>
+            <div className="h-2 w-14 bg-muted rounded"></div>
           </div>
         ))}
       </div>

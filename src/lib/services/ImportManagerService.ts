@@ -15,7 +15,7 @@ export class ImportManagerService {
     return ImportRepository.enqueue(tmdbId, 'Movie', forceRefresh);
   }
 
-  static async listJobs(params: { skip?: number; take?: number; status?: ImportJobStatus; entityType?: string; stage?: string; retryable?: boolean }) {
+  static async listJobs(params: { skip?: number; take?: number; status?: ImportJobStatus; entityType?: string; stage?: string; retryable?: boolean; includeCompleted?: boolean }) {
     await requireAdmin('read:imports');
     const skip = params.skip || 0;
     const take = Math.min(Number(params.take) || 50, 100);

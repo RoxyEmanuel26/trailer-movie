@@ -5,7 +5,7 @@ import { serializeJsonLd } from '../src/components/seo/JsonLd';
 import { serializeSitemap } from '../src/lib/sitemap-xml';
 import { getTmdbImageUrl } from '../src/lib/tmdb-image-loader';
 import { moviePath } from '../src/lib/public-routes';
-import { canonicalUrl, isValidContactEmail, validateProductionSeoConfig } from '../src/lib/site-config';
+import { canonicalUrl, isValidContactEmail, siteConfig, validateProductionSeoConfig } from '../src/lib/site-config';
 import { escapeCdata } from '../src/lib/services/SeoService';
 
 test('strict pagination accepts only positive integer pages', () => {
@@ -61,10 +61,17 @@ test('canonical URLs cannot be overridden by another host', () => {
   assert.equal(canonicalUrl('/movies?page=2', '/movies'), 'http://localhost:3000/movies?page=2');
 });
 
+test('public brand identity is locked to MovieFlix', () => {
+  assert.equal(siteConfig.name, 'MovieFlix');
+  assert.match(siteConfig.description, /MovieFlix/);
+});
+
 test('indexing requires verification and a real contact email', () => {
   assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true }) || '', /GOOGLE_SITE_VERIFICATION/);
   assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token' }) || '', /CONTACT_EMAIL/);
-  assert.equal(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site' }), null);
+  assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site' }) || '', /ANALYTICS_HMAC_SECRET/);
+  assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site', analyticsHmacSecret: 'a'.repeat(32) }) || '', /REVALIDATION_SECRET/);
+  assert.equal(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site', analyticsHmacSecret: 'a'.repeat(32), revalidationSecret: 'b'.repeat(32) }), null);
   assert.equal(isValidContactEmail('not-an-email'), false);
 });
 

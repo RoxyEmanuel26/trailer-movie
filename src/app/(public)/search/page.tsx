@@ -78,7 +78,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
           <span className="font-semibold tabular-nums text-foreground">
             {totalMovies.toLocaleString()}
           </span>{' '}
-          {totalMovies === 1 ? 'result' : 'results'} from the local catalog
+          {totalMovies === 1 ? 'result' : 'results'} on MovieFlix
         </p>
       </div>
 

@@ -92,14 +92,18 @@ enum ImportJobStatus {
   PARTIAL
   COMPLETED
   FAILED
+  SKIPPED
+  CANCELED
 }
 
 enum ImportBatchStatus {
   PENDING
   RUNNING
   PAUSED
+  IMPORTING
   COMPLETED
   FAILED
+  CANCELED
 }
 
 enum MovieQualityStatus {
@@ -313,6 +317,8 @@ model Movie {
   @@index([deletedAt])
   @@index([popularity])
   @@index([voteAverage])
+  @@index([status, deletedAt, importQualityStatus, releaseDate])
+  @@index([status, deletedAt, importQualityStatus, popularity])
   @@map("movies")
 }
 
@@ -562,12 +568,15 @@ model CollectionMovie {
 
 model HomepageSection {
   id           String              @id @default(cuid())
+  systemKey    String?             @unique
   title        String
   type         HomepageSectionType
   collectionId String?
   genreId      String?
   sortOrder    Int                 @default(0)
   isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   genre      Genre?      @relation(fields: [genreId], references: [id], onDelete: SetNull)
@@ -663,6 +672,7 @@ model SearchLog {
 
 model AnalyticsEvent {
   id         String   @id @default(cuid())
+  dedupeKey  String?  @unique
   eventName  String
   entityType String?
   entityId   String?
@@ -671,6 +681,7 @@ model AnalyticsEvent {
 
   @@index([entityType, entityId])
   @@index([eventName, createdAt])
+  @@index([eventName, entityId, createdAt])
   @@map("analytics_events")
 }
 
@@ -692,6 +703,9 @@ model ImportJob {
   errorCode     String?
   errorMessage  String?         @db.Text
   result        Json?
+  importBatchId String?
+
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -699,25 +713,32 @@ model ImportJob {
   @@unique([tmdbId, entityType])
   @@index([status, nextAttemptAt, createdAt])
   @@index([completedAt])
+  @@index([importBatchId, status])
   @@map("import_jobs")
 }
 
 model ImportBatch {
-  id           String            @id @default(cuid())
-  status       ImportBatchStatus @default(PENDING)
-  startDate    DateTime          @db.Date
-  endDate      DateTime          @db.Date
-  countryCode  String?
-  currentPage  Int               @default(1)
-  totalPages   Int               @default(0)
-  queuedCount  Int               @default(0)
-  skippedCount Int               @default(0)
-  errorMessage String?           @db.Text
-  nextRunAt    DateTime?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id               String            @id @default(cuid())
+  status           ImportBatchStatus @default(PENDING)
+  startDate        DateTime          @db.Date
+  endDate          DateTime          @db.Date
+  countryCode      String?
+  currentPage      Int               @default(1)
+  totalPages       Int               @default(0)
+  queuedCount      Int               @default(0)
+  skippedCount     Int               @default(0)
+  importedCount    Int               @default(0)
+  failedCount      Int               @default(0)
+  unavailableCount Int               @default(0)
+  errorMessage     String?           @db.Text
+  nextRunAt        DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  canceledAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  jobs ImportJob[]
 
   @@index([status, nextRunAt, createdAt])
   @@map("import_batches")
@@ -746,6 +767,7 @@ model DailyMetrics {
 
   @@unique([date, metric, entityType, entityId])
   @@index([date, metric])
+  @@index([metric, entityType, date, entityId])
   @@map("daily_metrics")
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { importQueueWorker } from '@/lib/jobs/ImportQueueWorker';
 import { logger } from '@/lib/logger';
 import { requireAdmin } from '@/lib/auth/utils';
+import { isLocalImportMode } from '@/lib/jobs/execution-mode';
 
 export const maxDuration = 300; // Allow up to 5 minutes execution time for heavy batches
 
@@ -20,6 +21,13 @@ export const POST = async (request: Request) => {
     // If not authorized by CRON_SECRET, fallback to checking if it's a logged-in Admin
     if (!isAuthorizedByCron) {
       await requireAdmin('write:imports');
+    }
+
+    if (isLocalImportMode()) {
+      return NextResponse.json(
+        { error: 'Import processing runs on the local worker; this endpoint only accepts jobs in remote mode' },
+        { status: 409 },
+      );
     }
 
     // Process a single batch of imports

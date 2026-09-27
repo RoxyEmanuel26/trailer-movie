@@ -19,8 +19,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: {
-    default: 'MovieFlix — Discover movies, trailers and where to watch',
-    template: '%s | MovieFlix',
+    default: `${siteConfig.name} — Discover movies, trailers and where to watch`,
+    template: `%s | ${siteConfig.name}`,
   },
   description: siteConfig.description,
   applicationName: siteConfig.name,
@@ -35,6 +35,13 @@ export const metadata: Metadata = {
   robots: {
     index: siteConfig.indexingEnabled,
     follow: siteConfig.indexingEnabled,
+    googleBot: {
+      index: siteConfig.indexingEnabled,
+      follow: siteConfig.indexingEnabled,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
   },
   verification: siteConfig.googleVerification
     ? { google: siteConfig.googleVerification }

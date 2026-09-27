@@ -2,7 +2,6 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { MovieCard } from './MovieCard';
-import { HomepageService } from '@/lib/services/HomepageService';
 
 interface SectionRendererProps {
   section: {
@@ -19,10 +18,12 @@ interface SectionRendererProps {
     genreId?: string | null;
     collection?: { id: string; title: string; slug: string } | null;
     genre?: { id: string; name: string; slug: string } | null;
+    movies: any[];
+    viewAllLink?: string | null;
   };
 }
 
-export async function SectionRenderer({ section }: SectionRendererProps) {
+export function SectionRenderer({ section }: SectionRendererProps) {
   if (section.type === 'AD_SLOT') {
     return (
       <section className="mx-auto w-full max-w-[90rem] px-4 py-5 sm:px-6 lg:px-8">
@@ -35,7 +36,7 @@ export async function SectionRenderer({ section }: SectionRendererProps) {
     );
   }
 
-  const { movies, viewAllLink } = await HomepageService.getSectionData(section);
+  const { movies, viewAllLink } = section;
 
   if (movies.length === 0) return null;
 

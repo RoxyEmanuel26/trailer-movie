@@ -1,10 +1,9 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Building2, ExternalLink, Globe2 } from 'lucide-react';
+import { DollarSign, Building2, Globe2 } from 'lucide-react';
 
 function formatCurrency(amount: any) {
-  if (!amount) return 'Unknown';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -20,10 +19,7 @@ export function MovieExtraInfo({
   keywords,
   countries,
   languages,
-  originalLanguage,
-  productionStatus,
   homepage,
-  imdbId,
 }: {
   budget: any;
   revenue: any;
@@ -32,11 +28,7 @@ export function MovieExtraInfo({
   keywords: any[];
   countries?: any[];
   languages?: any[];
-  originalLanguage?: string | null;
-  productionStatus?: string | null;
   homepage?: string | null;
-  imdbId?: string | null;
-  movieSlug?: string;
 }) {
   const certification = ageRating || 'NR';
 
@@ -48,22 +40,12 @@ export function MovieExtraInfo({
         </h3>
 
         <dl className="space-y-4 text-sm">
-          <div className="flex flex-col">
-            <dt className="text-muted-foreground flex items-center gap-1">
-              <DollarSign className="w-3 h-3" /> Budget
-            </dt>
-            <dd className="font-medium text-base">{formatCurrency(budget)}</dd>
-          </div>
-          {productionStatus ? (
+          {Number(budget) > 0 ? (
             <div className="flex flex-col">
-              <dt className="text-muted-foreground">Production status</dt>
-              <dd className="font-medium">{productionStatus}</dd>
-            </div>
-          ) : null}
-          {originalLanguage ? (
-            <div className="flex flex-col">
-              <dt className="text-muted-foreground">Original language</dt>
-              <dd className="font-medium uppercase">{originalLanguage}</dd>
+              <dt className="text-muted-foreground flex items-center gap-1">
+                <DollarSign className="w-3 h-3" /> Budget
+              </dt>
+              <dd className="font-medium text-base">{formatCurrency(budget)}</dd>
             </div>
           ) : null}
           {countries && countries.length > 0 ? (
@@ -83,36 +65,25 @@ export function MovieExtraInfo({
             </div>
           ) : null}
 
-          <div className="flex flex-col">
-            <dt className="text-muted-foreground flex items-center gap-1">
-              <DollarSign className="w-3 h-3" /> Box Office Revenue
-            </dt>
-            <dd className="font-medium text-base">{formatCurrency(revenue)}</dd>
-          </div>
-          {homepage || imdbId ? (
+          {Number(revenue) > 0 ? (
+            <div className="flex flex-col">
+              <dt className="text-muted-foreground flex items-center gap-1">
+                <DollarSign className="w-3 h-3" /> Box office revenue
+              </dt>
+              <dd className="font-medium text-base">{formatCurrency(revenue)}</dd>
+            </div>
+          ) : null}
+          {homepage ? (
             <div className="flex flex-wrap gap-3 pt-1">
-              {homepage ? (
-                <a
-                  href={homepage}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-                >
-                  <Globe2 className="h-3.5 w-3.5" />
-                  Official site
-                </a>
-              ) : null}
-              {imdbId ? (
-                <a
-                  href={`https://www.imdb.com/title/${imdbId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-                >
-                  IMDb
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : null}
+              <a
+                href={homepage}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+              >
+                <Globe2 className="h-3.5 w-3.5" />
+                Official movie site
+              </a>
             </div>
           ) : null}
 

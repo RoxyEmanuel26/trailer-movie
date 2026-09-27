@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { EventTrackingService } from '@/lib/services/EventTrackingService';
+import { ANALYTICS_CONSENT_COOKIE, ANALYTICS_ID_COOKIE } from '@/lib/analytics/consent';
+import { hashAnalyticsIdentifier, isLikelyBot } from '@/lib/analytics/server';
+import { enforceRateLimit, RateLimitTiers, resolveIp } from '@/lib/security/rateLimiter';
 
 const eventSchema = z.object({
   eventName: z.enum(['page_view', 'movie_view', 'person_view', 'trailer_play', 'trailer_complete', 'search', 'filter_apply', 'pagination', 'homepage_click', 'web_vital', 'system_error', 'security_alert']),
@@ -10,6 +13,23 @@ const eventSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    if (req.cookies.get(ANALYTICS_CONSENT_COOKIE)?.value !== 'granted') {
+      return new NextResponse(null, { status: 204 });
+    }
+    const anonymousId = req.cookies.get(ANALYTICS_ID_COOKIE)?.value;
+    if (!anonymousId) return new NextResponse(null, { status: 204 });
+
+    const userAgent = req.headers.get('user-agent') || '';
+    if (isLikelyBot(userAgent)) return new NextResponse(null, { status: 204 });
+
+    const origin = req.headers.get('origin');
+    if (origin && origin !== req.nextUrl.origin) {
+      return NextResponse.json({ error: 'Invalid origin' }, { status: 403 });
+    }
+
+    const rateLimitId = hashAnalyticsIdentifier(`${anonymousId}:${resolveIp(req)}`);
+    await enforceRateLimit(rateLimitId, RateLimitTiers.ANALYTICS, '/api/analytics/events');
+
     const body = await req.json();
     const parsed = eventSchema.safeParse(body);
 
@@ -24,10 +44,10 @@ export async function POST(req: NextRequest) {
         await EventTrackingService.trackPageView((metadata?.path as string) || '/');
         break;
       case 'movie_view':
-        if (entityId) await EventTrackingService.trackMovieView(entityId);
+        if (entityId) await EventTrackingService.trackMovieView(entityId, anonymousId);
         break;
       case 'trailer_play':
-        if (entityId) await EventTrackingService.trackTrailerPlay(entityId, (metadata?.trailerId as string) || '');
+        if (entityId) await EventTrackingService.trackTrailerPlay(entityId, (metadata?.trailerId as string) || '', anonymousId);
         break;
       case 'search':
         await EventTrackingService.trackSearch(sanitizeSearchQuery((metadata?.query as string) || ''), (metadata?.resultsCount as number) || 0);

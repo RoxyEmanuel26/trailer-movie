@@ -9,65 +9,63 @@ import { Button } from '@/components/ui/button';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { absoluteUrl, siteConfig } from '@/lib/site-config';
 import { moviePath } from '@/lib/public-routes';
+import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
+
+const homepageTitle = 'MovieFlix: Movie Trailers, Cast & Where to Watch';
+const homepageDescription =
+  'Discover new and popular movies, watch trailers, explore cast and crew, and find official streaming, rental and purchase options on MovieFlix.';
 
 export async function generateMetadata(): Promise<Metadata> {
-  return SeoService.generateMetadata('Page', 'home', {
-    title: 'Discover what to watch next',
-    description:
-      'Browse popular movies, new trailers, cast, reviews, and streaming availability from one locally indexed catalog.',
+  const homepage = await HomepageService.getSmartHomepageData();
+  const image = absoluteUrl('/opengraph-image');
+  const metadata = await SeoService.generateMetadata('Page', 'home', {
+    title: homepageTitle,
+    description: homepageDescription,
+    image,
     path: '/',
   });
+  return {
+    ...metadata,
+    title: { absolute: homepageTitle },
+    description: homepageDescription,
+    openGraph: {
+      ...metadata.openGraph,
+      title: homepageTitle,
+      description: homepageDescription,
+      images: [{ url: image, width: 1200, height: 630, alt: homepage.hero ? `${homepage.hero.title} on MovieFlix` : 'MovieFlix movie discovery' }],
+    },
+    twitter: {
+      ...metadata.twitter,
+      title: homepageTitle,
+      description: homepageDescription,
+      images: [image],
+    },
+  };
 }
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 export default async function HomePage() {
-  const [configuredSections, featuredItems, discovery] = await Promise.all([
-    HomepageService.listSections(),
-    HomepageService.listFeaturedItems(),
-    HomepageService.getPublicDiscoveryData(),
-  ]);
-
-  const now = new Date();
-  const configuredHero = featuredItems.find(
-    (item) =>
-      item.isActive &&
-      item.movie?.status === 'PUBLISHED' &&
-      (!item.startDate || item.startDate <= now) &&
-      (!item.endDate || item.endDate >= now)
-  );
-  const hero = configuredHero?.movie || discovery.hero;
-  const heroBackdrop = configuredHero?.customBackdropUrl || hero?.backdropUrl;
-  const headline = configuredHero?.customHeadline || hero?.title;
-  const activeSections = configuredSections.filter((section) => section.isActive);
-  const fallbackSections = [
-    { id: 'fallback-trending', title: 'Trending now', type: 'AUTO_TRENDING' as const },
-    { id: 'fallback-recent', title: 'Freshly added', type: 'AUTO_RECENT' as const },
-    ...discovery.genres.slice(0, 2).map((genre) => ({
-      id: `fallback-genre-${genre.id}`,
-      title: `${genre.name}, handpicked`,
-      type: 'GENRE_BASED' as const,
-      genreId: genre.id,
-      genre: { id: genre.id, name: genre.name, slug: genre.slug },
-    })),
-  ];
-  const sections = activeSections.length > 0 ? activeSections : fallbackSections;
+  const discovery = await HomepageService.getSmartHomepageData();
+  const { hero, heroBackdrop, heroHeadline: headline, sections } = discovery;
+  const primaryImage = heroBackdrop ? getTmdbImageUrl(heroBackdrop, 1280) : absoluteUrl('/opengraph-image');
 
   return (
     <div className="flex min-h-screen flex-col">
       <JsonLd data={{
         '@context': 'https://schema.org',
         '@graph': [
-          { '@type': 'Organization', '@id': `${siteConfig.url}#organization`, name: siteConfig.name, url: siteConfig.url, logo: absoluteUrl('/opengraph-image'), ...(siteConfig.contactEmail ? { email: siteConfig.contactEmail } : {}) },
+          { '@type': 'Organization', '@id': `${siteConfig.url}#organization`, name: siteConfig.name, url: siteConfig.url, logo: { '@type': 'ImageObject', url: absoluteUrl('/brand/movieflix-icon-512.png'), width: 512, height: 512 }, ...(siteConfig.contactEmail ? { email: siteConfig.contactEmail } : {}) },
           { '@type': 'WebSite', '@id': `${siteConfig.url}#website`, name: siteConfig.name, url: siteConfig.url, publisher: { '@id': `${siteConfig.url}#organization` }, potentialAction: { '@type': 'SearchAction', target: absoluteUrl('/search?q={search_term_string}'), 'query-input': 'required name=search_term_string' } },
-          { '@type': 'WebPage', '@id': `${siteConfig.url}#webpage`, url: siteConfig.url, name: 'Discover Movies, Trailers and Where to Watch', isPartOf: { '@id': `${siteConfig.url}#website` }, description: siteConfig.description },
+          { '@type': 'WebPage', '@id': `${siteConfig.url}#webpage`, url: siteConfig.url, name: homepageTitle, isPartOf: { '@id': `${siteConfig.url}#website` }, description: homepageDescription, primaryImageOfPage: { '@type': 'ImageObject', url: primaryImage } },
+          { '@type': 'ItemList', '@id': `${siteConfig.url}#trending`, name: 'Trending movies on MovieFlix', numberOfItems: discovery.trending.length, itemListElement: discovery.trending.map((movie, index) => ({ '@type': 'ListItem', position: index + 1, url: absoluteUrl(moviePath(movie.slug)), name: movie.title })) },
         ],
       }} />
       <section className="relative isolate min-h-[36rem] overflow-hidden bg-[#0d0e0c] text-white sm:min-h-[42rem] lg:min-h-[46rem]">
         {heroBackdrop ? (
           <Image
             src={heroBackdrop}
-            alt=""
+            alt={hero ? `${hero.title} movie backdrop` : 'MovieFlix featured movie'}
             fill
             priority
             sizes="100vw"
@@ -92,7 +90,7 @@ export default async function HomePage() {
               </p>
             ) : (
               <p className="mt-5 line-clamp-4 max-w-xl text-sm leading-6 text-white/72 sm:text-base sm:leading-7 lg:text-lg lg:leading-8">
-                Explore a growing catalog of trailers, stories, cast, and official places to watch.
+                Explore MovieFlix for trailers, stories, cast, and official places to watch.
               </p>
             )}
 
@@ -163,7 +161,7 @@ export default async function HomePage() {
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              {discovery.genres.map((genre) => (
+                  {discovery.genres.map((genre) => (
                 <Link
                   key={genre.id}
                   href={`/genre/${genre.slug}`}
@@ -171,12 +169,28 @@ export default async function HomePage() {
                 >
                   {genre.name}{' '}
                   <span className="ml-1 text-muted-foreground tabular-nums">
-                    {genre._count.movies.toLocaleString()}
+                    {genre._count.movies.toLocaleString('en-US')}
                   </span>
                 </Link>
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-[90rem] px-4 pb-8 pt-3 sm:px-6 sm:pb-12 lg:px-8">
+        <div className="grid gap-4 border-t pt-7 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
+          {[
+            { href: '/movies', title: 'Explore all movies', text: 'Browse the newest releases first, then filter the catalog by what matters to you.' },
+            { href: '/popular', title: 'See what is popular', text: 'Find audience favorites, highly rated movies and current releases.' },
+            { href: '/countries', title: 'Discover by origin', text: 'Explore movies through production countries and spoken languages.' },
+            { href: '/years', title: 'Browse by year', text: 'Travel through recent releases and earlier eras of cinema.' },
+          ].map((item) => (
+            <Link key={item.href} href={item.href} className="group rounded-2xl border bg-card/55 p-4 transition hover:border-primary/35 hover:bg-card sm:p-5">
+              <h2 className="font-semibold tracking-[-0.02em] group-hover:text-primary">{item.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.text}</p>
+            </Link>
+          ))}
         </div>
       </section>
     </div>

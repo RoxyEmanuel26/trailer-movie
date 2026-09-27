@@ -1,5 +1,6 @@
 const DEFAULT_PRODUCTION_URL = 'https://www.movieflix.site';
 const DEVELOPMENT_URL = 'http://localhost:3000';
+export const BRAND_NAME = 'MovieFlix' as const;
 
 function normalizeSiteUrl(value: string) {
   return value.replace(/\/+$/, '');
@@ -9,10 +10,12 @@ const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
 const configuredContactEmail = process.env.CONTACT_EMAIL?.trim() || '';
 
 export const siteConfig = {
-  name: process.env.NEXT_PUBLIC_SITE_NAME?.trim() || 'MovieFlix',
+  // The public identity is intentionally code-owned so an environment typo or
+  // stale deployment setting cannot replace MovieFlix in metadata or schema.
+  name: BRAND_NAME,
   url: normalizeSiteUrl(configuredUrl || (process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_URL : DEVELOPMENT_URL)),
   description:
-    'Discover movies, watch trailers, explore cast and crew, and find where to watch from a locally indexed catalog.',
+    'Explore movies, trailers, cast, ratings, and where to watch—all in one thoughtfully organized MovieFlix guide.',
   googleVerification: process.env.GOOGLE_SITE_VERIFICATION?.trim() || '',
   twitterHandle: process.env.NEXT_PUBLIC_TWITTER_HANDLE?.trim() || '',
   contactEmail: configuredContactEmail,
@@ -51,6 +54,8 @@ export function validateProductionSeoConfig(input: {
   indexingEnabled: boolean;
   googleVerification?: string;
   contactEmail?: string;
+  analyticsHmacSecret?: string;
+  revalidationSecret?: string;
 }) {
   if (!input.url) return 'NEXT_PUBLIC_APP_URL is required for a production build.';
   try {
@@ -67,6 +72,12 @@ export function validateProductionSeoConfig(input: {
   if (input.indexingEnabled && !isValidContactEmail(input.contactEmail || '')) {
     return 'CONTACT_EMAIL must be a valid email when SEO indexing is enabled.';
   }
+  if (input.indexingEnabled && (input.analyticsHmacSecret?.length || 0) < 32) {
+    return 'ANALYTICS_HMAC_SECRET must contain at least 32 characters when SEO indexing is enabled.';
+  }
+  if (input.indexingEnabled && (input.revalidationSecret?.length || 0) < 32) {
+    return 'REVALIDATION_SECRET must contain at least 32 characters when SEO indexing is enabled.';
+  }
   return null;
 }
 
@@ -77,6 +88,8 @@ export function assertProductionSiteConfig() {
     indexingEnabled: process.env.SEO_INDEXING_ENABLED === 'true',
     googleVerification: process.env.GOOGLE_SITE_VERIFICATION,
     contactEmail: configuredContactEmail,
+    analyticsHmacSecret: process.env.ANALYTICS_HMAC_SECRET,
+    revalidationSecret: process.env.REVALIDATION_SECRET,
   });
   if (error) throw new Error(error);
 }

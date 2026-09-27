@@ -16,7 +16,7 @@ export class AnalyticsRepository {
     });
 
     const trailerPlays = await db.dailyMetrics.aggregate({
-      where: { metric: 'trailer_play' },
+      where: { metric: 'qualified_trailer_play' },
       _sum: { value: true },
     });
 
@@ -71,6 +71,97 @@ export class AnalyticsRepository {
 
   static async logEvent(data: Prisma.AnalyticsEventCreateInput, db: any = prisma) {
     return db.analyticsEvent.create({ data });
+  }
+
+  static async recordEventAndMetric(input: {
+    eventName: string;
+    metric?: string;
+    entityType?: string;
+    entityId?: string;
+    metadata?: Prisma.JsonObject;
+    dedupeKey?: string;
+  }, db: any = prisma) {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    try {
+      await db.$transaction(async (tx: any) => {
+        await tx.analyticsEvent.create({
+          data: {
+            eventName: input.eventName,
+            entityType: input.entityType,
+            entityId: input.entityId,
+            metadata: input.metadata,
+            dedupeKey: input.dedupeKey,
+          },
+        });
+        if (input.metric) {
+          await tx.dailyMetrics.upsert({
+            where: {
+              date_metric_entityType_entityId: {
+                date: today,
+                metric: input.metric,
+                entityType: input.entityType || '',
+                entityId: input.entityId || '',
+              },
+            },
+            update: { value: { increment: 1 } },
+            create: {
+              date: today,
+              metric: input.metric,
+              entityType: input.entityType || '',
+              entityId: input.entityId || '',
+              value: 1,
+            },
+          });
+        }
+      });
+      return true;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2002' && input.dedupeKey) return false;
+      throw error;
+    }
+  }
+
+  static async isPublicAnalyticsMovie(movieId: string, db: any = prisma) {
+    const movie = await db.movie.findFirst({
+      where: {
+        id: movieId,
+        status: 'PUBLISHED',
+        deletedAt: null,
+        importQualityStatus: 'READY',
+      },
+      select: { id: true },
+    });
+    return Boolean(movie);
+  }
+
+  static async getHomepageEngagementSignals(since: Date, db: any = prisma) {
+    const rows = await db.dailyMetrics.groupBy({
+      by: ['metric', 'entityId'],
+      where: {
+        date: { gte: since },
+        metric: { in: ['qualified_movie_view', 'qualified_trailer_play'] },
+        entityType: 'Movie',
+        entityId: { not: null },
+      },
+      _sum: { value: true },
+    });
+
+    const signals = new Map<string, { views: number; trailerPlays: number }>();
+    for (const row of rows as Array<{ metric: string; entityId: string | null; _sum: { value: number | null } }>) {
+      if (!row.entityId) continue;
+      const current = signals.get(row.entityId) || { views: 0, trailerPlays: 0 };
+      if (row.metric === 'qualified_movie_view') current.views = row._sum.value || 0;
+      if (row.metric === 'qualified_trailer_play') current.trailerPlays = row._sum.value || 0;
+      signals.set(row.entityId, current);
+    }
+    return signals;
+  }
+
+  static async deleteExpiredRawEvents(retentionDays = 90, db: any = prisma) {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    return db.analyticsEvent.deleteMany({ where: { createdAt: { lt: cutoff } } });
   }
 
   static async getTopMoviesByMetric(metric: string, take: number = 10, db: any = prisma) {
@@ -211,12 +302,12 @@ export class AnalyticsRepository {
     if (!movie) return null;
 
     const views = await db.dailyMetrics.aggregate({
-      where: { metric: 'movie_view', entityType: 'Movie', entityId: movieId },
+      where: { metric: 'qualified_movie_view', entityType: 'Movie', entityId: movieId },
       _sum: { value: true },
     });
 
     const trailerPlays = await db.dailyMetrics.aggregate({
-      where: { metric: 'trailer_play', entityType: 'Movie', entityId: movieId },
+      where: { metric: 'qualified_trailer_play', entityType: 'Movie', entityId: movieId },
       _sum: { value: true },
     });
 

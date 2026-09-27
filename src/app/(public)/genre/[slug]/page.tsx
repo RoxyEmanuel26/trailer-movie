@@ -61,7 +61,7 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
 
   const description =
     genre.description ||
-    `Browse ${genre.name.toLowerCase()} movies and trailers from the local catalog.`;
+    `Browse ${genre.name.toLowerCase()} movies, trailers, and related discoveries on MovieFlix.`;
 
   return (
     <CatalogPage

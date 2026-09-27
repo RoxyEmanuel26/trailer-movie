@@ -15,7 +15,7 @@ export class AnalyticsService {
     startDate.setDate(startDate.getDate() - 7);
     
     const dailyViews = await AnalyticsRepository.getDailyMetricsByDateRange('page_view', startDate, endDate);
-    const topMovies = await AnalyticsRepository.getTopMoviesByMetric('movie_view', 5);
+    const topMovies = await AnalyticsRepository.getTopMoviesByMetric('qualified_movie_view', 5);
 
     // Get recent admin actions
     const recentActivity = await AnalyticsRepository.getRecentAdminActivity(10);
