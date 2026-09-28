@@ -9,6 +9,36 @@ const ACTIVE_STATUSES: ImportJobStatus[] = [ImportJobStatus.PENDING, ImportJobSt
 const HIDDEN_HISTORY_STATUSES: ImportJobStatus[] = ['COMPLETED', 'SKIPPED', 'CANCELED'];
 
 export class ImportRepository {
+  static async enqueueMoviesForBatch(tmdbIds: number[], importBatchId: string, db: DbClient = prisma) {
+    const uniqueIds = [...new Set(tmdbIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+    if (uniqueIds.length === 0) return { queued: 0, skipped: 0 };
+
+    const existingMovies = await db.movie.findMany({
+      where: { tmdbId: { in: uniqueIds } },
+      select: { tmdbId: true },
+    });
+    const existingMovieIds = new Set(existingMovies.map((movie) => movie.tmdbId));
+    const candidateIds = uniqueIds.filter((tmdbId) => !existingMovieIds.has(tmdbId));
+    const created = candidateIds.length > 0
+      ? await db.importJob.createMany({
+          data: candidateIds.map((tmdbId) => ({
+            tmdbId,
+            entityType: 'Movie',
+            status: ImportJobStatus.PENDING,
+            importBatchId,
+          })),
+          skipDuplicates: true,
+        })
+      : { count: 0 };
+
+    return {
+      queued: created.count,
+      // Existing movies, existing jobs, concurrent inserts, and duplicate TMDB
+      // IDs are all skipped without creating duplicate queue records.
+      skipped: uniqueIds.length - created.count,
+    };
+  }
+
   static async enqueue(tmdbId: number, entityType = 'Movie', forceRefresh = false, db: DbClient = prisma, importBatchId?: string) {
     const job = await db.importJob.upsert({
       where: { tmdbId_entityType: { tmdbId, entityType } },

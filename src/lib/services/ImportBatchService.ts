@@ -3,6 +3,7 @@ import { prisma } from '../prisma';
 import { tmdbFetch } from '../tmdb/client';
 import { ImportRepository } from '../repositories/ImportRepository';
 import { calculateRetryAt, classifyJobError } from '../jobs/error-classification';
+import { DbClient } from '../repositories/base.types';
 
 export type CreateImportBatchInput = { startDate: string; endDate: string; country?: string };
 
@@ -137,6 +138,25 @@ export class ImportBatchService {
     });
   }
 
+  static async recoverMisclassifiedTransactionTimeouts(db: DbClient = prisma) {
+    return db.importBatch.updateMany({
+      where: {
+        status: ImportBatchStatus.FAILED,
+        errorMessage: {
+          startsWith: '[P2028]',
+          contains: 'expired transaction',
+          mode: 'insensitive',
+        },
+      },
+      data: {
+        status: ImportBatchStatus.PENDING,
+        nextRunAt: new Date(),
+        completedAt: null,
+        errorMessage: null,
+      },
+    });
+  }
+
   static async processNextPage() {
     const batch = await this.claimNext();
     if (!batch) return { processed: false, queued: 0, skipped: 0 };
@@ -152,8 +172,11 @@ export class ImportBatchService {
           ...(batch.countryCode && { with_origin_country: batch.countryCode }),
         },
       });
-      const movies = Array.isArray(response.results) ? response.results : [];
-      const ids = movies.map((movie: any) => movie.id).filter((id: unknown): id is number => Number.isSafeInteger(id));
+      const movies: Array<{ id?: unknown }> = Array.isArray(response.results) ? response.results : [];
+      const ids = [...new Set<number>(
+        movies.map((movie) => movie.id)
+          .filter((id): id is number => Number.isSafeInteger(id) && Number(id) > 0),
+      )];
       const totalPages = Math.min(Number(response.total_pages) || 1, 500);
       const completed = batch.currentPage >= totalPages;
       const pageResult = await prisma.$transaction(async (tx) => {
@@ -164,25 +187,7 @@ export class ImportBatchService {
         const current = await tx.importBatch.findUnique({ where: { id: batch.id }, select: { status: true } });
         if (current?.status !== ImportBatchStatus.RUNNING) return null;
 
-        const [existingMovies, existingJobs] = await Promise.all([
-          tx.movie.findMany({ where: { tmdbId: { in: ids } }, select: { tmdbId: true } }),
-          tx.importJob.findMany({
-            where: { tmdbId: { in: ids }, entityType: 'Movie' },
-            select: { tmdbId: true },
-          }),
-        ]);
-        const existingIds = new Set([
-          ...existingMovies.map((movie) => movie.tmdbId),
-          ...existingJobs.map((job) => job.tmdbId),
-        ]);
-        let queued = 0;
-        let skipped = 0;
-        for (const tmdbId of ids) {
-          if (existingIds.has(tmdbId)) { skipped += 1; continue; }
-          const job = await ImportRepository.enqueue(tmdbId, 'Movie', false, tx, batch.id);
-          if (job.importBatchId === batch.id) queued += 1;
-          else skipped += 1;
-        }
+        const { queued, skipped } = await ImportRepository.enqueueMoviesForBatch(ids, batch.id, tx);
 
         await tx.importBatch.update({
           where: { id: batch.id },
@@ -198,7 +203,7 @@ export class ImportBatchService {
           },
         });
         return { queued, skipped };
-      });
+      }, { maxWait: 10_000, timeout: 20_000 });
       if (!pageResult) return { processed: false, batchId: batch.id, queued: 0, skipped: 0, completed: false };
       return { processed: true, batchId: batch.id, ...pageResult, completed };
     } catch (error) {

@@ -54,7 +54,11 @@ export class ImportQueueWorker {
 
     try {
       const throughput = getImportThroughput();
-      await Promise.all([ImportRepository.recoverExpiredLeases(), ImportBatchService.recoverStuck()]);
+      await Promise.all([
+        ImportRepository.recoverExpiredLeases(),
+        ImportBatchService.recoverStuck(),
+        ImportBatchService.recoverMisclassifiedTransactionTimeouts(),
+      ]);
       const discoveryPromise = ImportBatchService.processNextPage().catch((error) => {
         logger.warn({ err: error }, '[ImportQueueWorker] Bulk discovery page deferred');
         return { processed: false };

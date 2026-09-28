@@ -33,7 +33,7 @@ export function classifyJobError(error: unknown): ClassifiedJobError {
   if (candidate?.statusCode === 504) {
     return { code: 'UPSTREAM_TIMEOUT', message, retryable: true };
   }
-  if (candidate?.code && ['P1001', 'P1002', 'P1008', 'P1017', 'P2024', 'P2034'].includes(candidate.code)) {
+  if (candidate?.code && ['P1001', 'P1002', 'P1008', 'P1017', 'P2024', 'P2028', 'P2034'].includes(candidate.code)) {
     return { code: candidate.code, message, retryable: true };
   }
   if (candidate?.code?.startsWith('P')) {

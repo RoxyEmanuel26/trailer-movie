@@ -9,6 +9,7 @@ import { getImportThroughput, runBounded } from '../src/lib/jobs/throughput';
 import { ImportRepository } from '../src/lib/repositories/ImportRepository';
 import { ImportJobStatus } from '@prisma/client';
 import { safeUpsertCompany, safeUpsertKeyword } from '../src/lib/services/import-service';
+import { ImportBatchService } from '../src/lib/services/ImportBatchService';
 
 const completeMovie = {
   title: 'Complete movie',
@@ -58,6 +59,7 @@ test('retry classification distinguishes permanent, transient, and partial error
     retryable: true,
   });
   assert.equal(classifyJobError({ code: 'P2024', message: 'connection pool timeout' }).retryable, true);
+  assert.equal(classifyJobError({ code: 'P2028', message: 'expired transaction' }).retryable, true);
   assert.equal(classifyJobError({ code: 'P2002', message: 'unique constraint' }).retryable, false);
   assert.deepEqual(classifyJobError({ statusCode: 504, message: 'Request to api.themoviedb.org timed out after 10000ms.' }), {
     code: 'UPSTREAM_TIMEOUT',
@@ -121,6 +123,71 @@ test('person bulk enqueue deduplicates IDs without requeueing recently completed
   const filter = (calls[1].args as { where: { OR: Array<Record<string, unknown>> } }).where.OR;
   assert.deepEqual(filter[0], { status: { in: ['FAILED', 'PARTIAL'] }, retryable: true });
   assert.equal(filter[1].status, 'COMPLETED');
+});
+
+test('movie bulk discovery enqueues unique new IDs with one createMany call', async () => {
+  const calls: unknown[] = [];
+  const db = {
+    movie: {
+      findMany: async () => [{ tmdbId: 20 }],
+    },
+    importJob: {
+      createMany: async (args: unknown) => {
+        calls.push(args);
+        return { count: 2 };
+      },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.enqueueMoviesForBatch>[2]>;
+
+  const result = await ImportRepository.enqueueMoviesForBatch([10, 20, 10, 30, -1], 'batch-1', db);
+  assert.deepEqual(result, { queued: 2, skipped: 1 });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    data: [
+      { tmdbId: 10, entityType: 'Movie', status: ImportJobStatus.PENDING, importBatchId: 'batch-1' },
+      { tmdbId: 30, entityType: 'Movie', status: ImportJobStatus.PENDING, importBatchId: 'batch-1' },
+    ],
+    skipDuplicates: true,
+  });
+});
+
+test('movie bulk discovery counts a concurrent duplicate insert as skipped', async () => {
+  const db = {
+    movie: { findMany: async () => [] },
+    importJob: { createMany: async () => ({ count: 1 }) },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.enqueueMoviesForBatch>[2]>;
+
+  assert.deepEqual(
+    await ImportRepository.enqueueMoviesForBatch([10, 20], 'batch-1', db),
+    { queued: 1, skipped: 1 },
+  );
+});
+
+test('legacy failed P2028 batches are recovered without touching other failures', async () => {
+  let captured: unknown;
+  const db = {
+    importBatch: {
+      updateMany: async (args: unknown) => {
+        captured = args;
+        return { count: 1 };
+      },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportBatchService.recoverMisclassifiedTransactionTimeouts>[0]>;
+
+  const result = await ImportBatchService.recoverMisclassifiedTransactionTimeouts(db);
+  assert.equal(result.count, 1);
+  const input = captured as {
+    where: { status: string; errorMessage: { startsWith: string; contains: string; mode: string } };
+    data: { status: string; nextRunAt: Date; completedAt: null; errorMessage: null };
+  };
+  assert.deepEqual(input.where, {
+    status: 'FAILED',
+    errorMessage: { startsWith: '[P2028]', contains: 'expired transaction', mode: 'insensitive' },
+  });
+  assert.equal(input.data.status, 'PENDING');
+  assert.ok(input.data.nextRunAt instanceof Date);
+  assert.equal(input.data.completedAt, null);
+  assert.equal(input.data.errorMessage, null);
 });
 
 test('queue listing excludes completed history unless it is explicitly requested', async () => {
