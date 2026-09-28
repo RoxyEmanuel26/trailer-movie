@@ -17,8 +17,8 @@ export function getImportThroughput(env: Record<string, string | undefined> = pr
   return {
     movieBatchSize,
     personBatchSize,
-    movieConcurrency: Math.min(movieBatchSize, boundedInteger(env.IMPORT_MOVIE_CONCURRENCY, 10, 10)),
-    personConcurrency: Math.min(personBatchSize, boundedInteger(env.IMPORT_PERSON_CONCURRENCY, 20, 20)),
+    movieConcurrency: Math.min(movieBatchSize, boundedInteger(env.IMPORT_MOVIE_CONCURRENCY, 4, 10)),
+    personConcurrency: Math.min(personBatchSize, boundedInteger(env.IMPORT_PERSON_CONCURRENCY, 8, 20)),
   };
 }
 

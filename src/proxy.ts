@@ -24,6 +24,7 @@ function invalidPaginationResponse() {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
   const requestHost = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(':')[0].toLowerCase();
   const canonicalHost = new URL(siteConfig.url).hostname.toLowerCase();
 
@@ -75,7 +76,12 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-request-id', requestId);
+  requestHeaders.set('x-movieflix-release', process.env.APP_RELEASE_SHA || 'development');
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set('X-Request-Id', requestId);
+  response.headers.set('X-MovieFlix-Release', process.env.APP_RELEASE_SHA || 'development');
   if (!siteConfig.indexingEnabled || requestHost !== canonicalHost || pathname.startsWith('/api/')) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   }

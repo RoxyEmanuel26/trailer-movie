@@ -30,6 +30,41 @@ const redis = isRedisConfigured
 
 // Graceful fallback: local Map if Redis is not configured
 const fallbackCache = new Map();
+const localWindows = new Map<string, number[]>();
+const LOCAL_WINDOW_MS = 60_000;
+const LOCAL_MAX_IDENTIFIERS = 10_000;
+
+function enforceLocalLimit(identifier: string, limit: number, path: string) {
+  const now = Date.now();
+  const key = `${limit}:${identifier}`;
+  const windowStart = now - LOCAL_WINDOW_MS;
+  const timestamps = (localWindows.get(key) || []).filter((timestamp) => timestamp > windowStart);
+
+  if (timestamps.length >= limit) {
+    const reset = timestamps[0] + LOCAL_WINDOW_MS;
+    const error = new AppError('Too many requests, please try again later.', 429);
+    (error as AppError & { headers?: Record<string, string> }).headers = {
+      'Retry-After': Math.max(1, Math.ceil((reset - now) / 1000)).toString(),
+      'X-RateLimit-Limit': limit.toString(),
+      'X-RateLimit-Remaining': '0',
+      'X-RateLimit-Reset': reset.toString(),
+    };
+    logger.warn({ ip: identifier, path, limitTier: limit }, '[RATE_LIMIT_EXCEEDED] Request blocked locally');
+    throw error;
+  }
+
+  timestamps.push(now);
+  localWindows.set(key, timestamps);
+  if (localWindows.size > LOCAL_MAX_IDENTIFIERS) {
+    for (const [candidate, values] of localWindows) {
+      if (values.at(-1)! <= windowStart) localWindows.delete(candidate);
+      if (localWindows.size <= LOCAL_MAX_IDENTIFIERS) break;
+    }
+    while (localWindows.size > LOCAL_MAX_IDENTIFIERS) {
+      localWindows.delete(localWindows.keys().next().value as string);
+    }
+  }
+}
 
 // 3. Define Rate Limit Tiers (Tokens per 60s window)
 // Configurable via ENV variables to allow ops to adjust limits on the fly
@@ -68,8 +103,8 @@ export async function enforceRateLimit(
   limit: number,
   path: string = 'unknown'
 ): Promise<void> {
-  // If we are completely offline and no Redis, bypass gracefully to avoid crashing Upstash
   if (!redis) {
+    enforceLocalLimit(identifier, limit, path);
     return;
   }
 

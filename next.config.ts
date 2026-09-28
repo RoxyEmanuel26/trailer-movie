@@ -4,6 +4,14 @@ import { assertProductionSiteConfig } from "./src/lib/site-config";
 
 assertProductionSiteConfig();
 
+const sentryConnectOrigin = (() => {
+  try {
+    return process.env.NEXT_PUBLIC_SENTRY_DSN ? new URL(process.env.NEXT_PUBLIC_SENTRY_DSN).origin : '';
+  } catch {
+    return '';
+  }
+})();
+
 const nextConfig: NextConfig = {
   output: "standalone",
   // Keep build-time database fan-out within a small self-hosted PostgreSQL server.
@@ -49,7 +57,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; frame-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://image.tmdb.org https://i.ytimg.com; font-src 'self' data:; connect-src 'self' https://api.themoviedb.org",
+            value: `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; frame-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://image.tmdb.org https://i.ytimg.com; font-src 'self' data:; connect-src 'self'${sentryConnectOrigin ? ` ${sentryConnectOrigin}` : ''}`,
           },
           {
             key: 'Permissions-Policy',
@@ -75,12 +83,16 @@ const nextConfig: NextConfig = {
 
 import { withSentryConfig } from "@sentry/nextjs";
 
-export default withSentryConfig(nextConfig, {
+const sentryBuildEnabled = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
+
+export default sentryBuildEnabled ? withSentryConfig(nextConfig, {
   // For all available options, see:
   // https://github.com/getsentry/sentry-webpack-plugin#options
 
-  org: "your-org-name",
-  project: "trailer-movie",
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,
@@ -96,4 +108,4 @@ export default withSentryConfig(nextConfig, {
   // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
   // side errors will fail.
   tunnelRoute: "/monitoring",
-});
+}) : nextConfig;

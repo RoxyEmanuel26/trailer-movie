@@ -52,11 +52,20 @@ export function serializeSitemapIndex(urls: string[]) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${sitemaps}</sitemapindex>`;
 }
 
-export function xmlResponse(xml: string) {
+export function xmlResponse(xml: string, options: { status?: number; stale?: boolean } = {}) {
   return new Response(xml, {
+    status: options.status || 200,
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400',
+      'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400',
+      ...(options.stale ? { Warning: '110 - "Response is stale"', 'X-Sitemap-Snapshot': 'stale' } : {}),
     },
   });
+}
+
+export function sitemapUnavailableResponse() {
+  return xmlResponse(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<error><message>Sitemap temporarily unavailable</message></error>',
+    { status: 503 },
+  );
 }

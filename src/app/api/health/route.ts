@@ -3,12 +3,8 @@ export async function GET() {
   return NextResponse.json(
     {
       status: 'ok',
-      uptime: process.uptime(),
-      memoryUsage: process.memoryUsage(),
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development',
-      version: process.env.npm_package_version || '0.1.0',
+      release: process.env.APP_RELEASE_SHA || 'development',
     },
-    { status: 200 }
+    { status: 200, headers: { 'Cache-Control': 'no-store' } }
   );
 }

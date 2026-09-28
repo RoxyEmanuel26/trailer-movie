@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:22.12-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -20,7 +20,11 @@ COPY . .
 ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 ENV DATABASE_URL=${DATABASE_URL}
 ENV TMDB_ACCESS_TOKEN="dummy_token"
-ENV BETTER_AUTH_SECRET="dummy_secret_16_chars_long"
+ENV BETTER_AUTH_SECRET="dummy_secret_at_least_32_characters_long"
+ENV BETTER_AUTH_URL="https://www.movieflix.site"
+ENV NEXT_PUBLIC_APP_URL="https://www.movieflix.site"
+ENV SEO_INDEXING_ENABLED="false"
+ENV DATABASE_DRIVER="pg"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

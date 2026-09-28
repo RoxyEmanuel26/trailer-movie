@@ -3,7 +3,7 @@
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearchPostgres", "tracing"]
+  previewFeatures = ["fullTextSearchPostgres"]
 }
 
 datasource db {
@@ -161,6 +161,9 @@ model Account {
   providerId   String
   accessToken  String?
   refreshToken String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope        String?
   idToken      String?
   expiresAt    DateTime?
   password     String?
@@ -319,6 +322,7 @@ model Movie {
   @@index([voteAverage])
   @@index([status, deletedAt, importQualityStatus, releaseDate])
   @@index([status, deletedAt, importQualityStatus, popularity])
+  @@index([status, deletedAt, importQualityStatus, slug, id], map: "idx_movies_sitemap")
   @@map("movies")
 }
 

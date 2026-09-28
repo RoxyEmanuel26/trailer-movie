@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/nextjs';
 
 export async function register() {
   // Initialize OpenTelemetry
-  registerOTel({ serviceName: 'trailer-movie' });
+  registerOTel({ serviceName: 'movieflix' });
 
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     // Only register cleanup handlers on the Node.js runtime (not Edge)

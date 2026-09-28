@@ -23,6 +23,10 @@ const envSchema = z.object({
   ANALYTICS_HMAC_SECRET: z.string().min(32).optional(),
   REVALIDATION_SECRET: z.string().min(32).optional(),
   REVALIDATION_BASE_URL: z.string().url().optional(),
+  APP_RELEASE_SHA: z.string().min(7).optional(),
+  SITEMAP_CACHE_DIR: z.string().min(1).optional(),
+  IMPORT_HEALTHCHECK_URL: z.string().url().optional(),
+  IMPORT_DB_POOL_MAX: z.coerce.number().int().min(1).max(20).optional(),
 });
 
 const _env = envSchema.safeParse(process.env);

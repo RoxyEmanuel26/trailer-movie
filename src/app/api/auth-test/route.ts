@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getCurrentSession, requireAdmin } from '@/lib/auth/utils';
 
 export async function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return new NextResponse(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+  }
   try {
     const session = await getCurrentSession();
 

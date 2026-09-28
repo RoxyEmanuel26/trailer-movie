@@ -7,12 +7,19 @@ import { GenreService } from '@/lib/services/GenreService';
 import { MovieService } from '@/lib/services/MovieService';
 import { BrowseNav } from './BrowseNav';
 import { MovieFlixLogo } from '@/components/brand/MovieFlixLogo';
+import { unstable_cache } from 'next/cache';
 
-export async function Navbar() {
-  const [genres, years] = await Promise.all([
+const getBrowseNavigation = unstable_cache(
+  () => Promise.all([
     GenreService.listGenres(),
     MovieService.listPublishedReleaseYears(),
-  ]);
+  ]),
+  ['public-browse-navigation'],
+  { revalidate: 3600 },
+);
+
+export async function Navbar() {
+  const [genres, years] = await getBrowseNavigation();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/82 backdrop-blur-xl">

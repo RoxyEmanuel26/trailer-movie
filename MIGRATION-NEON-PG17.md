@@ -1,5 +1,7 @@
 # Neon PostgreSQL 18 → Pterodactyl PostgreSQL 17
 
+> Historical migration record. The current deployment architecture is the Pterodactyl Node egg plus a separate Cloudflare Tunnel described in `PRODUCTION-PTERODACTYL.md`; Cloudflare Pages and the import Cron Worker are no longer deployment targets.
+
 This records the local migration and remaining production cutover. Do not paste database credentials into chat, Git, CI logs, or command history.
 
 ## Current state — 2026-09-22
@@ -8,7 +10,7 @@ This records the local migration and remaining production cutover. Do not paste 
 - A PostgreSQL 18 custom dump is in the ignored `backup/` directory as `neon-pg18-20260921T213512Z.dump` (102,916,768 bytes). The ignored `.env` rollback copy is `backup/.env.pre-pterodactyl-20260922T115445Z`. Neon remains unchanged.
 - The `movieflix` database was restored from that dump. The final audit matched 44 tables, 816,997 rows, all index names, `pg_trgm`/`plpgsql`, and foreign-key validity. Prisma reports all seven migrations applied and no schema diff. The verified rehearsal database was removed, freeing 421 MB.
 - The local `.env` uses separate `movieflix_app` and `movieflix_owner` roles with generated passwords that are not in this document or Git. Prisma read/write smoke tests, local production build, and local public HTTP checks passed.
-- **Cloudflare Pages is not cut over.** Wrangler authentication has expired, and the browser reached a Cloudflare login page. Its database secret and the deployed import Cron Trigger still need an authenticated Cloudflare session. Do not start imports on the new database or abandon Neon while production writes to the old database.
+- Cloudflare Pages was intentionally abandoned as the runtime target. Production will use the Pterodactyl Node egg, and imports remain on the trusted local PC.
 - The historical migration chain cannot be replayed on an empty database: `20260901203840_add_ai_enrichment_fields` references `keywords`, which earlier migrations do not create. Full-dump restore succeeded. Do not run `prisma migrate reset` on `movieflix`.
 
 ## 1. Security and access gate

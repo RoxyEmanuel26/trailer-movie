@@ -73,27 +73,20 @@ export class PersonRepository {
 
   static async countIndexableForSitemap(db: DbClient = prisma) {
     const rows = await db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      WITH published_credits AS (
+        SELECT mp."personId", COUNT(DISTINCT mp."movieId")::integer AS "creditCount"
+        FROM "movie_people" mp
+        JOIN "movies" m ON m."id" = mp."movieId"
+        WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        GROUP BY mp."personId"
+      )
       SELECT COUNT(*)::bigint AS "count"
       FROM "people" p
+      JOIN published_credits pc ON pc."personId" = p."id"
       WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
         AND (
           LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
-          OR (
-            SELECT COUNT(DISTINCT mp."movieId")
-            FROM "movie_people" mp
-            JOIN "movies" m ON m."id" = mp."movieId"
-            WHERE mp."personId" = p."id"
-              AND m."status" = 'PUBLISHED'
-              AND m."deletedAt" IS NULL
-          ) >= 3
-        )
-        AND EXISTS (
-          SELECT 1
-          FROM "movie_people" mp
-          JOIN "movies" m ON m."id" = mp."movieId"
-          WHERE mp."personId" = p."id"
-            AND m."status" = 'PUBLISHED'
-            AND m."deletedAt" IS NULL
+          OR pc."creditCount" >= 3
         )
     `);
     return Number(rows[0]?.count || 0);
@@ -106,27 +99,20 @@ export class PersonRepository {
     const skip = Math.max(0, params.skip || 0);
     const take = Math.min(45_000, Math.max(1, params.take || 45_000));
     return db.$queryRaw<Array<{ slug: string; updatedAt: Date }>>(Prisma.sql`
+      WITH published_credits AS (
+        SELECT mp."personId", COUNT(DISTINCT mp."movieId")::integer AS "creditCount"
+        FROM "movie_people" mp
+        JOIN "movies" m ON m."id" = mp."movieId"
+        WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        GROUP BY mp."personId"
+      )
       SELECT p."slug", p."updatedAt"
       FROM "people" p
+      JOIN published_credits pc ON pc."personId" = p."id"
       WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
         AND (
           LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
-          OR (
-            SELECT COUNT(DISTINCT mp."movieId")
-            FROM "movie_people" mp
-            JOIN "movies" m ON m."id" = mp."movieId"
-            WHERE mp."personId" = p."id"
-              AND m."status" = 'PUBLISHED'
-              AND m."deletedAt" IS NULL
-          ) >= 3
-        )
-        AND EXISTS (
-          SELECT 1
-          FROM "movie_people" mp
-          JOIN "movies" m ON m."id" = mp."movieId"
-          WHERE mp."personId" = p."id"
-            AND m."status" = 'PUBLISHED'
-            AND m."deletedAt" IS NULL
+          OR pc."creditCount" >= 3
         )
       ORDER BY p."slug" ASC
       OFFSET ${skip}

@@ -7,13 +7,10 @@ export async function GET() {
     // Ping DB to ensure application is ready to serve traffic
     await HealthService.checkDatabase();
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       status: 'ready',
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development',
-      version: process.env.npm_package_version || '0.1.0',
-    }, { status: 200 });
+      release: process.env.APP_RELEASE_SHA || 'development',
+    }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Readiness check failed:', error);
     return NextResponse.json(
@@ -21,7 +18,7 @@ export async function GET() {
         status: 'error',
         message: 'Service is not ready',
       },
-      { status: 503 }
+      { status: 503, headers: { 'Cache-Control': 'no-store' } }
     );
   }
 }

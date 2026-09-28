@@ -71,7 +71,8 @@ test('indexing requires verification and a real contact email', () => {
   assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token' }) || '', /CONTACT_EMAIL/);
   assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site' }) || '', /ANALYTICS_HMAC_SECRET/);
   assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site', analyticsHmacSecret: 'a'.repeat(32) }) || '', /REVALIDATION_SECRET/);
-  assert.equal(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site', analyticsHmacSecret: 'a'.repeat(32), revalidationSecret: 'b'.repeat(32) }), null);
+  assert.match(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site', analyticsHmacSecret: 'a'.repeat(32), revalidationSecret: 'b'.repeat(32) }) || '', /BETTER_AUTH_SECRET/);
+  assert.equal(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: true, googleVerification: 'token', contactEmail: 'editor@movieflix.site', analyticsHmacSecret: 'a'.repeat(32), revalidationSecret: 'b'.repeat(32), betterAuthSecret: 'c'.repeat(32), betterAuthUrl: 'https://www.movieflix.site' }), null);
   assert.equal(isValidContactEmail('not-an-email'), false);
 });
 

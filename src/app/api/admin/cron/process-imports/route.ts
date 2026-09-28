@@ -6,9 +6,11 @@ import { isLocalImportMode } from '@/lib/jobs/execution-mode';
 
 export const maxDuration = 300; // Allow up to 5 minutes execution time for heavy batches
 
-// This endpoint is meant to be called by Cloudflare Cron Triggers, OR manually by an Admin via the UI
 export const POST = async (request: Request) => {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return new NextResponse(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+    }
     const authHeader = request.headers.get('authorization');
     const expectedToken = process.env.CRON_SECRET;
     

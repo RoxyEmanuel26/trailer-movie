@@ -56,12 +56,14 @@ export function validateProductionSeoConfig(input: {
   contactEmail?: string;
   analyticsHmacSecret?: string;
   revalidationSecret?: string;
+  betterAuthSecret?: string;
+  betterAuthUrl?: string;
 }) {
   if (!input.url) return 'NEXT_PUBLIC_APP_URL is required for a production build.';
   try {
     const url = new URL(input.url);
-    if (url.protocol !== 'https:' || url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-      return 'NEXT_PUBLIC_APP_URL must be a public HTTPS URL in production.';
+    if (url.protocol !== 'https:' || url.hostname !== 'www.movieflix.site') {
+      return 'NEXT_PUBLIC_APP_URL must be https://www.movieflix.site in production.';
     }
   } catch {
     return 'NEXT_PUBLIC_APP_URL must be a valid public HTTPS URL in production.';
@@ -78,6 +80,12 @@ export function validateProductionSeoConfig(input: {
   if (input.indexingEnabled && (input.revalidationSecret?.length || 0) < 32) {
     return 'REVALIDATION_SECRET must contain at least 32 characters when SEO indexing is enabled.';
   }
+  if (input.indexingEnabled && (input.betterAuthSecret?.length || 0) < 32) {
+    return 'BETTER_AUTH_SECRET must contain at least 32 characters when SEO indexing is enabled.';
+  }
+  if (input.indexingEnabled && input.betterAuthUrl !== input.url) {
+    return 'BETTER_AUTH_URL must match NEXT_PUBLIC_APP_URL when SEO indexing is enabled.';
+  }
   return null;
 }
 
@@ -90,6 +98,8 @@ export function assertProductionSiteConfig() {
     contactEmail: configuredContactEmail,
     analyticsHmacSecret: process.env.ANALYTICS_HMAC_SECRET,
     revalidationSecret: process.env.REVALIDATION_SECRET,
+    betterAuthSecret: process.env.BETTER_AUTH_SECRET,
+    betterAuthUrl: process.env.BETTER_AUTH_URL,
   });
   if (error) throw new Error(error);
 }

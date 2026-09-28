@@ -74,12 +74,12 @@ test('bulk discovery rejects invalid date ranges and country codes', () => {
   assert.equal(ImportBatchSchema.safeParse({ startDate: '2026-03-01', endDate: '2026-03-02', country: 'ID' }).success, true);
 });
 
-test('import worker uses measured fast batch defaults with bounded concurrency', () => {
+test('import worker uses VPS-safe batch defaults with bounded concurrency', () => {
   assert.deepEqual(getImportThroughput({}), {
     movieBatchSize: 20,
     personBatchSize: 40,
-    movieConcurrency: 10,
-    personConcurrency: 20,
+    movieConcurrency: 4,
+    personConcurrency: 8,
   });
   assert.deepEqual(getImportThroughput({
     IMPORT_MOVIE_BATCH_SIZE: '3', IMPORT_PERSON_BATCH_SIZE: '4',

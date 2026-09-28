@@ -1,42 +1,59 @@
-import { timingSafeEqual } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { hasValidRevalidationSecret, isAllowedRevalidationPath } from '@/lib/revalidation';
 
 const payloadSchema = z.object({
   scope: z.enum(['catalog', 'homepage']).default('catalog'),
+  paths: z.array(z.string().min(1).max(300)).max(100).default([]),
+  refreshSitemaps: z.boolean().default(false),
 });
-
-function secretsMatch(received: string, expected: string) {
-  const left = Buffer.from(received);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
 
 export async function POST(request: NextRequest) {
   const expected = process.env.REVALIDATION_SECRET;
   if (!expected) return NextResponse.json({ error: 'Revalidation is not configured' }, { status: 503 });
 
-  const authorization = request.headers.get('authorization') || '';
-  const received = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-  if (!received || !secretsMatch(received, expected)) {
+  if (!hasValidRevalidationSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid revalidation scope' }, { status: 400 });
 
-  revalidatePath('/', 'page');
-  revalidatePath('/opengraph-image', 'page');
-  if (parsed.data.scope === 'catalog') {
-    revalidatePath('/movies', 'page');
-    revalidatePath('/popular', 'layout');
-    revalidatePath('/genre', 'layout');
-    revalidatePath('/origin', 'layout');
-    revalidatePath('/year', 'layout');
-    revalidatePath('/sitemap.xml', 'page');
-    revalidatePath('/sitemaps', 'layout');
+  const requestedPaths = parsed.data.paths;
+  if (requestedPaths.some((path) => !isAllowedRevalidationPath(path))) {
+    return NextResponse.json({ error: 'One or more revalidation paths are not allowed' }, { status: 400 });
   }
 
-  return NextResponse.json({ revalidated: true, scope: parsed.data.scope, at: new Date().toISOString() });
+  const revalidated = new Set<string>();
+  const invalidate = (path: string, type: 'page' | 'layout' = 'page') => {
+    revalidatePath(path, type);
+    revalidated.add(path);
+  };
+
+  invalidate('/');
+  revalidatePath('/opengraph-image', 'page');
+  if (parsed.data.scope === 'catalog') {
+    invalidate('/', 'layout');
+    invalidate('/movies');
+    invalidate('/genres');
+    invalidate('/countries');
+    invalidate('/years');
+    invalidate('/popular', 'layout');
+    invalidate('/genre', 'layout');
+    invalidate('/origin', 'layout');
+    invalidate('/year', 'layout');
+    invalidate('/feed.xml');
+    invalidate('/sitemap.xml');
+    invalidate('/sitemaps', 'layout');
+    for (const path of requestedPaths) invalidate(path);
+  }
+
+  return NextResponse.json({
+    revalidated: true,
+    scope: parsed.data.scope,
+    sitemapRefreshAuthorized: parsed.data.refreshSitemaps,
+    paths: [...revalidated],
+    at: new Date().toISOString(),
+  });
 }

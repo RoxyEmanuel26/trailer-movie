@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { useRouter } from 'next/navigation';
 
 export default function Error({
   error,
@@ -12,6 +13,7 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const router = useRouter();
   useEffect(() => {
     // Log the error to an error reporting service
     logger.error({ err: error }, 'App router error boundary caught an error');
@@ -28,7 +30,7 @@ export default function Error({
         <Button onClick={() => reset()} variant="default">
           Try again
         </Button>
-        <Button onClick={() => window.location.href = '/'} variant="outline">
+        <Button onClick={() => router.push('/')} variant="outline">
           Return Home
         </Button>
       </div>
