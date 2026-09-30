@@ -125,6 +125,71 @@ test('person bulk enqueue deduplicates IDs without requeueing recently completed
   assert.equal(filter[1].status, 'COMPLETED');
 });
 
+test('worker state uses one aggregate query and normalizes bigint counts', async () => {
+  let calls = 0;
+  const db = {
+    $queryRaw: async () => {
+      calls++;
+      return [{ remaining: BigInt(115_499), ready: BigInt(115_497) }];
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.getWorkerState>[0]>;
+
+  assert.deepEqual(await ImportRepository.getWorkerState(db), {
+    remaining: 115_499,
+    ready: 115_497,
+  });
+  assert.equal(calls, 1);
+});
+
+test('bulk work state uses one aggregate query', async () => {
+  let calls = 0;
+  const nextRunAt = new Date('2026-09-30T00:00:00.000Z');
+  const db = {
+    $queryRaw: async () => {
+      calls++;
+      return [{ remaining: BigInt(2), ready: BigInt(1), nextRunAt }];
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportBatchService.getWorkState>[0]>;
+
+  assert.deepEqual(await ImportBatchService.getWorkState(db), {
+    remaining: 2,
+    ready: 1,
+    nextRunAt,
+  });
+  assert.equal(calls, 1);
+});
+
+test('batch finalization aggregates statuses instead of loading every job row', async () => {
+  const updates: unknown[] = [];
+  let findManyArgs: unknown;
+  const db = {
+    importBatch: {
+      findMany: async (args: unknown) => {
+        findManyArgs = args;
+        return [{ id: 'batch-1' }];
+      },
+      update: async (args: unknown) => {
+        updates.push(args);
+        return {};
+      },
+    },
+    importJob: {
+      groupBy: async () => [
+        { importBatchId: 'batch-1', status: 'COMPLETED', _count: { _all: 9_998 } },
+        { importBatchId: 'batch-1', status: 'SKIPPED', _count: { _all: 2 } },
+      ],
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportBatchService.finalizeImporting>[0]>;
+
+  assert.equal(await ImportBatchService.finalizeImporting(db), 1);
+  assert.deepEqual(findManyArgs, { where: { status: 'IMPORTING' }, select: { id: true } });
+  assert.equal(updates.length, 1);
+  const update = updates[0] as { data: Record<string, unknown> };
+  assert.equal(update.data.importedCount, 9_998);
+  assert.equal(update.data.unavailableCount, 2);
+  assert.equal(update.data.status, 'COMPLETED');
+});
+
 test('movie bulk discovery enqueues unique new IDs with one createMany call', async () => {
   const calls: unknown[] = [];
   const db = {

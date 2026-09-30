@@ -9,7 +9,10 @@ interface FetchOptions extends RequestInit {
 
 // Two retries plus the initial request = at most three HTTP attempts.
 const DEFAULT_RETRIES = 2;
-const TIMEOUT_MS = 10000;
+const configuredTimeout = Number(process.env.TMDB_REQUEST_TIMEOUT_MS || '15000');
+const TIMEOUT_MS = Number.isSafeInteger(configuredTimeout) && configuredTimeout >= 5_000 && configuredTimeout <= 30_000
+  ? configuredTimeout
+  : 15_000;
 
 function retryDelay(retries: number) {
   return Math.min(8000, 2 ** (DEFAULT_RETRIES - retries) * 1000) + Math.floor(Math.random() * 500);

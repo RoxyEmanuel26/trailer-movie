@@ -93,3 +93,37 @@ test('local worker fails visibly if pending work repeatedly makes no progress', 
   }), /no progress/);
   assert.equal(calls, 10);
 });
+
+test('local worker retries a transient polling failure with bounded backoff', async () => {
+  let calls = 0;
+  const pauses: number[] = [];
+  const errors: number[] = [];
+  const result = await drainImportQueue({
+    processBatch: async () => {
+      calls++;
+      if (calls === 1) throw Object.assign(new Error('socket timeout'), { code: 'P1008' });
+      return summary();
+    },
+    shouldStop: () => false,
+    onBatch: () => {},
+    onProcessError: (_error, failures) => {
+      errors.push(failures);
+      return true;
+    },
+    pause: async (milliseconds) => { pauses.push(milliseconds); },
+  });
+  assert.equal(result.reason, 'drained');
+  assert.equal(calls, 2);
+  assert.deepEqual(errors, [1]);
+  assert.deepEqual(pauses, [1_000]);
+});
+
+test('local worker still surfaces permanent polling failures', async () => {
+  await assert.rejects(() => drainImportQueue({
+    processBatch: async () => { throw new Error('permanent'); },
+    shouldStop: () => false,
+    onBatch: () => {},
+    onProcessError: () => false,
+    pause: async () => {},
+  }), /permanent/);
+});

@@ -1,5 +1,6 @@
 import { drainImportQueue } from '../src/lib/jobs/drain-import-queue';
 import { isLocalImportMode } from '../src/lib/jobs/execution-mode';
+import { classifyJobError } from '../src/lib/jobs/error-classification';
 
 const pause = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
@@ -150,6 +151,14 @@ async function main() {
         ) {
           void requestRevalidation();
         }
+      },
+      onProcessError: (error, consecutiveFailures) => {
+        const classified = classifyJobError(error);
+        if (!classified.retryable) return false;
+        process.stderr.write(
+          `Transient worker error [${classified.code}] (${consecutiveFailures} consecutive); retrying without losing queued jobs: ${classified.message}\n`,
+        );
+        return true;
       },
     });
     if (changedJobs > 0) {

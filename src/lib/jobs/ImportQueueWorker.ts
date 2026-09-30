@@ -26,6 +26,19 @@ export type ImportWorkerSummary = {
 
 export class ImportQueueWorker {
   private isProcessing = false;
+  private lastRecoveryAt = 0;
+  private lastCleanupAt = 0;
+  private lastFinalizationAt = 0;
+  private lastDiscoveryPollAt = 0;
+  private lastDiscoveryStateAt = 0;
+  private discoveryState = { remaining: 0, ready: 0, nextRunAt: null as Date | null };
+
+  private async readDiscoveryState(force = false) {
+    if (!force && Date.now() - this.lastDiscoveryStateAt < 30_000) return this.discoveryState;
+    this.discoveryState = await ImportBatchService.getWorkState();
+    this.lastDiscoveryStateAt = Date.now();
+    return this.discoveryState;
+  }
 
   async processNextBatch(): Promise<ImportWorkerSummary> {
     const empty: ImportWorkerSummary = {
@@ -35,16 +48,15 @@ export class ImportQueueWorker {
       nextDiscoveryAt: null, qualityProcessed: 0, qualityUnpublished: 0,
     };
     if (this.isProcessing) {
-      const [overview, readyRemaining, discoveryState] = await Promise.all([
-        ImportRepository.getOverview(),
-        ImportRepository.countReadyForProcessing(),
-        ImportBatchService.getWorkState(),
+      const [workerState, discoveryState] = await Promise.all([
+        ImportRepository.getWorkerState(),
+        this.readDiscoveryState(),
       ]);
       return {
         ...empty,
         busy: true,
-        remaining: overview.stats.queued + overview.stats.partial + overview.stats.running,
-        readyRemaining,
+        remaining: workerState.remaining,
+        readyRemaining: workerState.ready,
         discoveryRemaining: discoveryState.remaining,
         discoveryReady: discoveryState.ready,
         nextDiscoveryAt: discoveryState.nextRunAt,
@@ -54,15 +66,23 @@ export class ImportQueueWorker {
 
     try {
       const throughput = getImportThroughput();
-      await Promise.all([
-        ImportRepository.recoverExpiredLeases(),
-        ImportBatchService.recoverStuck(),
-        ImportBatchService.recoverMisclassifiedTransactionTimeouts(),
-      ]);
-      const discoveryPromise = ImportBatchService.processNextPage().catch((error) => {
-        logger.warn({ err: error }, '[ImportQueueWorker] Bulk discovery page deferred');
-        return { processed: false };
-      });
+      const now = Date.now();
+      if (now - this.lastRecoveryAt >= 60_000) {
+        await Promise.all([
+          ImportRepository.recoverExpiredLeases(),
+          ImportBatchService.recoverStuck(),
+          ImportBatchService.recoverMisclassifiedTransactionTimeouts(),
+        ]);
+        this.lastRecoveryAt = now;
+      }
+      const shouldPollDiscovery = now - this.lastDiscoveryPollAt >= 5_000;
+      if (shouldPollDiscovery) this.lastDiscoveryPollAt = now;
+      const discoveryPromise = shouldPollDiscovery
+        ? ImportBatchService.processNextPage().catch((error) => {
+            logger.warn({ err: error }, '[ImportQueueWorker] Bulk discovery page deferred');
+            return { processed: false };
+          })
+        : Promise.resolve({ processed: false });
 
       const [movieJobs, personJobs] = await Promise.all([
         ImportRepository.claimJobs('Movie', throughput.movieBatchSize),
@@ -82,13 +102,18 @@ export class ImportQueueWorker {
       const quality = process.env.IMPORT_QUALITY_BACKFILL_ENABLED === 'true'
         ? await ImportQualityService.refreshLegacyBatch(250)
         : { processed: 0, unpublished: 0, remaining: false };
-      await ImportRepository.cleanupCompleted(90);
-      await ImportBatchService.finalizeImporting();
-      const [overview, readyRemaining, discoveryState] = await Promise.all([
-        ImportRepository.getOverview(),
-        ImportRepository.countReadyForProcessing(),
-        ImportBatchService.getWorkState(),
-      ]);
+      if (now - this.lastCleanupAt >= 60 * 60_000) {
+        await ImportRepository.cleanupCompleted(90);
+        this.lastCleanupAt = now;
+      }
+      if (now - this.lastFinalizationAt >= 30_000) {
+        await ImportBatchService.finalizeImporting();
+        this.lastFinalizationAt = now;
+      }
+      const workerState = await ImportRepository.getWorkerState();
+      const discoveryState = await this.readDiscoveryState(
+        Boolean(discovery.processed) || workerState.ready === 0,
+      );
 
       return {
         claimed: jobs.length,
@@ -97,8 +122,8 @@ export class ImportQueueWorker {
         partial: states.filter((job) => job?.status === 'PARTIAL').length,
         failed: states.filter((job) => job?.status === 'FAILED').length,
         deferred: states.filter((job) => job?.status === 'PENDING').length,
-        remaining: overview.stats.queued + overview.stats.partial + overview.stats.running,
-        readyRemaining,
+        remaining: workerState.remaining,
+        readyRemaining: workerState.ready,
         busy: false,
         discoveryProcessed: discovery.processed,
         discoveryRemaining: discoveryState.remaining,

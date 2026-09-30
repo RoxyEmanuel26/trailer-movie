@@ -158,6 +158,26 @@ export class ImportRepository {
     };
   }
 
+  static async getWorkerState(db: DbClient = prisma) {
+    const rows = await db.$queryRaw<Array<{ remaining: bigint | number; ready: bigint | number }>>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE status IN ('PENDING', 'PARTIAL', 'IN_PROGRESS')
+        ) AS remaining,
+        COUNT(*) FILTER (
+          WHERE status IN ('PENDING', 'PARTIAL')
+            AND retryable = true
+            AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= CURRENT_TIMESTAMP)
+        ) AS ready
+      FROM "import_jobs"
+      WHERE status IN ('PENDING', 'PARTIAL', 'IN_PROGRESS')
+    `);
+    return {
+      remaining: Number(rows[0]?.remaining || 0),
+      ready: Number(rows[0]?.ready || 0),
+    };
+  }
+
   static async countReadyForProcessing(db: DbClient = prisma) {
     return db.importJob.count({
       where: {

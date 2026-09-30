@@ -23,25 +23,29 @@ export class ImportBatchService {
     return prisma.importBatch.findMany({ take: 40, orderBy: { createdAt: 'desc' } });
   }
 
-  static async getWorkState() {
-    const now = new Date();
-    const activeStatuses = [ImportBatchStatus.PENDING, ImportBatchStatus.RUNNING];
-    const [remaining, ready, nextBatch] = await Promise.all([
-      prisma.importBatch.count({ where: { status: { in: activeStatuses } } }),
-      prisma.importBatch.count({
-        where: {
-          status: ImportBatchStatus.PENDING,
-          OR: [{ nextRunAt: null }, { nextRunAt: { lte: now } }],
-        },
-      }),
-      prisma.importBatch.findFirst({
-        where: { status: ImportBatchStatus.PENDING, nextRunAt: { not: null } },
-        orderBy: { nextRunAt: 'asc' },
-        select: { nextRunAt: true },
-      }),
-    ]);
-
-    return { remaining, ready, nextRunAt: nextBatch?.nextRunAt ?? null };
+  static async getWorkState(db: DbClient = prisma) {
+    const rows = await db.$queryRaw<Array<{
+      remaining: bigint | number;
+      ready: bigint | number;
+      nextRunAt: Date | null;
+    }>>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('PENDING', 'RUNNING')) AS remaining,
+        COUNT(*) FILTER (
+          WHERE status = 'PENDING'
+            AND ("nextRunAt" IS NULL OR "nextRunAt" <= CURRENT_TIMESTAMP)
+        ) AS ready,
+        MIN("nextRunAt") FILTER (
+          WHERE status = 'PENDING' AND "nextRunAt" IS NOT NULL
+        ) AS "nextRunAt"
+      FROM "import_batches"
+      WHERE status IN ('PENDING', 'RUNNING')
+    `);
+    return {
+      remaining: Number(rows[0]?.remaining || 0),
+      ready: Number(rows[0]?.ready || 0),
+      nextRunAt: rows[0]?.nextRunAt ?? null,
+    };
   }
 
   static async find(id: string) {
@@ -86,21 +90,35 @@ export class ImportBatchService {
     });
   }
 
-  static async finalizeImporting() {
-    const batches = await prisma.importBatch.findMany({
+  static async finalizeImporting(db: DbClient = prisma) {
+    const batches = await db.importBatch.findMany({
       where: { status: ImportBatchStatus.IMPORTING },
-      select: {
-        id: true,
-        jobs: { select: { status: true } },
-      },
+      select: { id: true },
     });
+    if (batches.length === 0) return 0;
+
+    const counts = await db.importJob.groupBy({
+      by: ['importBatchId', 'status'],
+      where: { importBatchId: { in: batches.map((batch) => batch.id) } },
+      _count: { _all: true },
+    });
+    const byBatch = new Map<string, Map<string, number>>();
+    for (const row of counts) {
+      if (!row.importBatchId) continue;
+      const statuses = byBatch.get(row.importBatchId) || new Map<string, number>();
+      statuses.set(row.status, row._count._all);
+      byBatch.set(row.importBatchId, statuses);
+    }
+
     let finalized = 0;
     for (const batch of batches) {
-      const importedCount = batch.jobs.filter((job) => job.status === 'COMPLETED').length;
-      const failedCount = batch.jobs.filter((job) => job.status === 'FAILED').length;
-      const unavailableCount = batch.jobs.filter((job) => job.status === 'SKIPPED').length;
-      const stillRunning = batch.jobs.some((job) => ['PENDING', 'IN_PROGRESS', 'PARTIAL'].includes(job.status));
-      await prisma.importBatch.update({
+      const statuses = byBatch.get(batch.id) || new Map<string, number>();
+      const importedCount = statuses.get('COMPLETED') || 0;
+      const failedCount = statuses.get('FAILED') || 0;
+      const unavailableCount = statuses.get('SKIPPED') || 0;
+      const stillRunning = ['PENDING', 'IN_PROGRESS', 'PARTIAL']
+        .some((status) => (statuses.get(status) || 0) > 0);
+      await db.importBatch.update({
         where: { id: batch.id },
         data: {
           importedCount,

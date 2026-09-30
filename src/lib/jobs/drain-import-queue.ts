@@ -7,6 +7,7 @@ type DrainOptions = {
   pause?: (milliseconds: number) => Promise<void>;
   stayAlive?: boolean;
   idlePollMilliseconds?: number;
+  onProcessError?: (error: unknown, consecutiveFailures: number) => boolean;
 };
 
 const defaultPause = (milliseconds: number) =>
@@ -19,12 +20,24 @@ export async function drainImportQueue({
   pause = defaultPause,
   stayAlive = false,
   idlePollMilliseconds = 5_000,
+  onProcessError,
 }: DrainOptions) {
   let idleCycles = 0;
   let cycles = 0;
+  let consecutiveFailures = 0;
 
   while (!shouldStop()) {
-    const summary = await processBatch();
+    let summary: ImportWorkerSummary;
+    try {
+      summary = await processBatch();
+      consecutiveFailures = 0;
+    } catch (error) {
+      consecutiveFailures++;
+      if (!onProcessError?.(error, consecutiveFailures)) throw error;
+      const backoff = Math.min(30_000, 1_000 * (2 ** Math.min(consecutiveFailures - 1, 5)));
+      await pause(backoff);
+      continue;
+    }
     cycles++;
     onBatch(summary);
 
