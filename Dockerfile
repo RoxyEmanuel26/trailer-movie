@@ -24,6 +24,7 @@ ENV BETTER_AUTH_SECRET="dummy_secret_at_least_32_characters_long"
 ENV BETTER_AUTH_URL="https://www.movieflix.site"
 ENV NEXT_PUBLIC_APP_URL="https://www.movieflix.site"
 ENV SEO_INDEXING_ENABLED="false"
+ENV ORIGIN_GATE_SECRET="docker-build-only-origin-gate-secret-32-characters"
 ENV DATABASE_DRIVER="pg"
 
 ENV NODE_ENV=production
@@ -60,7 +61,7 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD wget --header="x-movieflix-origin-token: ${ORIGIN_GATE_SECRET}" --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
 # server.js is created by next build from the standalone output
 CMD ["node", "server.js"]

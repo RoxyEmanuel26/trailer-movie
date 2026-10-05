@@ -4,6 +4,7 @@ import { siteConfig } from '@/lib/site-config';
 import { MovieRepository } from '@/lib/repositories/MovieRepository';
 import { PersonRepository } from '@/lib/repositories/PersonRepository';
 import { moviePath, personPath } from '@/lib/public-routes';
+import { hasValidOriginToken, ORIGIN_GATE_HEADER } from '@/lib/security/origin-gate';
 
 const legacyIdPattern = /^c[a-z0-9]{20,}$/i;
 const paginatedPublicPath = /^\/(?:movies|search|genre\/[^/]+|origin\/[^/]+|year\/[^/]+|popular\/[^/]+|collection\/[^/]+|tag\/[^/]+)$/;
@@ -24,6 +25,12 @@ function invalidPaginationResponse() {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (process.env.NODE_ENV === 'production' && !hasValidOriginToken(request.headers, process.env.ORIGIN_GATE_SECRET)) {
+    return new NextResponse(null, {
+      status: 403,
+      headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' },
+    });
+  }
   const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
   const requestHost = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(':')[0].toLowerCase();
   const canonicalHost = new URL(siteConfig.url).hostname.toLowerCase();
@@ -77,6 +84,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(ORIGIN_GATE_HEADER);
   requestHeaders.set('x-request-id', requestId);
   requestHeaders.set('x-movieflix-release', process.env.APP_RELEASE_SHA || 'development');
   const response = NextResponse.next({ request: { headers: requestHeaders } });
@@ -89,5 +97,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // The origin is publicly reachable; protect assets and API routes too.
+  matcher: '/:path*',
 };

@@ -5,6 +5,16 @@ import path from 'node:path';
 import test from 'node:test';
 import { hasValidRevalidationSecret, isAllowedRevalidationPath } from '../src/lib/revalidation';
 import { generateSitemapWithFallback } from '../src/lib/sitemap-cache';
+import { hasValidOriginToken, ORIGIN_GATE_HEADER } from '../src/lib/security/origin-gate';
+
+test('origin token rejects missing, wrong, or duplicate values', () => {
+  const secret = 's'.repeat(48);
+  assert.equal(hasValidOriginToken(new Headers(), secret), false);
+  assert.equal(hasValidOriginToken(new Headers({ [ORIGIN_GATE_HEADER]: 'w'.repeat(48) }), secret), false);
+  assert.equal(hasValidOriginToken(new Headers({ [ORIGIN_GATE_HEADER]: secret }), secret), true);
+  assert.equal(hasValidOriginToken(new Headers({ [ORIGIN_GATE_HEADER]: `${secret}, ${secret}` }), secret), false);
+  assert.equal(hasValidOriginToken(new Headers({ [ORIGIN_GATE_HEADER]: secret }), undefined), false);
+});
 
 test('internal revalidation accepts only canonical public detail paths', () => {
   assert.equal(isAllowedRevalidationPath('/watch/example-1'), true);

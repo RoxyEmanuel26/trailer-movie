@@ -3,7 +3,9 @@ credentials-file: /home/container/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
 
 ingress:
   - hostname: www.movieflix.site
-    service: http://movieflix.internal:3000
+    # Tested internal Docker DNS from the separate NuraHost cloudflared container.
+    # Recheck after a provider/container remap; never substitute the public allocation.
+    service: http://c0fd6845-2f74-4bed-a7bd-8a6c3265127a:5075
     originRequest:
       connectTimeout: 10s
       noHappyEyeballs: false

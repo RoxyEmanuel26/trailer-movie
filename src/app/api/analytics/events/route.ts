@@ -41,7 +41,12 @@ export async function POST(req: NextRequest) {
 
     switch (eventName) {
       case 'page_view':
-        await EventTrackingService.trackPageView((metadata?.path as string) || '/');
+        if (!(await EventTrackingService.trackPageView((metadata?.path as string) || '/'))) {
+          return NextResponse.json(
+            { error: 'Analytics temporarily unavailable' },
+            { status: 503, headers: { 'Cache-Control': 'no-store' } },
+          );
+        }
         break;
       case 'movie_view':
         if (entityId) await EventTrackingService.trackMovieView(entityId, anonymousId);

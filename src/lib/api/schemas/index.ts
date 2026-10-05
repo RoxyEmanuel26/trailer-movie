@@ -15,7 +15,7 @@ const TmdbIdSchema = z.number().int().positive('Invalid TMDB ID');
  */
 export const SearchSchema = z.object({
   query: safeString.refine(s => s.length > 0 && s.length <= 100, { message: 'Search query must be between 1 and 100 characters' }),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(500).default(1),
 });
 
 /**

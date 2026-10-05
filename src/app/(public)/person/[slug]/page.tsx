@@ -12,6 +12,12 @@ import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 import { moviePath } from '@/lib/public-routes';
 import { absoluteUrl } from '@/lib/site-config';
 
+export const revalidate = 3600;
+
+export async function generateStaticParams() {
+  return [];
+}
+
 export default async function PersonPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug: routeParam } = await params;
   const result = await PersonService.getPublicProfile(routeParam);

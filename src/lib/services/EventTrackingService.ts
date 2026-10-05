@@ -10,9 +10,10 @@ export class EventTrackingService {
         metadata: { path } as Prisma.JsonObject,
         metric: 'page_view',
       });
-
+      return true;
     } catch (error) {
       console.error('Failed to track page view:', error);
+      return false;
     }
   }
 

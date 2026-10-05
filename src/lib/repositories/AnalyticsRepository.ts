@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 
@@ -84,43 +85,39 @@ export class AnalyticsRepository {
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
 
-    try {
-      await db.$transaction(async (tx: any) => {
-        await tx.analyticsEvent.create({
-          data: {
-            eventName: input.eventName,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            metadata: input.metadata,
-            dedupeKey: input.dedupeKey,
-          },
-        });
-        if (input.metric) {
-          await tx.dailyMetrics.upsert({
-            where: {
-              date_metric_entityType_entityId: {
-                date: today,
-                metric: input.metric,
-                entityType: input.entityType || '',
-                entityId: input.entityId || '',
-              },
-            },
-            update: { value: { increment: 1 } },
-            create: {
-              date: today,
-              metric: input.metric,
-              entityType: input.entityType || '',
-              entityId: input.entityId || '',
-              value: 1,
-            },
-          });
-        }
-      });
-      return true;
-    } catch (error) {
-      if ((error as { code?: string }).code === 'P2002' && input.dedupeKey) return false;
-      throw error;
+    // A single PostgreSQL statement avoids holding an interactive Prisma
+    // transaction while the local import worker is using the same database.
+    // The metric CTE only runs when the event insert succeeds, so deduplicated
+    // movie/trailer views cannot increment the daily total twice.
+    const eventInsert = Prisma.sql`
+      INSERT INTO "analytics_events" ("id", "eventName", "entityType", "entityId", "metadata", "dedupeKey")
+      VALUES (
+        ${randomUUID()}, ${input.eventName}, ${input.entityType ?? null}, ${input.entityId ?? null},
+        CAST(${JSON.stringify(input.metadata ?? null)} AS jsonb), ${input.dedupeKey ?? null}
+      )
+      ON CONFLICT ("dedupeKey") DO NOTHING
+      RETURNING 1
+    `;
+
+    if (!input.metric) {
+      const inserted = await db.$queryRaw(eventInsert) as unknown[];
+      return inserted.length > 0;
     }
+
+    const rows = await db.$queryRaw(Prisma.sql`
+      WITH inserted AS (${eventInsert}), counted AS (
+        INSERT INTO "daily_metrics" ("id", "date", "metric", "entityType", "entityId", "value")
+        SELECT ${randomUUID()}, CAST(${today} AS date), ${input.metric},
+          ${input.entityType ?? ''}, ${input.entityId ?? ''}, 1
+        FROM inserted
+        ON CONFLICT ("date", "metric", "entityType", "entityId")
+        DO UPDATE SET "value" = "daily_metrics"."value" + 1
+        RETURNING 1
+      )
+      SELECT EXISTS(SELECT 1 FROM inserted) AS recorded,
+        EXISTS(SELECT 1 FROM counted) AS metric_recorded
+    `) as Array<{ recorded: boolean; metric_recorded: boolean }>;
+    return rows[0]?.recorded === true && rows[0]?.metric_recorded === true;
   }
 
   static async isPublicAnalyticsMovie(movieId: string, db: any = prisma) {

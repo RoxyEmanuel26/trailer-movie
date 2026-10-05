@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:imports": "tsx --test tests/import-pipeline.test.ts",
-    "test:seo": "tsx --test tests/seo-foundation.test.ts tests/homepage-intelligence.test.ts tests/production-hardening.test.ts",
+    "test:seo": "tsx --test tests/seo-foundation.test.ts tests/homepage-intelligence.test.ts tests/production-hardening.test.ts tests/analytics-recording.test.ts",
     "import:bulk": "npx tsx --env-file=.env scripts/bulk-discover.ts",
     "import:process-local": "tsx --env-file=.env scripts/process-import-queue.ts",
     "db:verify-target": "tsx --env-file=.env scripts/verify-postgres-target.ts",

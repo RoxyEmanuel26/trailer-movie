@@ -34,7 +34,8 @@ export async function POST(request: NextRequest) {
   invalidate('/');
   revalidatePath('/opengraph-image', 'page');
   if (parsed.data.scope === 'catalog') {
-    invalidate('/', 'layout');
+    // Do not evict every watch/person page on each import batch. Those pages
+    // have a one-hour ISR TTL; requested detail paths may still be targeted.
     invalidate('/movies');
     invalidate('/genres');
     invalidate('/countries');

@@ -5,23 +5,53 @@ import { MovieService } from '@/lib/services/MovieService';
 import { SeoService } from '@/lib/services/SeoService';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 
 interface Props { searchParams: Promise<{ page?: string | string[] }> }
 export const revalidate = 3600;
 const itemsPerPage = 24;
 
-const getMoviesPage = cache(
-  (page: number) => MovieService.searchMovies({
-    skip: (page - 1) * itemsPerPage,
-    take: itemsPerPage,
-    orderBy: [
-      { releaseDate: { sort: 'desc', nulls: 'last' } },
-      { popularity: 'desc' },
-      { createdAt: 'desc' },
-      { id: 'asc' },
-    ],
-  }),
+const getCachedMoviesPage = unstable_cache(
+  async (page: number) => {
+    const { data, total } = await MovieService.searchMovies({
+      skip: (page - 1) * itemsPerPage,
+      take: itemsPerPage,
+      orderBy: [
+        { releaseDate: { sort: 'desc', nulls: 'last' } },
+        { popularity: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'asc' },
+      ],
+    });
+    // Cache only the fields the public cards render. Prisma Movie also contains
+    // BigInt budget/revenue, which Next's data-cache JSON cannot serialize.
+    return {
+      total,
+      data: data.map((movie) => ({
+        id: movie.id,
+        title: movie.title,
+        slug: movie.slug,
+        posterUrl: movie.posterUrl,
+        releaseDate: movie.releaseDate?.toISOString() || null,
+        runtimeMinutes: movie.runtimeMinutes,
+        mpaaRating: movie.mpaaRating,
+        voteAverage: movie.voteAverage,
+      })),
+    };
+  },
+  ['public-movies-pages-v1'],
+  { revalidate: 300 },
 );
+const getMoviesPage = cache(async (page: number) => {
+  const result = await getCachedMoviesPage(page);
+  return {
+    total: result.total,
+    data: result.data.map((movie) => ({
+      ...movie,
+      releaseDate: movie.releaseDate ? new Date(movie.releaseDate) : null,
+    })),
+  };
+});
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const page = parseStrictPage((await searchParams).page);

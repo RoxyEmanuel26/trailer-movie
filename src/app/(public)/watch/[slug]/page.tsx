@@ -41,6 +41,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export const revalidate = 3600;
 
+// Generate movie pages on first visit and reuse the result until revalidation.
+// Returning no build-time paths avoids a database-heavy production build.
+export async function generateStaticParams() {
+  return [];
+}
+
 export default async function MovieDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const result = await MovieService.getPublicMovie(slug);

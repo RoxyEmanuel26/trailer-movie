@@ -91,6 +91,9 @@ export function validateProductionSeoConfig(input: {
 
 export function assertProductionSiteConfig() {
   if (process.env.NODE_ENV !== 'production') return;
+  if (!process.env.ORIGIN_GATE_SECRET || process.env.ORIGIN_GATE_SECRET.length < 32 || /replace/i.test(process.env.ORIGIN_GATE_SECRET)) {
+    throw new Error('ORIGIN_GATE_SECRET must be a unique random value of at least 32 characters in production.');
+  }
   const error = validateProductionSeoConfig({
     url: configuredUrl,
     indexingEnabled: process.env.SEO_INDEXING_ENABLED === 'true',

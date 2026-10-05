@@ -40,6 +40,7 @@ jobs:
       BETTER_AUTH_URL: https://www.movieflix.site
       NEXT_PUBLIC_APP_URL: https://www.movieflix.site
       SEO_INDEXING_ENABLED: "false"
+      ORIGIN_GATE_SECRET: ci-origin-gate-secret-at-least-32-characters
       IMPORT_EXECUTION_MODE: local
       APP_RELEASE_SHA: ${{ github.sha }}
     steps:
