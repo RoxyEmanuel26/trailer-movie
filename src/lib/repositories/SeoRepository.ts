@@ -3,6 +3,19 @@ import { prisma } from '../prisma';
 import { DbClient } from './base.types';
 
 export class SeoRepository {
+  static async listSitemapOverrides(db: DbClient = prisma) {
+    return db.seoPage.findMany({
+      where: { OR: [{ isNoindex: true }, { inSitemap: false }] },
+      select: { seoableType: true, seoableId: true, routePath: true },
+    });
+  }
+  static async sitemapExcludedIds(seoableType: string, db: DbClient = prisma) {
+    const overrides = await db.seoPage.findMany({
+      where: { seoableType, OR: [{ isNoindex: true }, { inSitemap: false }] },
+      select: { seoableId: true },
+    });
+    return overrides.map((override) => override.seoableId);
+  }
   static async getByRoute(routePath: string, db: DbClient = prisma) {
     return db.seoPage.findUnique({
       where: { routePath },
@@ -82,8 +95,9 @@ export class SeoRepository {
   }
 
   static async countIndexableMovies(db: DbClient = prisma) {
+    const excluded = await this.sitemapExcludedIds('Movie', db);
     return db.movie.count({
-      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' },
+      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY', ...(excluded.length ? { id: { notIn: excluded } } : {}) },
     });
   }
 
@@ -91,8 +105,9 @@ export class SeoRepository {
     params: { skip: number; take: number },
     db: DbClient = prisma
   ) {
+    const excluded = await this.sitemapExcludedIds('Movie', db);
     return db.movie.findMany({
-      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' },
+      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY', ...(excluded.length ? { id: { notIn: excluded } } : {}) },
       select: {
         slug: true,
         title: true,
@@ -121,7 +136,9 @@ export class SeoRepository {
           movies: { some: { movie: { status: 'PUBLISHED', deletedAt: null } } },
         },
         select: {
+          id: true,
           slug: true,
+          description: true,
           updatedAt: true,
           _count: {
             select: {
@@ -137,7 +154,9 @@ export class SeoRepository {
           movies: { some: { movie: { status: 'PUBLISHED', deletedAt: null } } },
         },
         select: {
+          id: true,
           slug: true,
+          description: true,
           updatedAt: true,
           _count: {
             select: {
@@ -149,14 +168,15 @@ export class SeoRepository {
     ]);
 
     return {
-      genres: genres.filter((genre) => genre._count.movies >= 3),
-      collections: collections.filter((collection) => collection._count.movies >= 3),
+      genres: genres.filter((genre) => genre._count.movies >= 3 && Boolean(genre.description?.trim())),
+      collections: collections.filter((collection) => collection._count.movies >= 3 && Boolean(collection.description?.trim())),
     };
   }
 
   static async getRssFeedData(db: DbClient = prisma) {
+    const excluded = await this.sitemapExcludedIds('Movie', db);
     return db.movie.findMany({
-      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY' },
+      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY', ...(excluded.length ? { id: { notIn: excluded } } : {}) },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });

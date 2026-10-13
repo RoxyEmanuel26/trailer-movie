@@ -3,6 +3,7 @@ import { neonConfig } from '@neondatabase/serverless';
 import { PrismaNeon } from '@prisma/adapter-neon';
 import { PrismaPg } from '@prisma/adapter-pg';
 import WebSocket from 'ws';
+import { databaseConnectionTimeout } from './db-connection-settings';
 
 // Neon needs a WebSocket implementation in bare Node.js processes such as tsx scripts.
 neonConfig.webSocketConstructor = WebSocket;
@@ -38,7 +39,9 @@ function postgresAdapter() {
   return new PrismaPg({
     connectionString,
     max,
-    connectionTimeoutMillis: 30_000,
+    // Public reads can fall back to a catalog snapshot; do not hold a request
+    // for 30 seconds merely waiting for a pool slot under import load.
+    connectionTimeoutMillis: databaseConnectionTimeout(process.env.DB_CONNECTION_TIMEOUT_MS),
     idleTimeoutMillis: 10_000,
   });
 }

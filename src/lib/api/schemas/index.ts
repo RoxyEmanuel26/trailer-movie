@@ -34,6 +34,7 @@ export const ImportListSchema = z.object({
   stage: z.string().trim().max(50).optional(),
   retryable: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   includeCompleted: z.enum(['true', 'false']).transform((value) => value === 'true').optional().default(false),
+  includeTotal: z.enum(['true', 'false']).transform((value) => value === 'true').optional().default(true),
 });
 
 const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {

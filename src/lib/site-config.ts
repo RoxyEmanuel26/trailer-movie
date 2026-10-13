@@ -35,7 +35,7 @@ export function canonicalUrl(candidate: string | null | undefined, fallbackPath 
     const candidateUrl = new URL(candidate, siteConfig.url);
     const configuredSiteUrl = new URL(siteConfig.url);
     const invalidProtocol = configuredSiteUrl.protocol === 'https:' && candidateUrl.protocol !== 'https:';
-    if (invalidProtocol || candidateUrl.host !== configuredSiteUrl.host) {
+    if (invalidProtocol || candidateUrl.host !== configuredSiteUrl.host || candidateUrl.username || candidateUrl.password) {
       return absoluteUrl(fallbackPath);
     }
     candidateUrl.hash = '';
@@ -62,7 +62,7 @@ export function validateProductionSeoConfig(input: {
   if (!input.url) return 'NEXT_PUBLIC_APP_URL is required for a production build.';
   try {
     const url = new URL(input.url);
-    if (url.protocol !== 'https:' || url.hostname !== 'www.movieflix.site') {
+    if (url.protocol !== 'https:' || url.host !== 'www.movieflix.site' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
       return 'NEXT_PUBLIC_APP_URL must be https://www.movieflix.site in production.';
     }
   } catch {

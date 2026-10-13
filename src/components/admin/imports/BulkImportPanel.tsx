@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { ConfirmationDialog } from '@/components/admin/global/ConfirmationDialog';
+import { useImportPolling } from './useImportPolling';
 
 type ImportBatch = {
   id: string;
@@ -25,7 +26,7 @@ type ImportBatch = {
   errorMessage: string | null;
 };
 
-export function BulkImportPanel({ initialBatches = [], localMode = false }: { initialBatches?: ImportBatch[]; localMode?: boolean }) {
+export function BulkImportPanel({ initialBatches = [], localMode = false, initialUnavailable = false }: { initialBatches?: ImportBatch[]; localMode?: boolean; initialUnavailable?: boolean }) {
   const [startDate, setStartDate] = React.useState('2022-01-01');
   const [endDate, setEndDate] = React.useState(() => new Date().toISOString().slice(0, 10));
   const [country, setCountry] = React.useState('');
@@ -33,17 +34,14 @@ export function BulkImportPanel({ initialBatches = [], localMode = false }: { in
   const [busy, setBusy] = React.useState(false);
   const [cancelTarget, setCancelTarget] = React.useState<ImportBatch | null>(null);
 
-  const loadBatches = React.useCallback(async (signal?: AbortSignal) => {
+  const fetchBatches = React.useCallback(async (signal: AbortSignal) => {
     const response = await fetch('/api/admin/imports/bulk', { signal, cache: 'no-store' });
     if (!response.ok) throw new Error('Failed to load bulk imports');
     const payload = await response.json();
-    setBatches(payload.data.batches || []);
+    if (!Array.isArray(payload?.data?.batches)) throw new Error('Invalid bulk import response');
+    return payload.data.batches as ImportBatch[];
   }, []);
-
-  React.useEffect(() => {
-    const interval = window.setInterval(() => void loadBatches().catch(() => undefined), 5000);
-    return () => window.clearInterval(interval);
-  }, [loadBatches]);
+  const { refresh: loadBatches, unavailable } = useImportPolling(fetchBatches, setBatches, initialUnavailable);
 
   const createBatch = async () => {
     setBusy(true);
@@ -127,6 +125,7 @@ export function BulkImportPanel({ initialBatches = [], localMode = false }: { in
 
   return (
     <div className="rounded-lg border bg-card p-6">
+      {unavailable && <p role="status" className="mb-4 rounded-md border p-3 text-sm text-muted-foreground">Bulk import updates are temporarily unavailable. {batches.length ? 'Showing the last loaded runs.' : 'Import status has not loaded yet.'} Retrying automatically.</p>}
       <div className="mb-6">
         <h2 className="text-xl font-semibold">Persistent Bulk Discovery</h2>
         <p className="text-sm text-muted-foreground">{localMode ? 'Discovery and movie jobs are stored in the database. Run pnpm import:process-local; it processes all current work and exits automatically when finished.' : 'Discovery progress is stored in the database and processed by the scheduled worker.'}</p>
@@ -150,11 +149,11 @@ export function BulkImportPanel({ initialBatches = [], localMode = false }: { in
       <div className="mt-8 space-y-4">
         <div className="flex items-center gap-2"><Play className="h-4 w-4 text-primary" /><h3 className="font-semibold">Active imports</h3></div>
         {activeBatches.map((batch) => renderBatch(batch))}
-        {activeBatches.length === 0 && <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">No active bulk imports. Finished runs appear in the log below.</p>}
+        {activeBatches.length === 0 && !unavailable && <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">No active bulk imports. Finished runs appear in the log below.</p>}
 
         <div className="flex items-center gap-2 pt-4"><History className="h-4 w-4 text-muted-foreground" /><h3 className="font-semibold">Bulk import log</h3></div>
         {historyBatches.map((batch) => renderBatch(batch, true))}
-        {historyBatches.length === 0 && <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"><CheckCircle2 className="mx-auto mb-2 h-5 w-5" />No finished bulk imports yet.</p>}
+        {historyBatches.length === 0 && !unavailable && <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"><CheckCircle2 className="mx-auto mb-2 h-5 w-5" />No finished bulk imports yet.</p>}
       </div>
 
       <ConfirmationDialog

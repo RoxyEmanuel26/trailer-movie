@@ -6,7 +6,12 @@ import { serializeSitemap } from '../src/lib/sitemap-xml';
 import { getTmdbImageUrl } from '../src/lib/tmdb-image-loader';
 import { moviePath } from '../src/lib/public-routes';
 import { canonicalUrl, isValidContactEmail, siteConfig, validateProductionSeoConfig } from '../src/lib/site-config';
-import { escapeCdata } from '../src/lib/services/SeoService';
+import { escapeCdata, SeoService } from '../src/lib/services/SeoService';
+import { catalogMetadataCanonical, paginatedMetadataTitle, socialImage } from '../src/lib/seo-metadata';
+import { trailerSchema } from '../src/lib/trailer-schema';
+import { PersonRepository } from '../src/lib/repositories/PersonRepository';
+import { providerRegion, providerRegionCodes } from '../src/lib/provider-region';
+import { catalogStatsQuery } from '../src/lib/catalog-stats-query';
 
 test('strict pagination accepts only positive integer pages', () => {
   assert.equal(parseStrictPage(undefined), 1);
@@ -61,6 +66,26 @@ test('canonical URLs cannot be overridden by another host', () => {
   assert.equal(canonicalUrl('/movies?page=2', '/movies'), 'http://localhost:3000/movies?page=2');
 });
 
+test('pagination preserves its self canonical and page title despite CMS overrides', () => {
+  assert.equal(catalogMetadataCanonical('/movies', '/movies?page=3'), `${siteConfig.url}/movies?page=3`);
+  assert.equal(paginatedMetadataTitle('Horror movies', '/genre/horror?page=3'), 'Horror movies — Page 3');
+  assert.equal(paginatedMetadataTitle('Horror movies — Page 3', '/genre/horror?page=3'), 'Horror movies — Page 3');
+  assert.equal(paginatedMetadataTitle('Horror movies', '/genre/horror'), 'Horror movies');
+});
+
+test('social artwork is bounded and does not claim a fictitious crop', () => {
+  assert.deepEqual(socialImage('https://image.tmdb.org/t/p/original/a.jpg', 'A'), { url: 'https://image.tmdb.org/t/p/w1280/a.jpg', alt: 'A' });
+  assert.equal(socialImage(undefined, 'MovieFlix').width, 1200);
+});
+
+test('production canonical rejects credentials, ports, paths and query strings', () => {
+  for (const url of ['https://user:password@www.movieflix.site', 'https://www.movieflix.site:444', 'https://www.movieflix.site/movies', 'https://www.movieflix.site?preview=true', 'https://www.movieflix.site#preview']) {
+    assert.ok(validateProductionSeoConfig({ url, indexingEnabled: false }));
+  }
+  assert.equal(validateProductionSeoConfig({ url: 'https://www.movieflix.site', indexingEnabled: false }), null);
+  assert.equal(canonicalUrl('http://user:password@localhost:3000/watch/a', '/movies'), `${siteConfig.url}/movies`);
+});
+
 test('public brand identity is locked to MovieFlix', () => {
   assert.equal(siteConfig.name, 'MovieFlix');
   assert.match(siteConfig.description, /MovieFlix/);
@@ -78,4 +103,52 @@ test('indexing requires verification and a real contact email', () => {
 
 test('RSS CDATA content cannot terminate its wrapper', () => {
   assert.equal(escapeCdata('before]]>after'), 'before]]]]><![CDATA[>after');
+});
+
+test('imported catalog scores do not claim MovieFlix review rich results', () => {
+  const movie = SeoService.generateStructuredData('Movie', { path: '/watch/test-1', title: 'Test', voteAverage: 8, voteCount: 500 });
+  assert.equal(movie.aggregateRating, undefined);
+  assert.equal(movie.review, undefined);
+});
+
+test('trailer schema never invents an upload date from the movie release', () => {
+  const video = { videoId: 'abcdefghijk', title: 'Test trailer', description: 'Test' };
+  assert.equal(trailerSchema(video)?.uploadDate, undefined);
+  assert.equal(trailerSchema({ ...video, publishedDate: 'invalid' })?.uploadDate, undefined);
+  assert.equal(trailerSchema({ ...video, publishedDate: '2025-09-01T12:00:00Z' })?.uploadDate, '2025-09-01T12:00:00.000Z');
+  assert.equal(trailerSchema({ ...video, videoId: 'not-a-valid-video-id' }), undefined);
+});
+
+test('person indexability requires at least one published credit even with a biography', () => {
+  const person = { headshotUrl: '/headshot.jpg', biography: 'A'.repeat(200), movies: [] };
+  assert.equal(PersonRepository.isIndexableProfile(person), false);
+  assert.equal(PersonRepository.isIndexableProfile({ ...person, movies: [{ movie: { id: 'published-1' } }] }), true);
+});
+
+test('viewing availability selects one explicit country rather than merging territories', () => {
+  const codes = providerRegionCodes([{ countryCode: 'GB' }, { countryCode: 'US' }, { countryCode: 'US' }, { countryCode: null }]);
+  assert.deepEqual(codes, ['GB', 'US']);
+  assert.equal(providerRegion(codes, 'FR'), 'US');
+  assert.equal(providerRegion(codes, 'GB'), 'GB');
+  assert.equal(providerRegion(['FR', 'GB'], 'US'), 'GB');
+  assert.equal(providerRegion([], 'US'), '');
+});
+
+test('sitemap serializer deduplicates canonical URLs and rejects oversized shards', () => {
+  const url = 'https://www.movieflix.site/watch/example-1';
+  assert.equal((serializeSitemap([{ url }, { url }]).match(/<url>/g) || []).length, 1);
+  assert.throws(() => serializeSitemap(Array.from({ length: 50_001 }, (_, index) => ({ url: `${url}-${index}` }))), /50,000/);
+});
+
+test('catalog statistics use a public index-compatible predicate and parameterized origin OR filters', () => {
+  const hostile = "x'; DROP TABLE movies; --";
+  const query = catalogStatsQuery({ genreSlug: hostile, countryCodes: ['JP'], languageCodes: ['en'], releaseYear: 2025, search: '100%_free' });
+  assert.match(query.sql, /"status" = 'PUBLISHED' AND m\."deletedAt" IS NULL/);
+  assert.ok(query.sql.includes(' OR EXISTS'));
+  assert.equal(query.sql.includes(hostile), false);
+  assert.ok(query.values.includes(hostile));
+  assert.ok(query.values.includes('JP'));
+  assert.ok(query.values.includes('en'));
+  assert.ok(query.values.some((value) => value instanceof Date && value.toISOString() === '2026-01-01T00:00:00.000Z'));
+  assert.ok(query.values.includes('%100\\%\\_free%'));
 });

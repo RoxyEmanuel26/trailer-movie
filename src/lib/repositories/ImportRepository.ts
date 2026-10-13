@@ -1,4 +1,4 @@
-import { ImportJobStatus, Prisma } from '@prisma/client';
+import { ImportJobStatus, Prisma, type ImportJob } from '@prisma/client';
 import { prisma } from '../prisma';
 import { DbClient } from './base.types';
 
@@ -124,7 +124,7 @@ export class ImportRepository {
     return db.importJob.delete({ where: { id } });
   }
 
-  static async list(params: { skip?: number; take?: number; status?: ImportJobStatus; entityType?: string; stage?: string; retryable?: boolean; includeCompleted?: boolean }, db: DbClient = prisma) {
+  static async list(params: { skip?: number; take?: number; status?: ImportJobStatus; entityType?: string; stage?: string; retryable?: boolean; includeCompleted?: boolean; includeTotal?: boolean }, db: DbClient = prisma) {
     const where: Prisma.ImportJobWhereInput = {
       ...(params.status
         ? { status: params.status }
@@ -133,10 +133,28 @@ export class ImportRepository {
       ...(params.stage && { stage: params.stage }),
       ...(params.retryable !== undefined && { retryable: params.retryable }),
     };
-    const [data, total] = await Promise.all([
-      db.importJob.findMany({ skip: params.skip, take: params.take, where, orderBy: { updatedAt: 'desc' } }),
-      db.importJob.count({ where }),
-    ]);
+    // Monitoring only needs a bounded list. Avoid repeatedly counting a million
+    // history rows, and do not occupy two pool slots for one list request.
+    const take = Math.min(params.take || 50, 100);
+    // Prisma casts text parameters to enums. PostgreSQL cannot prove those
+    // stable casts imply our partial-index predicate, so it scans history.
+    // Keep this fixed predicate literal; every user-supplied filter stays bound.
+    const activeOnly = !params.status && !params.includeCompleted;
+    const conditions = [Prisma.sql`"status" NOT IN ('COMPLETED', 'SKIPPED', 'CANCELED')`];
+    if (params.entityType) conditions.push(Prisma.sql`"entityType" = ${params.entityType}`);
+    if (params.stage) conditions.push(Prisma.sql`"stage" = ${params.stage}`);
+    if (params.retryable !== undefined) conditions.push(Prisma.sql`"retryable" = ${params.retryable}`);
+    const data = activeOnly
+      ? await db.$queryRaw<ImportJob[]>(Prisma.sql`
+          SELECT * FROM "public"."import_jobs"
+          WHERE ${Prisma.join(conditions, ' AND ')}
+          ORDER BY "updatedAt" DESC, "id" DESC LIMIT ${take} OFFSET ${params.skip || 0}
+        `)
+      : await db.importJob.findMany({
+          skip: params.skip, take, where,
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        });
+    const total = params.includeTotal === false ? null : await db.importJob.count({ where });
     return { data, total };
   }
 

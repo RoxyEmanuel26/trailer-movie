@@ -4,10 +4,10 @@ import { GlobalErrorBoundary } from "@/components/admin/global/GlobalErrorBounda
 
 export default function AdminError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string }
-  reset: () => void
+  retry: () => void
 }) {
-  return <GlobalErrorBoundary error={error} reset={reset} />
+  return <GlobalErrorBoundary error={error} reset={retry} />
 }

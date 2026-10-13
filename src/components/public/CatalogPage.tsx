@@ -7,6 +7,7 @@ import { SeoService } from '@/lib/services/SeoService';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { absoluteUrl } from '@/lib/site-config';
 import { moviePath } from '@/lib/public-routes';
+import { pagePath } from '@/lib/pagination';
 
 type CatalogMovie = ComponentProps<typeof MovieCard>['movie'];
 
@@ -38,13 +39,20 @@ export function CatalogPage({
   facts = [],
 }: CatalogPageProps) {
   const breadcrumbItems = [{ name: 'Home', path: '/' }, ...breadcrumbs, { name: title, path }];
+  const canonicalPath = pagePath(path, currentPage);
+  const listId = `${absoluteUrl(canonicalPath)}#movies`;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
-      SeoService.generateStructuredData('CollectionPage', { title, description, path }),
+      {
+        ...SeoService.generateStructuredData('CollectionPage', { title, description, path: canonicalPath }),
+        '@id': `${absoluteUrl(canonicalPath)}#webpage`,
+        mainEntity: { '@id': listId },
+      },
       SeoService.generateStructuredData('BreadcrumbList', { items: breadcrumbItems }),
       {
         '@type': 'ItemList',
+        '@id': listId,
         itemListElement: movies.map((movie, index) => ({
           '@type': 'ListItem',
           position: (currentPage - 1) * itemsPerPage + index + 1,

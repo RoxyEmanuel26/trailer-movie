@@ -4,6 +4,7 @@ import { AppError } from '../errors';
 import { ZodError } from 'zod';
 import { resolveIp, enforceRateLimit, RateLimitTiers } from '../security/rateLimiter';
 import { logger } from '../logger';
+import { isTransientDatabaseError } from '../database-errors';
 
 type ApiHandler<T = any> = (
   request: NextRequest,
@@ -42,6 +43,13 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
 
       return await handler(request, context);
     } catch (error: any) {
+      if (isTransientDatabaseError(error)) {
+        logger.warn({ code: error?.code }, '[API_DATABASE_UNAVAILABLE] Database temporarily unavailable');
+        const response = errorResponse('Updates are temporarily unavailable. Please try again shortly.', 'DATABASE_UNAVAILABLE', 503);
+        response.headers.set('Retry-After', '10');
+        response.headers.set('Cache-Control', 'no-store');
+        return response;
+      }
       logger.error({ err: error }, '[API_ERROR] Uncaught exception in API handler');
 
       // Handle Zod Validation Errors

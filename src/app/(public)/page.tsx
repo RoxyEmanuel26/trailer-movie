@@ -10,6 +10,8 @@ import { JsonLd } from '@/components/seo/JsonLd';
 import { absoluteUrl, siteConfig } from '@/lib/site-config';
 import { moviePath } from '@/lib/public-routes';
 import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
+import { isTransientDatabaseError } from '@/lib/database-errors';
+import { logger } from '@/lib/logger';
 
 const homepageTitle = 'MovieFlix: Movie Trailers, Cast & Where to Watch';
 const homepageDescription =
@@ -18,16 +20,29 @@ const homepageDescription =
 export async function generateMetadata(): Promise<Metadata> {
   const homepage = await HomepageService.getSmartHomepageData();
   const image = absoluteUrl('/opengraph-image');
-  const metadata = await SeoService.generateMetadata('Page', 'home', {
-    title: homepageTitle,
-    description: homepageDescription,
-    image,
-    path: '/',
-  });
+  let metadata: Metadata;
+  try {
+    metadata = await SeoService.generateMetadata('Page', 'home', {
+      title: homepageTitle,
+      description: homepageDescription,
+      image,
+      path: '/',
+    });
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) throw error;
+    logger.warn('Homepage SEO settings unavailable; using safe temporary metadata');
+    metadata = {
+      alternates: { canonical: absoluteUrl('/') },
+      robots: { index: false, follow: true },
+      openGraph: { type: 'website', url: absoluteUrl('/'), siteName: siteConfig.name },
+      twitter: { card: 'summary_large_image' },
+    };
+  }
   return {
     ...metadata,
     title: { absolute: homepageTitle },
     description: homepageDescription,
+    robots: homepage.availability === 'unavailable' ? { index: false, follow: true } : metadata.robots,
     openGraph: {
       ...metadata.openGraph,
       title: homepageTitle,
@@ -52,6 +67,13 @@ export default async function HomePage() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      {discovery.availability !== 'live' ? (
+        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-3 text-center text-sm text-foreground" role="status">
+          {discovery.availability === 'snapshot'
+            ? 'Showing the last available movie catalog. Recent updates may appear shortly.'
+            : 'The movie catalog is temporarily unavailable. Please try again shortly.'}
+        </div>
+      ) : null}
       <JsonLd data={{
         '@context': 'https://schema.org',
         '@graph': [
@@ -167,10 +189,7 @@ export default async function HomePage() {
                   href={`/genre/${genre.slug}`}
                   className="rounded-xl border bg-background/60 px-3.5 py-2 text-sm font-medium transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary active:scale-[.98]"
                 >
-                  {genre.name}{' '}
-                  <span className="ml-1 text-muted-foreground tabular-nums">
-                    {genre._count.movies.toLocaleString('en-US')}
-                  </span>
+                  {genre.name}
                 </Link>
               ))}
             </div>

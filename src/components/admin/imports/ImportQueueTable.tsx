@@ -24,10 +24,12 @@ import { Progress } from "@/components/ui/progress"
 import { StatusBadge } from "@/components/admin/StatusBadge"
 import { ConfirmationDialog } from "@/components/admin/global/ConfirmationDialog"
 import { ImportJobDetailsDialog } from "./ImportJobDetailsDialog"
+import { useImportPolling } from "./useImportPolling"
 
 interface ImportQueueTableProps {
   initialJobs: any[]
   localMode?: boolean
+  initialUnavailable?: boolean
 }
 
 type DrainProgress = {
@@ -54,7 +56,7 @@ const initialDrainProgress: DrainProgress = {
   discoveryRemaining: null,
 }
 
-export function ImportQueueTable({ initialJobs, localMode = false }: ImportQueueTableProps) {
+export function ImportQueueTable({ initialJobs, localMode = false, initialUnavailable = false }: ImportQueueTableProps) {
   const [jobs, setJobs] = React.useState(initialJobs)
   const [selectedJob, setSelectedJob] = React.useState<any | null>(null)
   const [deletingJobId, setDeletingJobId] = React.useState<string | null>(null)
@@ -106,25 +108,14 @@ export function ImportQueueTable({ initialJobs, localMode = false }: ImportQueue
     }
   }
 
-  const fetchLatestJobs = React.useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/imports?includeCompleted=false', { cache: 'no-store' })
-      if (res.ok) {
-        const data = await res.json()
-        const visibleJobs = (data.data.data || []).filter((job: any) => !['COMPLETED', 'SKIPPED', 'CANCELED'].includes(job.status))
-        setJobs(visibleJobs)
-        return visibleJobs
-      }
-    } catch (e) {
-      // ignore
-    }
-    return null
+  const loadJobs = React.useCallback(async (signal: AbortSignal) => {
+    const res = await fetch('/api/admin/imports?includeCompleted=false&includeTotal=false&take=100', { cache: 'no-store', signal })
+    if (!res.ok) throw new Error('Queue updates unavailable')
+    const data = await res.json()
+    if (!Array.isArray(data?.data?.data)) throw new Error('Invalid queue response')
+    return data.data.data.filter((job: any) => !['COMPLETED', 'SKIPPED', 'CANCELED'].includes(job.status))
   }, [])
-
-  React.useEffect(() => {
-    const interval = window.setInterval(() => void fetchLatestJobs(), 5000)
-    return () => window.clearInterval(interval)
-  }, [fetchLatestJobs])
+  const { refresh: fetchLatestJobs, unavailable } = useImportPolling(loadJobs, setJobs, initialUnavailable)
 
   React.useEffect(() => () => {
     stopRequestedRef.current = true
@@ -300,6 +291,11 @@ export function ImportQueueTable({ initialJobs, localMode = false }: ImportQueue
 
   return (
     <div className="space-y-4">
+      {unavailable && (
+        <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+          Queue updates are temporarily unavailable. {jobs.length ? 'Showing the last loaded jobs.' : 'The queue has not loaded yet.'} Retrying automatically.
+        </p>
+      )}
       <div className="flex flex-col justify-between gap-4 rounded-lg border bg-muted/50 p-4 sm:flex-row sm:items-center">
         <div>
           <p className="font-medium">Persistent database worker</p>
@@ -372,7 +368,7 @@ export function ImportQueueTable({ initialJobs, localMode = false }: ImportQueue
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No import jobs found.
+                  {unavailable ? 'Queue status is temporarily unavailable.' : 'No import jobs found.'}
                 </TableCell>
               </TableRow>
             )}

@@ -23,6 +23,8 @@ function escapeXml(value: string) {
 }
 
 export function serializeSitemap(entries: SitemapEntry[]) {
+  entries = [...new Map(entries.map((entry) => [entry.url, entry])).values()];
+  if (entries.length > 50_000) throw new Error('Sitemap exceeds the 50,000 URL limit.');
   const urls = entries
     .map((entry) => {
       const lastModified = entry.lastModified
@@ -44,7 +46,9 @@ export function serializeSitemap(entries: SitemapEntry[]) {
     })
     .join('');
 
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">${urls}</urlset>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">${urls}</urlset>`;
+  if (new TextEncoder().encode(xml).byteLength > 50 * 1024 * 1024) throw new Error('Sitemap exceeds the 50 MB uncompressed limit.');
+  return xml;
 }
 
 export function serializeSitemapIndex(urls: string[]) {

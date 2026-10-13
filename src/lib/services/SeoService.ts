@@ -7,12 +7,16 @@ import { MovieRepository } from '../repositories/MovieRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '../public-catalog';
 import { moviePath, personPath } from '../public-routes';
-import { absoluteUrl, canonicalUrl, isValidContactEmail, normalizeMetaDescription, siteConfig } from '../site-config';
+import { absoluteUrl, isValidContactEmail, normalizeMetaDescription, siteConfig } from '../site-config';
 import type { SitemapEntry } from '../sitemap-xml';
 import { getTmdbImageUrl } from '../tmdb-image-loader';
+import { catalogMetadataCanonical, paginatedMetadataTitle, socialImage } from '../seo-metadata';
+import { trailerSchema } from '../trailer-schema';
 
 export const PERSON_SITEMAP_PAGE_SIZE = 45_000;
-export const MOVIE_SITEMAP_PAGE_SIZE = 45_000;
+// Movie entries include image/video metadata; leave headroom below Google's
+// 50 MB uncompressed limit instead of targeting only the URL-count limit.
+export const MOVIE_SITEMAP_PAGE_SIZE = 10_000;
 
 export function escapeCdata(value: string) {
   return value.replace(/]]>/g, ']]]]><![CDATA[>');
@@ -115,7 +119,7 @@ export class SeoService {
       SeoRepository.findPageSEO(seoableType, seoableId),
     ]);
 
-    const title = normalizeLegacyBrand(pageSeo?.metaTitle || fallback.title || globalSettings.defaultTitle);
+    const title = paginatedMetadataTitle(normalizeLegacyBrand(pageSeo?.metaTitle || fallback.title || globalSettings.defaultTitle), fallback.path || '/');
     const description = normalizeMetaDescription(
       normalizeLegacyBrand(pageSeo?.metaDescription || fallback.description || ''),
       globalSettings.defaultDescription
@@ -124,7 +128,8 @@ export class SeoService {
     const ogImage = pageSeo?.ogImageUrl || fallback.image;
 
     // Canonical URL
-    const canonical = canonicalUrl(pageSeo?.canonicalUrl, fallback.path || '/');
+    const canonical = catalogMetadataCanonical(pageSeo?.canonicalUrl, fallback.path || '/');
+    const image = socialImage(ogImage, title);
 
     const isNoindex =
       !siteConfig.indexingEnabled || pageSeo?.isNoindex === true || fallback.indexable === false;
@@ -145,14 +150,14 @@ export class SeoService {
         description: description,
         url: canonical,
         siteName: globalSettings.ogSiteName,
-        images: [{ url: ogImage || absoluteUrl('/opengraph-image'), width: 1200, height: 630, alt: title }],
+        images: [image],
         type: fallback.openGraphType || 'website',
       },
       twitter: {
         card: 'summary_large_image',
         title: title,
         description: description,
-        images: [ogImage || absoluteUrl('/opengraph-image')],
+        images: [image],
         ...(globalSettings.twitterHandle ? { creator: globalSettings.twitterHandle } : {}),
       },
       verification: {
@@ -210,27 +215,9 @@ export class SeoService {
           : data.genre?.name,
       };
 
-      if (data.youtubeTrailerId) {
-        schema.trailer = {
-          '@type': 'VideoObject',
-          name: `${data.title} Trailer`,
-          description: data.description || `Trailer for ${data.title}`,
-          thumbnailUrl:
-            data.image || `https://img.youtube.com/vi/${data.youtubeTrailerId}/maxresdefault.jpg`,
-          embedUrl: `https://www.youtube.com/embed/${data.youtubeTrailerId}`,
-          uploadDate: data.trailerPublishedDate || data.releaseDate,
-        };
-      }
-
-      if (data.voteAverage && data.voteCount && data.voteCount > 0) {
-        schema.aggregateRating = {
-          '@type': 'AggregateRating',
-          ratingValue: data.voteAverage.toFixed(1),
-          ratingCount: data.voteCount,
-          bestRating: '10',
-          worstRating: '1',
-        };
-      }
+      schema.trailer = trailerSchema({ videoId: data.youtubeTrailerId, title: `${data.title} Trailer`, description: data.description || `Trailer for ${data.title}`, publishedDate: data.trailerPublishedDate });
+      // Imported third-party ratings remain visible catalog information, not
+      // MovieFlix review-snippet claims (Google's review-snippet guidelines).
 
       return schema;
     }
@@ -284,11 +271,12 @@ export class SeoService {
    * Generate Sitemap Data
    */
   static async generateSitemapData() {
-    const [{ genres, collections }, years, originCountMap, homepageLastModified] = await Promise.all([
+    const [{ genres, collections }, years, originCountMap, homepageLastModified, overrides] = await Promise.all([
       SeoRepository.getCoreSitemapData(),
       MovieRepository.listPublishedReleaseYearStats(),
       MovieRepository.countOriginGroups(ORIGIN_CATALOG),
       SeoRepository.getHomepageLastModified(),
+      SeoRepository.listSitemapOverrides(),
     ]);
     const originCounts = ORIGIN_CATALOG.map((item) => ({ item, total: originCountMap.get(item.slug) || 0 }));
 
@@ -350,7 +338,19 @@ export class SeoService {
       })
     );
 
-    return sitemap;
+    const entityPaths = new Map<string, string>([
+      ...genres.map((genre) => [`Genre:${genre.id}`, `/genre/${genre.slug}`] as const),
+      ...collections.map((collection) => [`Collection:${collection.id}`, `/collection/${collection.slug}`] as const),
+    ]);
+    const excludedUrls = new Set(overrides.flatMap((override) => {
+      let path = override.routePath || entityPaths.get(`${override.seoableType}:${override.seoableId}`);
+      if (!path && override.seoableType === 'Page') path = override.seoableId === 'home' ? '/' : `/${override.seoableId.replace(/^\//, '')}`;
+      if (!path && override.seoableType === 'OriginCatalog') path = `/origin/${override.seoableId}`;
+      if (!path && override.seoableType === 'YearCatalog') path = `/year/${override.seoableId}`;
+      if (!path && override.seoableType === 'PopularCatalog') path = `/popular/${override.seoableId}`;
+      return path ? [absoluteUrl(path)] : [];
+    }));
+    return sitemap.filter((entry) => !excludedUrls.has(entry.url));
   }
 
   static async getMovieSitemapPageCount() {

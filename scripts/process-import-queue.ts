@@ -1,6 +1,7 @@
 import { drainImportQueue } from '../src/lib/jobs/drain-import-queue';
 import { isLocalImportMode } from '../src/lib/jobs/execution-mode';
 import { classifyJobError } from '../src/lib/jobs/error-classification';
+import { databaseConnectionTimeout } from '../src/lib/db-connection-settings';
 
 const pause = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
@@ -52,6 +53,8 @@ async function main() {
     throw new Error('IMPORT_DB_POOL_MAX must be an integer from 1 to 20');
   }
   process.env.DB_POOL_MAX = String(workerPool);
+  // The worker performs writes and can tolerate a longer pool wait than a page request.
+  process.env.DB_CONNECTION_TIMEOUT_MS = String(databaseConnectionTimeout(process.env.IMPORT_DB_CONNECTION_TIMEOUT_MS, 30_000));
 
   const { prisma } = await import('../src/lib/prisma');
   const { ImportRepository } = await import('../src/lib/repositories/ImportRepository');

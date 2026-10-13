@@ -8,18 +8,56 @@ import { MovieService } from '@/lib/services/MovieService';
 import { BrowseNav } from './BrowseNav';
 import { MovieFlixLogo } from '@/components/brand/MovieFlixLogo';
 import { unstable_cache } from 'next/cache';
+import { isTransientDatabaseError } from '@/lib/database-errors';
+import { logger } from '@/lib/logger';
+import { loadPublicDataWithSnapshot } from '@/lib/public-catalog-snapshot';
+
+type BrowseNavigationData = {
+  genres: Array<{ id: string; name: string; slug: string }>;
+  years: number[];
+};
+
+function isBrowseNavigationData(value: unknown): value is BrowseNavigationData {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return Array.isArray(data.genres)
+    && data.genres.every((genre) => genre && typeof genre.id === 'string'
+      && typeof genre.name === 'string' && typeof genre.slug === 'string')
+    && Array.isArray(data.years)
+    && data.years.every((year) => Number.isSafeInteger(year));
+}
+let lastNavigationWarningAt = 0;
+
+function warnNavigationFallback(message: string) {
+  if (Date.now() - lastNavigationWarningAt < 60_000) return;
+  lastNavigationWarningAt = Date.now();
+  logger.warn(message);
+}
 
 const getBrowseNavigation = unstable_cache(
-  () => Promise.all([
-    GenreService.listGenres(),
-    MovieService.listPublishedReleaseYears(),
-  ]),
-  ['public-browse-navigation'],
+  () => loadPublicDataWithSnapshot('browse-navigation-v1', async () => {
+    const [genres, years] = await Promise.all([
+      GenreService.listGenres(),
+      MovieService.listPublishedReleaseYears(),
+    ]);
+    return { genres, years };
+  }, isBrowseNavigationData),
+  ['public-browse-navigation-v2'],
   { revalidate: 3600 },
 );
 
 export async function Navbar() {
-  const [genres, years] = await getBrowseNavigation();
+  let navigation: BrowseNavigationData;
+  try {
+    const result = await getBrowseNavigation();
+    if (result.source === 'snapshot') warnNavigationFallback('Browse navigation is using the last valid catalog snapshot');
+    navigation = result.data;
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) throw error;
+    warnNavigationFallback('Browse navigation database unavailable and no recent snapshot exists');
+    navigation = { genres: [], years: [] };
+  }
+  const { genres, years } = navigation;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/82 backdrop-blur-xl">

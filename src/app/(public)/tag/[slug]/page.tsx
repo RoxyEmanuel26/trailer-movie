@@ -7,6 +7,7 @@ import { MovieCard } from '@/components/public/MovieCard';
 import { Pagination } from '@/components/public/Pagination';
 import { Hash } from 'lucide-react';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
+import { NotFoundError } from '@/lib/errors';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -28,7 +29,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       indexable: false,
     });
   } catch (error) {
-    notFound();
+    if (error instanceof NotFoundError) notFound();
+    throw error;
   }
 }
 
@@ -42,7 +44,8 @@ export default async function TagPage({ params, searchParams }: PageProps) {
   try {
     tag = await TagService.getBySlug(slug);
   } catch (error) {
-    notFound();
+    if (error instanceof NotFoundError) notFound();
+    throw error;
   }
 
   const currentPage = parseStrictPage(page);

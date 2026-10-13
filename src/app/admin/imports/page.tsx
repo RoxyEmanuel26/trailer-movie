@@ -7,19 +7,21 @@ import { BulkImportPanel } from "@/components/admin/imports/BulkImportPanel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImportBatchService } from "@/lib/services/ImportBatchService"
 import { isLocalImportMode } from "@/lib/jobs/execution-mode"
+import { readImportMonitoring } from "@/lib/import-monitoring"
+import { logger } from "@/lib/logger"
 
 export default async function ImportsPage() {
   const localMode = isLocalImportMode()
   // Fetch existing jobs on server load
-  const [jobsData, batches] = await Promise.all([
-    ImportManagerService.listJobs({ take: 100, includeCompleted: false }),
-    ImportBatchService.list(),
-  ])
+  const jobsData = await readImportMonitoring(() =>
+    ImportManagerService.listJobs({ take: 100, includeCompleted: false, includeTotal: false }))
+  const batches = await readImportMonitoring(() => ImportBatchService.list())
+  if (!jobsData || !batches) logger.warn('Import monitoring read deferred; client will retry')
   // Keep terminal audit rows out of the active queue. Filtering the new enum
   // values in plain JavaScript also keeps dev hot reload safe when a running
   // process briefly still has the previous generated Prisma enum module.
-  const initialJobs = jobsData.data.filter((job) => !['COMPLETED', 'SKIPPED', 'CANCELED'].includes(job.status))
-  const initialBatches = batches.map((batch) => ({
+  const initialJobs = (jobsData?.data || []).filter((job) => !['COMPLETED', 'SKIPPED', 'CANCELED'].includes(job.status))
+  const initialBatches = (batches || []).map((batch) => ({
     ...batch,
     startDate: batch.startDate.toISOString(),
     endDate: batch.endDate.toISOString(),
@@ -49,11 +51,11 @@ export default async function ImportsPage() {
         </TabsContent>
 
         <TabsContent value="bulk" className="mt-0 outline-none">
-          <BulkImportPanel initialBatches={initialBatches} localMode={localMode} />
+          <BulkImportPanel initialBatches={initialBatches} initialUnavailable={!batches} localMode={localMode} />
         </TabsContent>
         
         <TabsContent value="queue" className="mt-0 outline-none">
-          <ImportQueueTable initialJobs={initialJobs} localMode={localMode} />
+          <ImportQueueTable initialJobs={initialJobs} initialUnavailable={!jobsData} localMode={localMode} />
         </TabsContent>
       </Tabs>
     </div>

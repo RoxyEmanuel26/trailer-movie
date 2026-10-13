@@ -6,6 +6,7 @@ import { MovieService } from '@/lib/services/MovieService';
 import { CatalogPage } from '@/components/public/CatalogPage';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { catalogInsightFacts } from '@/lib/catalog-insights';
+import { NotFoundError } from '@/lib/errors';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -27,7 +28,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       indexable: total >= 3 && Boolean(genre.description?.trim()),
     });
   } catch (error) {
-    notFound();
+    if (error instanceof NotFoundError) notFound();
+    throw error;
   }
 }
 
@@ -41,7 +43,8 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
   try {
     genre = await GenreService.getBySlug(slug);
   } catch (error) {
-    notFound();
+    if (error instanceof NotFoundError) notFound();
+    throw error;
   }
 
   const currentPage = parseStrictPage(page);

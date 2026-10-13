@@ -257,7 +257,9 @@ test('legacy failed P2028 batches are recovered without touching other failures'
 
 test('queue listing excludes completed history unless it is explicitly requested', async () => {
   const capturedWhere: unknown[] = [];
+  let activeSql = '';
   const db = {
+    $queryRaw: async (query: { sql: string }) => { activeSql = query.sql; return []; },
     importJob: {
       findMany: async ({ where }: { where: unknown }) => {
         capturedWhere.push(where);
@@ -272,7 +274,7 @@ test('queue listing excludes completed history unless it is explicitly requested
 
   await ImportRepository.list({ take: 50, includeCompleted: false }, db);
   assert.deepEqual(capturedWhere[0], { status: { notIn: ['COMPLETED', 'SKIPPED', 'CANCELED'] } });
-  assert.deepEqual(capturedWhere[1], { status: { notIn: ['COMPLETED', 'SKIPPED', 'CANCELED'] } });
+  assert.match(activeSql, /NOT IN \('COMPLETED', 'SKIPPED', 'CANCELED'\)/);
 
   capturedWhere.length = 0;
   await ImportRepository.list({ take: 50, status: ImportJobStatus.COMPLETED }, db);

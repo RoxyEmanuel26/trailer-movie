@@ -125,6 +125,7 @@ export function MovieExtraInfo({
                         }
                         alt={company.name}
                         fill
+                        sizes="40px"
                         className="object-contain p-1"
                       />
                     </div>

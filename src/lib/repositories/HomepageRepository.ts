@@ -3,6 +3,7 @@ import { prisma } from '../prisma';
 import { DbClient } from './base.types';
 import { AnalyticsRepository } from './AnalyticsRepository';
 import { chooseDailyHero, rankTrendingCandidates } from '../homepage-ranking';
+import { runBoundedQueries } from '../bounded-queries';
 
 const homepageMovieInclude = {
   genres: { include: { genre: true } },
@@ -13,15 +14,31 @@ const homepageMovieInclude = {
   },
 } satisfies Prisma.MovieInclude;
 
+// The ranking pools do not need the full Movie row (large text and JSON fields).
+const homepageMovieSelect = {
+  id: true,
+  title: true,
+  slug: true,
+  posterUrl: true,
+  backdropUrl: true,
+  synopsis: true,
+  releaseDate: true,
+  runtimeMinutes: true,
+  voteAverage: true,
+  voteCount: true,
+  popularity: true,
+  status: true,
+  deletedAt: true,
+  importQualityStatus: true,
+  youtubeTrailerId: true,
+  ...homepageMovieInclude,
+} satisfies Prisma.MovieSelect;
+
 const publicHomepageMovieWhere: Prisma.MovieWhereInput = {
   status: 'PUBLISHED',
   deletedAt: null,
   importQualityStatus: 'READY',
   posterUrl: { not: null },
-  OR: [
-    { youtubeTrailerId: { not: null } },
-    { trailers: { some: { sourceType: 'YOUTUBE', status: 'ACTIVE' } } },
-  ],
 };
 
 const SYSTEM_SECTION_KEYS = {
@@ -200,42 +217,45 @@ export class HomepageRepository {
       AND: [publicHomepageMovieWhere, { releaseDate: { not: null, lte: now } }],
     };
 
-    const [configuredSections, featuredItems, signals, systemGenres, popularCandidates, latestCandidates, browseGenres] = await Promise.all([
-      this.listSections(db),
-      this.listFeaturedItems(db),
-      AnalyticsRepository.getHomepageEngagementSignals(sevenDaysAgo, db),
-      db.genre.findMany({
-        where: { slug: { in: ['horror', 'drama', 'comedy'] } },
-        select: { id: true, name: true, slug: true },
-      }),
-      db.movie.findMany({
+    const [popularCandidates, latestCandidates, configuredSections, featuredItems, signals, systemGenres, browseGenres] = await runBoundedQueries([
+      () => db.movie.findMany({
         where: releasedWhere,
         orderBy: [{ popularity: 'desc' }, { voteCount: 'desc' }],
         take: 240,
-        include: homepageMovieInclude,
+        select: homepageMovieSelect,
       }),
-      db.movie.findMany({
+      () => db.movie.findMany({
         where: releasedWhere,
         orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
         take: 60,
-        include: homepageMovieInclude,
+        select: homepageMovieSelect,
       }),
-      db.genre.findMany({
-        where: { movies: { some: { movie: releasedWhere } } },
-        include: {
-          _count: { select: { movies: { where: { movie: releasedWhere } } } },
-        },
+      () => this.listSections(db),
+      () => this.listFeaturedItems(db),
+      () => AnalyticsRepository.getHomepageEngagementSignals(sevenDaysAgo, db),
+      () => db.genre.findMany({
+        where: { slug: { in: ['horror', 'drama', 'comedy'] } },
+        select: { id: true, name: true, slug: true },
       }),
-    ]);
+      () => db.genre.findMany({
+        select: { id: true, name: true, slug: true },
+        orderBy: { name: 'asc' },
+      }),
+    ] as const, 2);
 
     const activeSignalIds = [...signals.keys()];
     const activeCandidates = activeSignalIds.length
       ? await db.movie.findMany({
           where: { AND: [releasedWhere, { id: { in: activeSignalIds } }] },
-          include: homepageMovieInclude,
+          select: homepageMovieSelect,
         })
       : [];
-    const candidateMap = new Map([...popularCandidates, ...activeCandidates].map((movie) => [movie.id, movie]));
+    // Check the effective trailer after fetching a small indexed candidate pool.
+    // The relation OR here forced expensive scans of the entire movie catalog.
+    const eligibleLatestCandidates = latestCandidates.filter(isEffectiveHomepageMovie);
+    const candidateMap = new Map([...popularCandidates, ...activeCandidates]
+      .filter(isEffectiveHomepageMovie)
+      .map((movie) => [movie.id, movie]));
     const ranked = rankTrendingCandidates(
       [...candidateMap.values()].map((movie) => ({
         ...movie,
@@ -252,27 +272,27 @@ export class HomepageRepository {
       && (!item.endDate || item.endDate >= now),
     );
     const automaticHero = chooseDailyHero(ranked.filter((movie) => Boolean(movie.backdropUrl)), now);
-    const hero = configuredHero?.movie || automaticHero || ranked[0] || latestCandidates[0] || null;
+    const hero = configuredHero?.movie || automaticHero || ranked[0] || eligibleLatestCandidates[0] || null;
 
     const genresBySlug = new Map(systemGenres.map((genre) => [genre.slug, genre]));
     const genrePools = new Map<string, typeof latestCandidates>();
-    await Promise.all(
-      ['horror', 'drama', 'comedy'].map(async (slug) => {
+    await runBoundedQueries(
+      ['horror', 'drama', 'comedy'].map((slug) => async () => {
         const genre = genresBySlug.get(slug);
         if (!genre) return;
         const movies = await db.movie.findMany({
           where: { AND: [releasedWhere, { genres: { some: { genreId: genre.id } } }] },
           orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
           take: 60,
-          include: homepageMovieInclude,
+          select: homepageMovieSelect,
         });
-        genrePools.set(slug, movies);
-      }),
+        genrePools.set(slug, movies.filter(isEffectiveHomepageMovie));
+      }), 2,
     );
 
     const defaults = [
       { key: SYSTEM_SECTION_KEYS.trending, title: 'Trending now', type: 'AUTO_TRENDING' as const, sortOrder: 10, source: ranked, viewAllLink: '/popular/most-popular' },
-      { key: SYSTEM_SECTION_KEYS.latest, title: 'Latest releases', type: 'AUTO_RECENT' as const, sortOrder: 20, source: latestCandidates, viewAllLink: '/popular/latest-releases' },
+      { key: SYSTEM_SECTION_KEYS.latest, title: 'Latest releases', type: 'AUTO_RECENT' as const, sortOrder: 20, source: eligibleLatestCandidates, viewAllLink: '/popular/latest-releases' },
       { key: SYSTEM_SECTION_KEYS.horror, title: 'Latest in Horror', type: 'GENRE_BASED' as const, sortOrder: 30, source: genrePools.get('horror') || [], genre: genresBySlug.get('horror'), viewAllLink: '/genre/horror' },
       { key: SYSTEM_SECTION_KEYS.drama, title: 'Latest in Drama', type: 'GENRE_BASED' as const, sortOrder: 40, source: genrePools.get('drama') || [], genre: genresBySlug.get('drama'), viewAllLink: '/genre/drama' },
       { key: SYSTEM_SECTION_KEYS.comedy, title: 'Latest in Comedy', type: 'GENRE_BASED' as const, sortOrder: 50, source: genrePools.get('comedy') || [], genre: genresBySlug.get('comedy'), viewAllLink: '/genre/comedy' },
@@ -327,10 +347,7 @@ export class HomepageRepository {
       if (movies.length) sections.push({ ...definition, movies, viewAllLink });
     }
 
-    const genres = browseGenres
-      .filter((genre) => genre._count.movies > 0)
-      .sort((left, right) => right._count.movies - left._count.movies || left.name.localeCompare(right.name))
-      .slice(0, 12);
+    const genres = browseGenres;
 
     return {
       hero,

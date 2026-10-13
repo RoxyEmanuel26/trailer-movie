@@ -1,7 +1,8 @@
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { hasValidRevalidationSecret, isAllowedRevalidationPath } from '@/lib/revalidation';
+import { HOMEPAGE_CATALOG_TAG } from '@/lib/homepage-cache';
 
 const payloadSchema = z.object({
   scope: z.enum(['catalog', 'homepage']).default('catalog'),
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
   };
 
   invalidate('/');
+  revalidateTag(HOMEPAGE_CATALOG_TAG, 'max');
   revalidatePath('/opengraph-image', 'page');
   if (parsed.data.scope === 'catalog') {
     // Do not evict every watch/person page on each import batch. Those pages

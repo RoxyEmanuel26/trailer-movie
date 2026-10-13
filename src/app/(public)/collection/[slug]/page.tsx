@@ -9,6 +9,7 @@ import { Pagination } from '@/components/public/Pagination';
 import { Layers } from 'lucide-react';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
+import { NotFoundError } from '@/lib/errors';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -31,7 +32,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       indexable: total >= 3 && Boolean(collection.description?.trim()),
     });
   } catch (error) {
-    notFound();
+    if (error instanceof NotFoundError) notFound();
+    throw error;
   }
 }
 
@@ -45,7 +47,8 @@ export default async function CollectionPage({ params, searchParams }: PageProps
   try {
     collection = await CollectionService.getBySlug(slug);
   } catch (error) {
-    notFound();
+    if (error instanceof NotFoundError) notFound();
+    throw error;
   }
 
   const currentPage = parseStrictPage(page);

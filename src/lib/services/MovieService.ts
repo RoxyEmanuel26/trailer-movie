@@ -5,10 +5,19 @@ import { requireAdmin } from '../auth/utils';
 import { prisma } from '../prisma';
 import type { Prisma } from '@prisma/client';
 import { moviePath, publicMovieSlug } from '../public-routes';
+import { unstable_cache } from 'next/cache';
+import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 
 const RELATED_MOVIE_LIMIT = 8;
+const cachedCatalogStats = unstable_cache(
+  (filters: Parameters<typeof MovieRepository.getCatalogStats>[0]) => MovieRepository.getCatalogStats(filters),
+  ['public-catalog-statistics-v1'],
+  { revalidate: 300, tags: [HOMEPAGE_CATALOG_TAG] },
+);
 
 export class MovieService {
+  static getPopularHubCounts = cache(async () => MovieRepository.getPopularHubCounts());
+
   static countOriginGroups = cache(async (
     origins: Array<{ slug: string; countryCodes: string[]; languageCodes: string[] }>,
   ) => MovieRepository.countOriginGroups(origins));
@@ -47,8 +56,9 @@ export class MovieService {
         canonicalPath: moviePath(movie.slug),
         shouldRedirect: publicMovieSlug(movie.slug) !== routeParam,
       };
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof NotFoundError) return null;
+      throw error;
     }
   });
 
@@ -256,6 +266,6 @@ export class MovieService {
   }
 
   static async getCatalogStats(filters: Parameters<typeof MovieRepository.getCatalogStats>[0]) {
-    return MovieRepository.getCatalogStats(filters);
+    return cachedCatalogStats(filters);
   }
 }

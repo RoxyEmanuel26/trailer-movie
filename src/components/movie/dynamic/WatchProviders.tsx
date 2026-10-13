@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
+import { providerRegion, providerRegionCodes } from '@/lib/provider-region';
 
 export interface WatchProvidersProps {
   providers?: any;
@@ -209,6 +210,11 @@ function getProviderScore(normalizedName: string, displayPriority?: number): num
 export function WatchProviders({ providers, links, movieSlug, movieTitle }: WatchProvidersProps) {
   const [filter, setFilter] = React.useState<'all' | 'stream' | 'rent_buy'>('all');
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const [preferredCountry, setPreferredCountry] = React.useState('US');
+  const countryCodes = providerRegionCodes(links);
+  const countryCode = providerRegion(countryCodes, preferredCountry);
+  const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
+  const regionalLinks = countryCode ? links?.filter((link) => link.countryCode === countryCode) : links;
 
   const effectiveTitle = movieTitle?.trim() || movieSlug?.replace(/-/g, ' ') || 'Movie';
 
@@ -216,8 +222,8 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
   const providerMap = new Map<string, UnifiedProvider>();
 
   // A. Parse from database relations (`links`)
-  if (links && Array.isArray(links) && links.length > 0) {
-    for (const l of links) {
+  if (regionalLinks && Array.isArray(regionalLinks) && regionalLinks.length > 0) {
+    for (const l of regionalLinks) {
       if (!l.provider) continue;
       const rawName = l.provider.name;
       const normalized = normalizeProviderName(rawName);
@@ -331,12 +337,22 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
       <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
         <div>
           <h3 id="watch-providers-heading" className="text-base font-bold tracking-tight text-foreground">Available on</h3>
-          <p className="mt-1 text-xs leading-4 text-muted-foreground">Watch directly on official platforms</p>
+          <p className="mt-1 text-xs leading-4 text-muted-foreground">Check streaming, rental and purchase options</p>
         </div>
         <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary">
           {allProviders.length} {allProviders.length === 1 ? 'service' : 'services'}
         </span>
       </div>
+
+      {countryCodes.length ? (
+        <label className="mx-4 mb-3 grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <span>Viewing country</span>
+          <select aria-label="Viewing country" value={countryCode} onChange={(event) => { setPreferredCountry(event.target.value); setFilter('all'); setIsExpanded(false); }} className="min-h-11 min-w-0 w-full rounded-xl border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {countryCodes.map((code) => <option key={code} value={code}>{countryNames.of(code) || code}</option>)}
+          </select>
+        </label>
+      ) : null}
+      <p className="px-4 pb-3 text-xs leading-5 text-muted-foreground">Availability may change. Confirm access and pricing with the service.</p>
 
       {/* Filter Tabs if both stream and rent/buy exist */}
       {streamCount > 0 && rentBuyCount > 0 && (
@@ -394,8 +410,8 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
               href={provider.directUrl}
               target="_blank"
               rel="noopener noreferrer"
-              title={`Watch "${effectiveTitle}" on ${provider.name} ↗`}
-              aria-label={`Watch ${effectiveTitle} on ${provider.name} (${badgeText})`}
+              title={`Find "${effectiveTitle}" on ${provider.name} ↗`}
+              aria-label={`Find ${effectiveTitle} on ${provider.name} (${badgeText})`}
               className="group relative flex min-h-[3.75rem] min-w-0 items-center gap-2 rounded-xl border bg-background p-2 shadow-xs transition-[border-color,background-color,transform] hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.03] active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transform-none sm:min-h-16 sm:gap-2.5 sm:p-2.5"
             >
               {/* Logo / Thumbnail */}

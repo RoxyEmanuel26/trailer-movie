@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { DbClient } from './base.types';
+import { catalogStatsQuery } from '../catalog-stats-query';
 
 export interface CatalogFilters {
   search?: string;
@@ -54,6 +55,19 @@ function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
 }
 
 export class MovieRepository {
+  static async getPopularHubCounts(now = new Date(), db: DbClient = prisma) {
+    // The hub only displays counts. Do not fetch full movie relations or run
+    // Bayesian ranking just to count three links on a small connection pool.
+    const rows = await db.$queryRaw<Array<{ mostPopular: number; topRated: number; latestReleases: number }>>(Prisma.sql`
+      SELECT COUNT(*)::int AS "mostPopular",
+        COUNT(*) FILTER (WHERE "voteAverage" IS NOT NULL AND "voteCount" >= 50)::int AS "topRated",
+        COUNT(*) FILTER (WHERE "releaseDate" <= ${now})::int AS "latestReleases"
+      FROM "public"."movies"
+      WHERE "status" = 'PUBLISHED' AND "deletedAt" IS NULL
+    `);
+    return rows[0] || { mostPopular: 0, topRated: 0, latestReleases: 0 };
+  }
+
   static async countOriginGroups(
     origins: Array<{ slug: string; countryCodes: string[]; languageCodes: string[] }>,
     db: DbClient = prisma,
@@ -290,39 +304,12 @@ export class MovieRepository {
   }
 
   static async getCatalogStats(filters: CatalogFilters, db: DbClient = prisma) {
-    const where = buildCatalogWhere({ ...filters, status: 'PUBLISHED' });
-    const [summary, genreGroups, highlights] = await Promise.all([
-      db.movie.aggregate({
-        where,
-        _count: { _all: true },
-        _min: { releaseDate: true },
-        _max: { releaseDate: true },
-      }),
-      db.movieGenre.groupBy({
-        by: ['genreId'],
-        where: { movie: where },
-        _count: { genreId: true },
-        orderBy: { _count: { genreId: 'desc' } },
-        take: 3,
-      }),
-      db.movie.findMany({
-        where,
-        orderBy: [{ popularity: 'desc' }, { voteAverage: 'desc' }, { id: 'asc' }],
-        take: 3,
-        select: { title: true, slug: true, voteAverage: true },
-      }),
-    ]);
-    const genres = genreGroups.length
-      ? await db.genre.findMany({ where: { id: { in: genreGroups.map((group) => group.genreId) } }, select: { id: true, name: true } })
-      : [];
-    const genreNames = new Map(genres.map((genre) => [genre.id, genre.name]));
-    return {
-      total: summary._count._all,
-      earliestYear: summary._min.releaseDate?.getUTCFullYear() || null,
-      latestYear: summary._max.releaseDate?.getUTCFullYear() || null,
-      dominantGenres: genreGroups.flatMap((group) => genreNames.has(group.genreId) ? [{ name: genreNames.get(group.genreId)!, count: group._count.genreId }] : []),
-      highlights,
-    };
+    const rows = await db.$queryRaw<Array<{
+      total: number; earliestYear: number | null; latestYear: number | null;
+      dominantGenres: Array<{ name: string; count: number }>;
+      highlights: Array<{ title: string; slug: string; voteAverage: number | null }>;
+    }>>(catalogStatsQuery(filters));
+    return rows[0] || { total: 0, earliestYear: null, latestYear: null, dominantGenres: [], highlights: [] };
   }
 
   static async searchTopRated(

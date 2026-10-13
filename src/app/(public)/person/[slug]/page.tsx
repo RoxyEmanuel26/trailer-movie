@@ -74,13 +74,15 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
   const personUrl = absoluteUrl(canonicalPath);
   const jsonLd = [
     {
-      '@type': 'ProfilePage',
+      // These are catalog subjects, not affiliated creators or user profiles.
+      '@type': 'WebPage',
       '@id': `${personUrl}#webpage`,
       url: personUrl,
       name: person.name,
       description: person.biography || `${person.name} movie credits and biography on MovieFlix.`,
       dateModified: person.updatedAt.toISOString(),
       isPartOf: { '@id': `${absoluteUrl('/')}#website` },
+      publisher: { '@id': `${absoluteUrl('/')}#organization` },
       mainEntity: { '@id': `${personUrl}#person` },
     },
     { ...personNode, '@id': `${personUrl}#person`, mainEntityOfPage: { '@id': `${personUrl}#webpage` } },
@@ -126,6 +128,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
                 alt={person.name}
                 fill
                 priority
+                sizes="(max-width: 639px) 208px, (max-width: 767px) 272px, (max-width: 1023px) 30vw, 264px"
                 className="object-cover"
               />
             ) : (
@@ -268,6 +271,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
                         src={`https://image.tmdb.org/t/p/w500${m.poster_path}`}
                         alt={m.title}
                         fill
+                        sizes="(max-width: 639px) 50vw, (max-width: 1023px) 33vw, 20vw"
                         className="object-cover transition-transform duration-300 group-hover:scale-105"
                       />
                     </div>

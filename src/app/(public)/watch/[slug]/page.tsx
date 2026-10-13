@@ -19,6 +19,7 @@ import { JsonLd } from '@/components/seo/JsonLd';
 import { absoluteUrl, normalizeMetaDescription } from '@/lib/site-config';
 import { ORIGIN_CATALOG } from '@/lib/public-catalog';
 import { EntityViewTracker } from '@/components/public/EntityViewTracker';
+import { trailerSchema } from '@/lib/trailer-schema';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -36,6 +37,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     description: normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title}, explore its cast and crew, and find where it is available.`),
     image: movie.backdropUrl || movie.posterUrl || undefined,
     path: canonicalPath,
+    indexable: movie.importQualityStatus === 'READY',
   });
 }
 
@@ -101,11 +103,10 @@ export default async function MovieDetailPage({ params }: PageProps) {
   }
   const otherCrew = Array.from(crewMap.values());
 
-  const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
+  const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
   const primaryTrailer = movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE' && trailer.isPrimary)
     || movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE');
   const youtubeId = primaryTrailer?.sourceId || movie.youtubeTrailerId;
-  const displayedReviews = (movie.movieReviews?.length ? movie.movieReviews : (movie.reviews as any[]) || []).slice(0, 5);
   const movieUrl = absoluteUrl(canonicalPath);
   const description = normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title} and explore its cast, crew, and viewing information.`);
   const matchingOrigins = ORIGIN_CATALOG.filter((origin) =>
@@ -128,13 +129,11 @@ export default async function MovieDetailPage({ params }: PageProps) {
         duration: movie.runtimeMinutes ? `PT${movie.runtimeMinutes}M` : undefined,
         contentRating: movie.ageRating || movie.mpaaRating || undefined,
         genre: movie.genres.map(({ genre }) => genre.name),
-        director: directors.map(({ person }) => ({ '@type': 'Person', name: person.name, url: absoluteUrl(personPath(person.slug)) })),
-        actor: cast.map(({ person }) => ({ '@type': 'Person', name: person.name, url: absoluteUrl(personPath(person.slug)) })),
+        director: directors.map(({ person }) => ({ '@type': 'Person', '@id': `${absoluteUrl(personPath(person.slug))}#person`, name: person.name, url: absoluteUrl(personPath(person.slug)) })),
+        actor: cast.map(({ person }) => ({ '@type': 'Person', '@id': `${absoluteUrl(personPath(person.slug))}#person`, name: person.name, url: absoluteUrl(personPath(person.slug)) })),
         productionCompany: movie.companies.map(({ company }) => ({ '@type': 'Organization', name: company.name })),
         keywords: movie.keywords.map(({ keyword }) => keyword.name).join(', ') || undefined,
-        aggregateRating: movie.voteAverage && movie.voteCount ? { '@type': 'AggregateRating', ratingValue: movie.voteAverage.toFixed(1), ratingCount: movie.voteCount, bestRating: 10, worstRating: 1 } : undefined,
-        review: displayedReviews.map((review: any) => ({ '@type': 'Review', author: { '@type': 'Person', name: review.author }, datePublished: (review.createdAt || review.created_at) ? new Date(review.createdAt || review.created_at).toISOString() : undefined, reviewBody: review.content, reviewRating: (review.rating || review.author_details?.rating) ? { '@type': 'Rating', ratingValue: review.rating || review.author_details?.rating, bestRating: 10 } : undefined })),
-        trailer: youtubeId ? { '@type': 'VideoObject', name: primaryTrailer?.title || `${movie.title} trailer`, description, thumbnailUrl: primaryTrailer?.thumbnailUrl || `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`, embedUrl: `https://www.youtube.com/embed/${youtubeId}`, uploadDate: (primaryTrailer?.publishedDate || movie.releaseDate)?.toISOString() } : undefined,
+        trailer: trailerSchema({ videoId: youtubeId, title: primaryTrailer?.title || `${movie.title} trailer`, description, thumbnailUrl: primaryTrailer?.thumbnailUrl, publishedDate: primaryTrailer?.publishedDate }),
       },
     ],
   };

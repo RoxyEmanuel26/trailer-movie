@@ -2,9 +2,51 @@ import { HomepageRepository } from '../repositories/HomepageRepository';
 import { Prisma } from '@prisma/client';
 import { cache } from 'react';
 import { requireAdmin } from '../auth/utils';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
+import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
+import { isTransientDatabaseError } from '../database-errors';
+import { logger } from '../logger';
+import { loadPublicDataWithSnapshot } from '../public-catalog-snapshot';
+
+type SmartHomepageData = Awaited<ReturnType<typeof HomepageRepository.getSmartHomepageData>>;
+
+function isSmartHomepageData(value: unknown): value is SmartHomepageData {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return (data.hero === null || (typeof data.hero === 'object' && data.hero !== null
+      && typeof (data.hero as Record<string, unknown>).slug === 'string'
+      && Array.isArray((data.hero as Record<string, unknown>).genres)))
+    && Array.isArray(data.sections)
+    && data.sections.every((section) => section && typeof section === 'object'
+      && Array.isArray((section as Record<string, unknown>).movies))
+    && Array.isArray(data.genres)
+    && Array.isArray(data.trending);
+}
+
+const unavailableHomepage: Omit<SmartHomepageData, 'hero'> & { hero: null } = {
+  hero: null,
+  heroHeadline: null,
+  heroBackdrop: null,
+  sections: [],
+  genres: [],
+  trending: [],
+};
+let lastHomepageWarningAt = 0;
+
+function warnHomepageFallback(message: string) {
+  if (Date.now() - lastHomepageWarningAt < 60_000) return;
+  lastHomepageWarningAt = Date.now();
+  logger.warn(message);
+}
+
+const getCachedSmartHomepageData = unstable_cache(
+  () => loadPublicDataWithSnapshot('homepage-v1', () => HomepageRepository.getSmartHomepageData(), isSmartHomepageData),
+  ['smart-homepage-v3'],
+  { revalidate: 300, tags: [HOMEPAGE_CATALOG_TAG] },
+);
 
 function revalidateHomepage() {
+  revalidateTag(HOMEPAGE_CATALOG_TAG, { expire: 0 });
   revalidatePath('/', 'page');
   revalidatePath('/opengraph-image', 'page');
   revalidatePath('/sitemap.xml', 'page');
@@ -118,6 +160,14 @@ export class HomepageService {
   });
 
   static getSmartHomepageData = cache(async () => {
-    return HomepageRepository.getSmartHomepageData();
+    try {
+      const result = await getCachedSmartHomepageData();
+      if (result.source === 'snapshot') warnHomepageFallback('Homepage database unavailable; serving last valid catalog snapshot');
+      return { ...result.data, availability: result.source } as const;
+    } catch (error) {
+      if (!isTransientDatabaseError(error)) throw error;
+      warnHomepageFallback('Homepage database unavailable and no recent snapshot exists');
+      return { ...unavailableHomepage, availability: 'unavailable' } as const;
+    }
   });
 }

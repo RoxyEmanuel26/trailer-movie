@@ -84,6 +84,7 @@ export class PersonRepository {
       FROM "people" p
       JOIN published_credits pc ON pc."personId" = p."id"
       WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM "seo_pages" s WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap"))
         AND (
           LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
           OR pc."creditCount" >= 3
@@ -110,6 +111,7 @@ export class PersonRepository {
       FROM "people" p
       JOIN published_credits pc ON pc."personId" = p."id"
       WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM "seo_pages" s WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap"))
         AND (
           LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
           OR pc."creditCount" >= 3
@@ -128,6 +130,7 @@ export class PersonRepository {
     const creditCount = new Set(person.movies.map((credit) => credit.movie.id)).size;
     return Boolean(
       person.headshotUrl?.trim() &&
+        creditCount > 0 &&
         ((person.biography?.trim().length || 0) >= 160 || creditCount >= 3)
     );
   }

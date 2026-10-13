@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-12",
+  "site": "https://www.movieflix.site",
+  "scope": "Code audit, official Google documentation, local database read-only diagnostics, sampled local HTTP and browser checks",
+  "rankingGuarantee": false,
+  "indexingEnabledByThisWork": false,
+  "environmentFilesChangedByThisWork": false,
+  "catalogDataChangedByThisWork": false,
+  "validation": {
+    "typescript": "passed",
+    "repositoryLint": "passed",
+    "prismaValidation": "passed",
+    "productionBuild": "passed final source build; 78 static pages generated",
+    "seoTests": { "passed": 39, "failed": 0, "skipped": 1, "skipReason": "Optional live PostgreSQL analytics transaction integration test not enabled" },
+    "importTests": { "passed": 27, "failed": 0 },
+    "fullHttpPreflight": "failed; invalid genre returned HTTP 200 instead of expected 404 through streamed not-found response",
+    "standaloneSitemapHttpPreflight": "failed; sitemap index request exceeded 120 seconds before a response was received",
+    "publicDnsHttps": "not verified; www DNS lookup failed during this audit",
+    "searchConsole": "not verified",
+    "productionCoreWebVitals": "not measured",
+    "concurrentUserCapacity": "not measured"
+  },
+  "sampledProductionBuildBeforeFinalStatisticsOptimization": {
+    "homeMs": 68,
+    "moviesMs": 985,
+    "moviesPage2Ms": 34141,
+    "horrorMs": 101213,
+    "usOriginMs": 75717,
+    "year2025Ms": 9161,
+    "topRatedMs": 28479,
+    "searchMs": 11324,
+    "movieDetailMs": 18212,
+    "personMs": 544,
+    "note": "Single sequential local smoke under ongoing database activity, not p95 or a controlled before/after benchmark"
+  },
+  "finalStatisticsQueryReadOnlySample": {
+    "filter": { "genreSlug": "horror" },
+    "total": 7069,
+    "elapsedMs": 28258,
+    "passesLatencyGoal": false,
+    "year2025Sample": { "total": 8088, "elapsedMs": 6533, "earliestYear": 2025, "latestYear": 2025 },
+    "databaseWaitObserved": "DataFileRead"
+  },
+  "browserSamples": {
+    "movie": "/watch/the-odyssey-1368337",
+    "person": "/person/christopher-nolan-525",
+    "movieWidthsWithoutHorizontalOverflow": [390, 768],
+    "oneMovieH1": true,
+    "canonicalProductionHost": true,
+    "initialYouTubeIframeCount": 0,
+    "importedAggregateRatingSchemaPresent": false,
+    "personGraphTypes": ["WebPage", "Person", "BreadcrumbList"],
+    "imageSizesWarningsFoundAndPatched": true
+  },
+  "remainingLaunchGates": [
+    "Resolve cold catalog query latency and verify under import load",
+    "Resolve and retest real HTTP 404 behavior for invalid streamed content routes",
+    "Verify all sitemap shards and eligible database coverage on a stable release",
+    "Public DNS, HTTPS, canonical redirect and production origin isolation",
+    "Database transport security and exposed credential rotation",
+    "Search Console verification and production-only indexing enable/rebuild"
+  ]
+}

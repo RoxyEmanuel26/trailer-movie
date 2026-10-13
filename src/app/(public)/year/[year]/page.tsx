@@ -17,7 +17,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const [{ year: rawYear }, query] = await Promise.all([params, searchParams]);
   const year = Number(rawYear);
   const years = await MovieService.listPublishedReleaseYears();
-  if (!Number.isInteger(year) || !years.includes(year)) notFound();
+  if (!/^\d{4}$/.test(rawYear) || !Number.isInteger(year) || !years.includes(year)) notFound();
   const page = parseStrictPage(query.page);
   if (!page) notFound();
   const { total } = await MovieService.searchMovies({ releaseYear: year, take: 1 });
@@ -37,7 +37,7 @@ export default async function YearPage({ params, searchParams }: PageProps) {
     MovieService.listPublishedReleaseYears(),
   ]);
   const year = Number(rawYear);
-  if (!Number.isInteger(year) || !years.includes(year)) notFound();
+  if (!/^\d{4}$/.test(rawYear) || !Number.isInteger(year) || !years.includes(year)) notFound();
 
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();

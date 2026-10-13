@@ -44,7 +44,7 @@ export function MovieReviews({ reviews }: { reviews: any[]; movieSlug?: string }
               <div className="flex items-center gap-3 mb-3">
                 <div className="relative w-10 h-10 rounded-full bg-muted overflow-hidden flex items-center justify-center shrink-0 border">
                   {avatar ? (
-                    <Image src={avatar} alt={review.author} fill className="object-cover" />
+                    <Image src={avatar} alt={review.author} fill sizes="40px" className="object-cover" />
                   ) : (
                     <User className="w-5 h-5 text-muted-foreground" />
                   )}
