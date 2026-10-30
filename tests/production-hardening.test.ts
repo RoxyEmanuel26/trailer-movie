@@ -145,9 +145,14 @@ test('pterodactyl release scripts and prisma config load .env.production.local a
   const prismaConfig = await readFile(path.resolve('prisma.config.ts'), 'utf8');
   const tunnelExample = await readFile(path.resolve('deploy/cloudflare/config.example.yml'), 'utf8');
 
+  assert.equal(prepareScript.includes('\r'), false, 'prepare-release.sh must use LF line endings');
+  assert.equal(startScript.includes('\r'), false, 'start-release.sh must use LF line endings');
   assert.match(prismaConfig, /\.env\.production\.local/);
+  assert.match(prepareScript, /pnpm install --frozen-lockfile --prod=false/);
   assert.match(prepareScript, /tsx --env-file=\.env\.production\.local scripts\/warm-sitemap-cache\.ts/);
+  assert.match(prepareScript, /release-sha\.txt/);
   assert.match(startScript, /node --env-file=\.env\.production\.local server\.js/);
+  assert.match(startScript, /release-sha\.txt/);
   assert.match(tunnelExample, /:5060\b/);
   assert.doesNotMatch(tunnelExample, /:5075\b/);
 });

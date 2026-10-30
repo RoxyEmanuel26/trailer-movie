@@ -3,7 +3,17 @@ set -Eeuo pipefail
 
 ROOT="${MOVIEFLIX_ROOT:-/home/container}"
 RELEASES="$ROOT/releases"
+SHARED="$ROOT/shared"
 SHA="${DEPLOY_COMMIT_SHA:-}"
+if [[ -z "$SHA" && -f "$SHARED/release-sha.txt" ]]; then
+  SHA="$(tr -d '[:space:]' < "$SHARED/release-sha.txt")"
+fi
+
+if [[ ! "$SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+  echo "DEPLOY_COMMIT_SHA or $SHARED/release-sha.txt must contain the exact Git commit SHA." >&2
+  exit 1
+fi
+
 TARGET="$RELEASES/$SHA"
 CURRENT="$ROOT/current"
 
@@ -22,7 +32,7 @@ if [[ -L "$CURRENT" ]]; then
 fi
 ln -sfn "$TARGET" "$ROOT/current.next"
 mv -Tf "$ROOT/current.next" "$CURRENT"
-cp "$ROOT/shared/.env.production.local" "$CURRENT/.next/standalone/.env.production.local"
+cp "$SHARED/.env.production.local" "$CURRENT/.next/standalone/.env.production.local"
 
 KEEP_PREVIOUS=""
 if [[ -L "$ROOT/previous" ]]; then KEEP_PREVIOUS="$(readlink -f "$ROOT/previous")"; fi
@@ -36,8 +46,16 @@ done
 
 export NODE_ENV=production
 export HOSTNAME=0.0.0.0
-export PORT="${SERVER_PORT:-${PORT:-3000}}"
+export PORT="${SERVER_PORT:-${PORT:-5060}}"
 export APP_RELEASE_SHA="$SHA"
-export SITEMAP_CACHE_DIR="${SITEMAP_CACHE_DIR:-$ROOT/shared/sitemaps}"
+export SITEMAP_CACHE_DIR="${SITEMAP_CACHE_DIR:-$SHARED/sitemaps}"
+CONTAINER_HOST="$(hostname 2>/dev/null || echo 'unknown')"
+echo "============================================================"
+echo "[MovieFlix] Active release           : $SHA"
+echo "[MovieFlix] Container hostname       : $CONTAINER_HOST"
+echo "[MovieFlix] Listening address        : 0.0.0.0:$PORT"
+echo "[MovieFlix] Tunnel target (internal) : http://$CONTAINER_HOST:$PORT"
+echo "[MovieFlix] Tunnel target (fallback) : http://nano-1.nura.host:$PORT"
+echo "============================================================"
 cd "$CURRENT/.next/standalone"
 exec node --env-file=.env.production.local server.js
