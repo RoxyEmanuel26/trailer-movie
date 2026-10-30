@@ -1,8 +1,15 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { serializeSitemap, serializeSitemapIndex, type SitemapEntry } from './sitemap-xml';
 
 const DEFAULT_CACHE_DIR = path.join(process.cwd(), '.cache', 'sitemaps');
+export const SITEMAP_SNAPSHOT_VERSION = 'v3';
+
+export function sitemapSnapshotKey(id: string) {
+  if (!/^[a-z0-9-]+$/i.test(id)) throw new Error('Invalid sitemap cache key');
+  return `${SITEMAP_SNAPSHOT_VERSION}-${id}`;
+}
 
 function cacheDirectory() {
   return process.env.SITEMAP_CACHE_DIR?.trim() || DEFAULT_CACHE_DIR;
@@ -52,4 +59,41 @@ export async function generateSitemapWithFallback(key: string, generate: () => P
     console.warn('Sitemap snapshot could not be persisted; serving generated XML.');
   }
   return { xml, stale: false };
+}
+
+export interface WarmSitemapSnapshotsInput {
+  siteUrl: string;
+  getMoviePageCount: () => Promise<number>;
+  getPersonPageCount: () => Promise<number>;
+  getCoreEntries: () => Promise<SitemapEntry[]>;
+  getMovieEntries: (page: number) => Promise<SitemapEntry[]>;
+  getPersonEntries: (page: number) => Promise<SitemapEntry[]>;
+}
+
+export async function warmSitemapSnapshots(input: WarmSitemapSnapshotsInput) {
+  const baseUrl = input.siteUrl.replace(/\/+$/, '');
+  const [moviePageCount, personPageCount] = await Promise.all([
+    input.getMoviePageCount(),
+    input.getPersonPageCount(),
+  ]);
+  const urls = [`${baseUrl}/sitemaps/core`];
+  for (let page = 0; page < moviePageCount; page += 1) urls.push(`${baseUrl}/sitemaps/movies-${page}`);
+  for (let page = 0; page < personPageCount; page += 1) urls.push(`${baseUrl}/sitemaps/people-${page}`);
+
+  await writeSitemapSnapshot(sitemapSnapshotKey('sitemap-index'), serializeSitemapIndex(urls));
+  await writeSitemapSnapshot(sitemapSnapshotKey('core'), serializeSitemap(await input.getCoreEntries()));
+
+  for (let page = 0; page < moviePageCount; page += 1) {
+    await writeSitemapSnapshot(
+      sitemapSnapshotKey(`movies-${page}`),
+      serializeSitemap(await input.getMovieEntries(page)),
+    );
+  }
+  for (let page = 0; page < personPageCount; page += 1) {
+    await writeSitemapSnapshot(
+      sitemapSnapshotKey(`people-${page}`),
+      serializeSitemap(await input.getPersonEntries(page)),
+    );
+  }
+  return { moviePageCount, personPageCount };
 }

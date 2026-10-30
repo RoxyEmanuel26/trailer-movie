@@ -44,7 +44,7 @@ pnpm install --frozen-lockfile
 pnpm exec prisma generate
 pnpm exec prisma migrate deploy
 pnpm build
-pnpm exec tsx scripts/warm-sitemap-cache.ts
+pnpm exec tsx --env-file=.env.production.local scripts/warm-sitemap-cache.ts
 
 mkdir -p .next/standalone/.next
 cp -R .next/static .next/standalone/.next/static

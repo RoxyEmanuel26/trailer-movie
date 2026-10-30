@@ -40,4 +40,4 @@ export PORT="${SERVER_PORT:-${PORT:-3000}}"
 export APP_RELEASE_SHA="$SHA"
 export SITEMAP_CACHE_DIR="${SITEMAP_CACHE_DIR:-$ROOT/shared/sitemaps}"
 cd "$CURRENT/.next/standalone"
-exec node server.js
+exec node --env-file=.env.production.local server.js

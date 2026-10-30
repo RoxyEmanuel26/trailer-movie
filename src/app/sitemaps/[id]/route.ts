@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { SeoService } from '@/lib/services/SeoService';
 import { serializeSitemap, sitemapUnavailableResponse, xmlResponse } from '@/lib/sitemap-xml';
-import { generateSitemapWithFallback, readSitemapSnapshot } from '@/lib/sitemap-cache';
+import { generateSitemapWithFallback, readSitemapSnapshot, sitemapSnapshotKey } from '@/lib/sitemap-cache';
 import { hasValidRevalidationSecret } from '@/lib/revalidation';
 import { getSitemapPageCounts } from '@/lib/sitemap-data';
 
@@ -21,9 +21,10 @@ function rethrowNotFound(error: unknown) {
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!/^(?:core|(?:movies|people)-(?:0|[1-9]\d*))$/.test(id)) notFound();
   // Version snapshots when eligibility or shard boundaries change, without
   // changing the public sitemap URLs or serving old overlapping shards.
-  const snapshotKey = `v3-${id}`;
+  const snapshotKey = sitemapSnapshotKey(id);
   const forceRefresh = hasValidRevalidationSecret(request);
 
   if (id === 'core') {

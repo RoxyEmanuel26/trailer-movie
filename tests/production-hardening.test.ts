@@ -4,7 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { hasValidRevalidationSecret, isAllowedRevalidationPath } from '../src/lib/revalidation';
-import { generateSitemapWithFallback, readSitemapSnapshot } from '../src/lib/sitemap-cache';
+import {
+  generateSitemapWithFallback,
+  readSitemapSnapshot,
+  sitemapSnapshotKey,
+  warmSitemapSnapshots,
+} from '../src/lib/sitemap-cache';
 import { hasValidOriginToken, ORIGIN_GATE_HEADER } from '../src/lib/security/origin-gate';
 
 test('origin token rejects missing, wrong, or duplicate values', () => {
@@ -94,4 +99,55 @@ test('valid sitemap XML is served even when snapshot storage is unavailable', as
     else process.env.SITEMAP_CACHE_DIR = previous;
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('sitemap cache warmer writes versioned v3 snapshot keys read by sitemap routes', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'movieflix-sitemap-warm-'));
+  const previous = process.env.SITEMAP_CACHE_DIR;
+  process.env.SITEMAP_CACHE_DIR = directory;
+  try {
+    assert.equal(sitemapSnapshotKey('sitemap-index'), 'v3-sitemap-index');
+    assert.equal(sitemapSnapshotKey('core'), 'v3-core');
+    assert.equal(sitemapSnapshotKey('movies-0'), 'v3-movies-0');
+    assert.equal(sitemapSnapshotKey('people-0'), 'v3-people-0');
+
+    const summary = await warmSitemapSnapshots({
+      siteUrl: 'https://www.movieflix.site',
+      getMoviePageCount: async () => 1,
+      getPersonPageCount: async () => 1,
+      getCoreEntries: async () => [{ url: 'https://www.movieflix.site' }],
+      getMovieEntries: async (page) => [{ url: `https://www.movieflix.site/watch/test-${page}` }],
+      getPersonEntries: async (page) => [{ url: `https://www.movieflix.site/person/test-${page}` }],
+    });
+
+    assert.deepEqual(summary, { moviePageCount: 1, personPageCount: 1 });
+    assert.match((await readSitemapSnapshot(sitemapSnapshotKey('sitemap-index'))) || '', /\/sitemaps\/movies-0/);
+    assert.match((await readSitemapSnapshot(sitemapSnapshotKey('core'))) || '', /https:\/\/www\.movieflix\.site/);
+    assert.match((await readSitemapSnapshot(sitemapSnapshotKey('movies-0'))) || '', /\/watch\/test-0/);
+    assert.match((await readSitemapSnapshot(sitemapSnapshotKey('people-0'))) || '', /\/person\/test-0/);
+
+    const indexRoute = await readFile(path.resolve('src/app/sitemap.xml/route.ts'), 'utf8');
+    const shardRoute = await readFile(path.resolve('src/app/sitemaps/[id]/route.ts'), 'utf8');
+    const warmScript = await readFile(path.resolve('scripts/warm-sitemap-cache.ts'), 'utf8');
+    assert.match(indexRoute, /sitemapSnapshotKey\('sitemap-index'\)/);
+    assert.match(shardRoute, /sitemapSnapshotKey\(id\)/);
+    assert.match(warmScript, /warmSitemapSnapshots\(/);
+  } finally {
+    if (previous === undefined) delete process.env.SITEMAP_CACHE_DIR;
+    else process.env.SITEMAP_CACHE_DIR = previous;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('pterodactyl release scripts and prisma config load .env.production.local and use port 5060', async () => {
+  const prepareScript = await readFile(path.resolve('deploy/pterodactyl/prepare-release.sh'), 'utf8');
+  const startScript = await readFile(path.resolve('deploy/pterodactyl/start-release.sh'), 'utf8');
+  const prismaConfig = await readFile(path.resolve('prisma.config.ts'), 'utf8');
+  const tunnelExample = await readFile(path.resolve('deploy/cloudflare/config.example.yml'), 'utf8');
+
+  assert.match(prismaConfig, /\.env\.production\.local/);
+  assert.match(prepareScript, /tsx --env-file=\.env\.production\.local scripts\/warm-sitemap-cache\.ts/);
+  assert.match(startScript, /node --env-file=\.env\.production\.local server\.js/);
+  assert.match(tunnelExample, /:5060\b/);
+  assert.doesNotMatch(tunnelExample, /:5075\b/);
 });

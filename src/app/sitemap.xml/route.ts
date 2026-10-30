@@ -1,5 +1,5 @@
 import { serializeSitemapIndex, sitemapUnavailableResponse, xmlResponse } from '@/lib/sitemap-xml';
-import { generateSitemapWithFallback, readSitemapSnapshot } from '@/lib/sitemap-cache';
+import { generateSitemapWithFallback, readSitemapSnapshot, sitemapSnapshotKey } from '@/lib/sitemap-cache';
 import { absoluteUrl } from '@/lib/site-config';
 import { getSitemapPageCounts } from '@/lib/sitemap-data';
 import { hasValidRevalidationSecret } from '@/lib/revalidation';
@@ -8,12 +8,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
+    const snapshotKey = sitemapSnapshotKey('sitemap-index');
     const forceRefresh = hasValidRevalidationSecret(request);
     const freshSnapshot = forceRefresh
       ? null
-      : await readSitemapSnapshot('v3-sitemap-index');
+      : await readSitemapSnapshot(snapshotKey);
     if (freshSnapshot) return xmlResponse(freshSnapshot);
-    const result = await generateSitemapWithFallback('v3-sitemap-index', async () => {
+    const result = await generateSitemapWithFallback(snapshotKey, async () => {
       const [moviePageCount, personPageCount] = await getSitemapPageCounts(forceRefresh);
       const sitemapUrls = [absoluteUrl('/sitemaps/core')];
 
