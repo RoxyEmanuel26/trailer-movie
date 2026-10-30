@@ -113,18 +113,16 @@ function rewriteEnvDbTarget(content, newHost, newPort) {
   const configuredPort = dbUrl.port || '5112';
   const gatewayIp = getLinuxGatewayIp();
   const candidates = [
+    [fallbackHost, configuredPort],
+    [dbUrl.hostname, configuredPort],
     [defaultInternalHost, configuredPort],
     [shortInternalHost, configuredPort],
     [defaultInternalHost, '5432'],
     [shortInternalHost, '5432'],
-    ...(dbUrl.hostname !== defaultInternalHost && dbUrl.hostname !== fallbackHost
-      ? [[dbUrl.hostname, configuredPort]]
-      : []),
     ...(gatewayIp ? [[gatewayIp, configuredPort]] : []),
     ['172.18.0.1', configuredPort],
     ['172.17.0.1', configuredPort],
     ['host.docker.internal', configuredPort],
-    [fallbackHost, configuredPort],
   ];
 
   const seen = new Set();
