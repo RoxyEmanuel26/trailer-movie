@@ -20,7 +20,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (!/^\d{4}$/.test(rawYear) || !Number.isInteger(year) || !years.includes(year)) notFound();
   const page = parseStrictPage(query.page);
   if (!page) notFound();
-  const { total } = await MovieService.searchMovies({ releaseYear: year, take: 1 });
+  const { total } = await MovieService.getPublicCatalogPage({
+    page,
+    itemsPerPage: 24,
+    releaseYear: year,
+    orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
+  });
   if (isPageOutOfRange(page, total, 24)) notFound();
   return SeoService.generateMetadata('YearCatalog', rawYear, {
     title: `Movies released in ${year}${page > 1 ? ` — Page ${page}` : ''}`,
@@ -42,9 +47,9 @@ export default async function YearPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const { data: movies, total } = await MovieService.searchMovies({
-    skip: (currentPage - 1) * itemsPerPage,
-    take: itemsPerPage,
+  const { data: movies, total } = await MovieService.getPublicCatalogPage({
+    page: currentPage,
+    itemsPerPage,
     releaseYear: year,
     orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
   });

@@ -214,6 +214,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   <Link
                     key={g.genreId}
                     href={`/genre/${g.genre.slug}`}
+                    prefetch={false}
                     className={badgeVariants({ variant: 'secondary' })}
                   >
                     {g.genre.name}
@@ -229,8 +230,8 @@ export default async function MovieDetailPage({ params }: PageProps) {
               {movie.synopsis || 'A synopsis has not been added yet.'}
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-sm">
-              {year ? <Link href={`/year/${year}`} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">More from {year}</Link> : null}
-              {matchingOrigins.map((origin) => <Link key={origin.slug} href={`/origin/${origin.slug}`} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">{origin.label}</Link>)}
+              {year ? <Link href={`/year/${year}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">More from {year}</Link> : null}
+              {matchingOrigins.map((origin) => <Link key={origin.slug} href={`/origin/${origin.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">{origin.label}</Link>)}
             </div>
           </div>
 
@@ -242,6 +243,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   src={movie.posterUrl}
                   alt={movie.title}
                   fill
+                  priority={!youtubeId}
                   sizes="(max-width: 639px) 160px, (max-width: 1023px) 224px, 25vw"
                   className="object-cover"
                 />
@@ -328,6 +330,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   {directors.map((d) => (
                     <Link
                       href={personPath(d.person.slug)}
+                      prefetch={false}
                       key={d.personId}
                       className="flex min-h-11 items-center gap-3 rounded-full border bg-card pl-1 pr-4 py-1 transition-colors hover:bg-muted/50"
                     >
@@ -361,6 +364,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   {cast.map((c) => (
                     <Link
                       href={personPath(c.person.slug)}
+                      prefetch={false}
                       key={c.personId}
                       className="flex min-h-16 w-[78vw] max-w-[18rem] shrink-0 snap-start items-center gap-3 rounded-xl border bg-card p-2 transition-colors hover:bg-muted/50 sm:w-auto sm:max-w-none"
                     >
@@ -399,6 +403,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                   {otherCrew.map((c) => (
                     <Link
                       href={personPath(c.person.slug)}
+                      prefetch={false}
                       key={c.personId}
                       className="flex min-h-16 w-[78vw] max-w-[18rem] shrink-0 snap-start items-center gap-3 rounded-xl border bg-card p-2 transition-colors hover:bg-muted/50 sm:w-auto sm:max-w-none"
                     >
@@ -441,6 +446,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                     <Link
                       key={c.collectionId}
                       href={`/collection/${c.collection.slug}`}
+                      prefetch={false}
                       className="text-primary hover:underline font-medium"
                     >
                       {c.collection.title}

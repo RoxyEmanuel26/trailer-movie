@@ -25,8 +25,13 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const page = parseStrictPage(query.page);
   if (!page) notFound();
   const { total } = item.slug === 'top-rated'
-    ? await MovieService.searchTopRatedMovies({ take: 1 })
-    : await MovieService.searchMovies({ take: 1, ...(item.slug === 'latest-releases' ? { releaseDateLte: new Date() } : {}) });
+    ? await MovieService.getPublicTopRatedPage(page, 24)
+    : await MovieService.getPublicCatalogPage({
+        page,
+        itemsPerPage: 24,
+        orderBy: item.orderBy,
+        ...(item.slug === 'latest-releases' ? { latestReleasesOnly: true } : {}),
+      });
   if (isPageOutOfRange(page, total, 24)) notFound();
   return SeoService.generateMetadata('PopularCatalog', mode, {
     title: `${item.label} movies${page > 1 ? ` — Page ${page}` : ''}`,
@@ -43,14 +48,14 @@ export default async function PopularPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const paging = { skip: (currentPage - 1) * itemsPerPage, take: itemsPerPage };
   const { data: movies, total } =
     item.slug === 'top-rated'
-      ? await MovieService.searchTopRatedMovies(paging)
-      : await MovieService.searchMovies({
-          ...paging,
+      ? await MovieService.getPublicTopRatedPage(currentPage, itemsPerPage)
+      : await MovieService.getPublicCatalogPage({
+          page: currentPage,
+          itemsPerPage,
           orderBy: item.orderBy,
-          ...(item.slug === 'latest-releases' ? { releaseDateLte: new Date() } : {}),
+          ...(item.slug === 'latest-releases' ? { latestReleasesOnly: true } : {}),
         });
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
   const stats = await MovieService.getCatalogStats({

@@ -97,6 +97,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
     >
       <Link
         href="/movies"
+        prefetch={false}
         className="nav-link"
         aria-current={pathname === '/movies' ? 'page' : undefined}
       >
@@ -117,6 +118,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
             <p className="nav-dropdown-label">Browse every genre</p>
             <Link
               href="/genres"
+              prefetch={false}
               onClick={() => setOpenMenu(null)}
               className="text-xs font-semibold text-primary hover:underline"
             >
@@ -128,6 +130,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
               <Link
                 key={genre.id}
                 href={`/genre/${genre.slug}`}
+                prefetch={false}
                 onClick={() => setOpenMenu(null)}
                 className="nav-dropdown-item"
               >
@@ -148,11 +151,12 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         onClose={() => setOpenMenu(null)}
       >
         <div className="nav-dropdown-surface p-2">
-          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Choose a ranking</p><Link href="/popular" onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Choose a ranking</p><Link href="/popular" prefetch={false} onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
           {POPULAR_CATALOG.map((item) => (
             <Link
               key={item.slug}
               href={`/popular/${item.slug}`}
+              prefetch={false}
               onClick={() => setOpenMenu(null)}
               className="nav-dropdown-item block"
             >
@@ -172,12 +176,13 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         onClose={() => setOpenMenu(null)}
       >
         <div className="nav-dropdown-surface">
-          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Production country or spoken language</p><Link href="/countries" onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Production country or spoken language</p><Link href="/countries" prefetch={false} onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
           <div className="grid grid-cols-2 gap-1">
             {ORIGIN_CATALOG.map((item) => (
               <Link
                 key={item.slug}
                 href={`/origin/${item.slug}`}
+                prefetch={false}
                 onClick={() => setOpenMenu(null)}
                 className="nav-dropdown-item"
               >
@@ -198,12 +203,13 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         onClose={() => setOpenMenu(null)}
       >
         <div className="nav-dropdown-surface">
-          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Browse by release year</p><Link href="/years" onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Browse by release year</p><Link href="/years" prefetch={false} onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
           <div className="grid max-h-[22rem] grid-cols-4 gap-1 overflow-y-auto overscroll-contain pr-1">
             {years.map((year) => (
               <Link
                 key={year}
                 href={`/year/${year}`}
+                prefetch={false}
                 onClick={() => setOpenMenu(null)}
                 className="nav-dropdown-item text-center tabular-nums"
               >

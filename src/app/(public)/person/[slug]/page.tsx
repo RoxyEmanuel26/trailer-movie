@@ -215,6 +215,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
                     <Link
                       key={movie.id}
                       href={moviePath(movie.slug)}
+                      prefetch={false}
                       className="group relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-card p-2 transition-all duration-300 hover:shadow-md active:scale-[.99] [@media(hover:hover)]:hover:scale-[1.02]"
                     >
                       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-muted">

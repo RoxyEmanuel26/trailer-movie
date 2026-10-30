@@ -22,6 +22,7 @@ export function Footer() {
             <li>
               <Link
                 href="/movies"
+                prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"
               >
                 All Movies
@@ -30,6 +31,7 @@ export function Footer() {
             <li>
               <Link
                 href="/genre/action"
+                prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"
               >
                 Action movies
@@ -38,13 +40,14 @@ export function Footer() {
             <li>
               <Link
                 href="/genre/science-fiction"
+                prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"
               >
                 Science fiction
               </Link>
             </li>
             <li>
-              <Link href="/search" className="flex min-h-11 items-center hover:text-foreground">
+              <Link href="/search" prefetch={false} className="flex min-h-11 items-center hover:text-foreground">
                 Advanced Search
               </Link>
             </li>
@@ -83,7 +86,7 @@ export function Footer() {
           <a href="/feed.xml" className="flex min-h-8 items-center hover:text-foreground">
             RSS
           </a>
-          <Link href="/sitemap.xml" className="flex min-h-8 items-center hover:text-foreground">
+          <Link href="/sitemap.xml" prefetch={false} className="flex min-h-8 items-center hover:text-foreground">
             Sitemap
           </Link>
           <AnalyticsPreferencesButton />

@@ -20,7 +20,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     const tag = await TagService.getBySlug(slug);
     const page = parseStrictPage(query.page);
     if (!page) notFound();
-    const { total } = await MovieService.searchMovies({ tagSlug: tag.slug, take: 1 });
+    const { total } = await MovieService.getPublicCatalogPage({
+      page,
+      itemsPerPage: 24,
+      tagSlug: tag.slug,
+      orderBy: { releaseDate: 'desc' },
+    });
     if (isPageOutOfRange(page, total, 24)) notFound();
     return SeoService.generateMetadata('Tag', tag.id, {
       title: `Movies tagged with ${tag.name}${page > 1 ? ` — Page ${page}` : ''}`,
@@ -51,13 +56,11 @@ export default async function TagPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const skip = (currentPage - 1) * itemsPerPage;
 
-  const { data: movies, total: totalMovies } = await MovieService.searchMovies({
+  const { data: movies, total: totalMovies } = await MovieService.getPublicCatalogPage({
+    page: currentPage,
+    itemsPerPage,
     tagSlug: tag.slug,
-    status: 'PUBLISHED',
-    skip,
-    take: itemsPerPage,
     orderBy: { releaseDate: 'desc' },
   });
   if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();

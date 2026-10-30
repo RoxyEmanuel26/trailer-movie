@@ -22,7 +22,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     const collection = await CollectionService.getBySlug(slug);
     const page = parseStrictPage(query.page);
     if (!page) notFound();
-    const { total } = await MovieService.searchMovies({ collectionSlug: collection.slug, take: 1 });
+    const { total } = await MovieService.getPublicCatalogPage({
+      page,
+      itemsPerPage: 24,
+      collectionSlug: collection.slug,
+      orderBy: { releaseDate: 'desc' },
+    });
     if (isPageOutOfRange(page, total, 24)) notFound();
     return SeoService.generateMetadata('Collection', collection.id, {
       title: `${collection.title} Collection${page > 1 ? ` — Page ${page}` : ''}`,
@@ -54,13 +59,11 @@ export default async function CollectionPage({ params, searchParams }: PageProps
   const currentPage = parseStrictPage(page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const skip = (currentPage - 1) * itemsPerPage;
 
-  const { data: movies, total: totalMovies } = await MovieService.searchMovies({
+  const { data: movies, total: totalMovies } = await MovieService.getPublicCatalogPage({
+    page: currentPage,
+    itemsPerPage,
     collectionSlug: collection.slug,
-    status: 'PUBLISHED',
-    skip,
-    take: itemsPerPage,
     orderBy: { releaseDate: 'desc' },
   });
   if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();

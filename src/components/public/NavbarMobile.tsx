@@ -66,6 +66,7 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
           <div className="flex flex-col gap-1">
             <Link
               href="/movies"
+              prefetch={false}
               aria-current={pathname === '/movies' ? 'page' : undefined}
               className={cn(
                 'mobile-nav-link font-semibold',
@@ -82,6 +83,7 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
             >
               <Link
                 href="/genres"
+                prefetch={false}
                 className="mobile-nav-link font-semibold text-primary"
                 onClick={closeMenu}
               >
@@ -91,6 +93,7 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
                 <Link
                   key={genre.id}
                   href={`/genre/${genre.slug}`}
+                  prefetch={false}
                   className={cn(
                     'mobile-nav-link',
                     pathname === `/genre/${genre.slug}` && 'bg-muted text-primary'
@@ -104,11 +107,12 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
             </MobileNavSection>
 
             <MobileNavSection label="Popular" active={pathname.startsWith('/popular')}>
-              <Link href="/popular" className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Popular overview</Link>
+              <Link href="/popular" prefetch={false} className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Popular overview</Link>
               {POPULAR_CATALOG.map((item) => (
                 <Link
                   key={item.slug}
                   href={`/popular/${item.slug}`}
+                  prefetch={false}
                   className={cn(
                     'mobile-nav-link',
                     pathname === `/popular/${item.slug}` && 'bg-muted text-primary'
@@ -122,11 +126,12 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
             </MobileNavSection>
 
             <MobileNavSection label="Countries" active={pathname.startsWith('/origin/') || pathname === '/countries'}>
-              <Link href="/countries" className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Countries overview</Link>
+              <Link href="/countries" prefetch={false} className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Countries overview</Link>
               {ORIGIN_CATALOG.map((item) => (
                 <Link
                   key={item.slug}
                   href={`/origin/${item.slug}`}
+                  prefetch={false}
                   className={cn(
                     'mobile-nav-link',
                     pathname === `/origin/${item.slug}` && 'bg-muted text-primary'
@@ -140,12 +145,13 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
             </MobileNavSection>
 
             <MobileNavSection label="Years" active={pathname.startsWith('/year/') || pathname === '/years'}>
-              <Link href="/years" className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Years overview</Link>
+              <Link href="/years" prefetch={false} className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>Years overview</Link>
               <div className="grid grid-cols-3 gap-1">
                 {years.map((year) => (
                   <Link
                     key={year}
                     href={`/year/${year}`}
+                    prefetch={false}
                     className={cn(
                       'mobile-nav-link text-center tabular-nums',
                       pathname === `/year/${year}` && 'bg-muted text-primary'

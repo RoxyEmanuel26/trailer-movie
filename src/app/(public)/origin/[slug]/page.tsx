@@ -24,10 +24,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (!item) notFound();
   const page = parseStrictPage(query.page);
   if (!page) notFound();
-  const { total } = await MovieService.searchMovies({
+  const { total } = await MovieService.getPublicCatalogPage({
+    page,
+    itemsPerPage: 24,
     countryCodes: item.countryCodes,
     languageCodes: item.languageCodes,
-    take: 1,
+    orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
   });
   if (isPageOutOfRange(page, total, 24)) notFound();
   const description = `Browse published movies connected to ${item.label} by production country or spoken language, with trailers, cast, genres, ratings, and release details.`;
@@ -47,9 +49,9 @@ export default async function OriginPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const { data: movies, total } = await MovieService.searchMovies({
-    skip: (currentPage - 1) * itemsPerPage,
-    take: itemsPerPage,
+  const { data: movies, total } = await MovieService.getPublicCatalogPage({
+    page: currentPage,
+    itemsPerPage,
     countryCodes: item.countryCodes,
     languageCodes: item.languageCodes,
     orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],

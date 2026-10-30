@@ -18,6 +18,21 @@ export interface CatalogFilters {
   minimumVotes?: number;
 }
 
+export const PUBLIC_MOVIE_CARD_SELECT = {
+  id: true,
+  title: true,
+  slug: true,
+  posterUrl: true,
+  releaseDate: true,
+  runtimeMinutes: true,
+  mpaaRating: true,
+  voteAverage: true,
+} satisfies Prisma.MovieSelect;
+
+export type PublicMovieCardRecord = Prisma.MovieGetPayload<{
+  select: typeof PUBLIC_MOVIE_CARD_SELECT;
+}>;
+
 function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
   const where: Prisma.MovieWhereInput = { deletedAt: null };
   const andFilters: Prisma.MovieWhereInput[] = [];
@@ -296,6 +311,68 @@ export class MovieRepository {
         include: {
           genres: { include: { genre: true } },
         },
+      }),
+      db.movie.count({ where }),
+    ]);
+
+    return { data, total };
+  }
+
+  static async findRelatedCandidates(
+    params: {
+      excludeIds: string[];
+      genreIds?: string[];
+      take: number;
+    },
+    db: DbClient = prisma
+  ): Promise<PublicMovieCardRecord[]> {
+    const where: Prisma.MovieWhereInput = {
+      deletedAt: null,
+      status: 'PUBLISHED',
+      id: params.excludeIds.length === 1
+        ? { not: params.excludeIds[0] }
+        : { notIn: params.excludeIds },
+      ...(params.genreIds?.length
+        ? { genres: { some: { genreId: { in: params.genreIds } } } }
+        : {}),
+    };
+
+    return db.movie.findMany({
+      take: params.take,
+      where,
+      orderBy: [
+        { popularity: 'desc' },
+        { releaseDate: 'desc' },
+        { id: 'asc' },
+      ],
+      select: PUBLIC_MOVIE_CARD_SELECT,
+    });
+  }
+
+  static async searchPublicCards(
+    params: {
+      skip?: number;
+      take?: number;
+      orderBy?: Prisma.MovieOrderByWithRelationInput | Prisma.MovieOrderByWithRelationInput[];
+      genreSlug?: string;
+      collectionSlug?: string;
+      tagSlug?: string;
+      countryCodes?: string[];
+      languageCodes?: string[];
+      releaseYear?: number;
+      releaseDateLte?: Date;
+    },
+    db: DbClient = prisma
+  ): Promise<{ data: PublicMovieCardRecord[]; total: number }> {
+    const where = buildCatalogWhere({ ...params, status: 'PUBLISHED' });
+
+    const [data, total] = await Promise.all([
+      db.movie.findMany({
+        skip: params.skip,
+        take: params.take,
+        where,
+        orderBy: params.orderBy || [{ releaseDate: 'desc' }, { popularity: 'desc' }, { id: 'asc' }],
+        select: PUBLIC_MOVIE_CARD_SELECT,
       }),
       db.movie.count({ where }),
     ]);
