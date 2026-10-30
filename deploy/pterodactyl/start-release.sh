@@ -17,7 +17,9 @@ fi
 TARGET="$RELEASES/$SHA"
 CURRENT="$ROOT/current"
 
-"$(dirname "$0")/prepare-release.sh"
+chmod 600 "$SHARED/.env.production.local" 2>/dev/null || true
+chmod +x "$(dirname "$0")"/*.sh 2>/dev/null || true
+bash "$(dirname "$0")/prepare-release.sh"
 
 if [[ ! -f "$TARGET/.release-ready" ]]; then
   echo "Release $SHA is not ready." >&2

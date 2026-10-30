@@ -151,6 +151,7 @@ test('pterodactyl release scripts and prisma config load .env.production.local a
   assert.match(prepareScript, /pnpm install --frozen-lockfile --prod=false/);
   assert.match(prepareScript, /tsx --env-file=\.env\.production\.local scripts\/warm-sitemap-cache\.ts/);
   assert.match(prepareScript, /release-sha\.txt/);
+  assert.match(startScript, /bash "\$\(dirname "\$0"\)\/prepare-release\.sh"/);
   assert.match(startScript, /node --env-file=\.env\.production\.local server\.js/);
   assert.match(startScript, /release-sha\.txt/);
   assert.match(tunnelExample, /:5060\b/);
