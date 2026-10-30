@@ -4,6 +4,11 @@ set -Eeuo pipefail
 ROOT="${MOVIEFLIX_ROOT:-/home/container}"
 RELEASES="$ROOT/releases"
 SHARED="$ROOT/shared"
+
+if [[ -f "$SHARED/env.production" && ! -f "$SHARED/.env.production.local" ]]; then
+  cp -f "$SHARED/env.production" "$SHARED/.env.production.local"
+fi
+
 SHA="${DEPLOY_COMMIT_SHA:-}"
 if [[ -z "$SHA" && -f "$SHARED/release-sha.txt" ]]; then
   SHA="$(tr -d '[:space:]' < "$SHARED/release-sha.txt")"
@@ -34,7 +39,7 @@ if [[ -L "$CURRENT" ]]; then
 fi
 ln -sfn "$TARGET" "$ROOT/current.next"
 mv -Tf "$ROOT/current.next" "$CURRENT"
-cp "$SHARED/.env.production.local" "$CURRENT/.next/standalone/.env.production.local"
+cp -f "$SHARED/.env.production.local" "$CURRENT/.next/standalone/.env.production.local"
 
 KEEP_PREVIOUS=""
 if [[ -L "$ROOT/previous" ]]; then KEEP_PREVIOUS="$(readlink -f "$ROOT/previous")"; fi
