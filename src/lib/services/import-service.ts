@@ -12,6 +12,8 @@ import { logger } from '../logger';
 import { ImportRepository } from '../repositories/ImportRepository';
 import { ImportQualityService } from './ImportQualityService';
 import { TmdbError } from '../tmdb/errors';
+import { moviePath } from '../public-routes';
+import { coreIndexNowPaths, submitIndexNowUrls } from '../indexnow';
 
 // Helpers to prevent P2002 Unique Constraint errors on concurrent batch imports 
 // without relying on try-catch, which breaks SQL transactions in Prisma.
@@ -486,6 +488,9 @@ export class SyncService {
       const quality = usesLegacyQualityGate
         ? await ImportQualityService.evaluateLegacy(savedMovie.id)
         : await ImportQualityService.evaluate(savedMovie.id);
+      if (quality.ready) {
+        void submitIndexNowUrls([moviePath(savedMovie.slug), ...coreIndexNowPaths()]).catch(() => undefined);
+      }
       return { movieId: savedMovie.id, tmdbId, quality, partialIssues };
     } catch (error) {
       if (error instanceof TmdbError && error.status === 404) {

@@ -886,6 +886,7 @@ model MovieWatchProviderLink {
   @@unique([movieId, providerId, countryCode, accessType])
   @@index([movieId])
   @@index([providerId])
+  @@index([providerId, movieId], map: "idx_watch_provider_links_provider_movie")
   @@map("movie_watch_provider_links")
 }
 

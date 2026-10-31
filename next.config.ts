@@ -71,10 +71,6 @@ const nextConfig: NextConfig = {
             key: 'Cross-Origin-Resource-Policy',
             value: 'same-site',
           },
-          ...(process.env.SEO_INDEXING_ENABLED === 'true' ? [] : [{
-            key: 'X-Robots-Tag',
-            value: 'noindex, nofollow',
-          }]),
         ],
       },
     ];

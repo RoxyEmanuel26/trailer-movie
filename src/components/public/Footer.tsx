@@ -30,6 +30,24 @@ export function Footer() {
             </li>
             <li>
               <Link
+                href="/streaming"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Streaming services
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/streaming/netflix"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Movies on Netflix
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/genre/action"
                 prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"
@@ -89,6 +107,9 @@ export function Footer() {
           <Link href="/sitemap.xml" prefetch={false} className="flex min-h-8 items-center hover:text-foreground">
             Sitemap
           </Link>
+          <a href="/llms.txt" className="flex min-h-8 items-center hover:text-foreground">
+            LLMs.txt
+          </a>
           <AnalyticsPreferencesButton />
         </div>
       </div>

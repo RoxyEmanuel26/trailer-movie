@@ -22,6 +22,7 @@
     "db:audit": "npx tsx scripts/audit-database-fields.ts",
     "seo:seed-genres": "npx tsx --env-file=.env scripts/seed-genre-descriptions.ts",
     "seo:warm-sitemaps": "tsx --env-file=.env scripts/warm-sitemap-cache.ts",
+    "db:prune-imports": "tsx --env-file=.env scripts/prune-import-jobs.ts",
     "import:verify": "tsx --env-file=.env scripts/verify-import-pipeline.ts",
     "import:quality:dry-run": "npx tsx --env-file=.env scripts/backfill-import-quality.ts --dry-run",
     "import:quality:apply": "npx tsx --env-file=.env scripts/backfill-import-quality.ts --apply",

@@ -16,37 +16,46 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL(siteConfig.url),
-  title: {
-    default: `${siteConfig.name} — Discover movies, trailers and where to watch`,
-    template: `%s | ${siteConfig.name}`,
-  },
-  description: siteConfig.description,
-  applicationName: siteConfig.name,
-  manifest: '/manifest.webmanifest',
-  icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/brand/movieflix-mark.svg', type: 'image/svg+xml' },
-    ],
-    apple: [{ url: '/brand/movieflix-apple-touch-icon.png', sizes: '180x180' }],
-  },
-  robots: {
-    index: siteConfig.indexingEnabled,
-    follow: siteConfig.indexingEnabled,
-    googleBot: {
-      index: siteConfig.indexingEnabled,
-      follow: siteConfig.indexingEnabled,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-      'max-video-preview': -1,
+export async function generateMetadata(): Promise<Metadata> {
+  const indexingEnabled = siteConfig.indexingEnabled;
+  const googleVerification = siteConfig.googleVerification;
+  return {
+    metadataBase: new URL(siteConfig.url),
+    title: {
+      default: `${siteConfig.name} — Discover movies, trailers and where to watch`,
+      template: `%s | ${siteConfig.name}`,
     },
-  },
-  verification: siteConfig.googleVerification
-    ? { google: siteConfig.googleVerification }
-    : undefined,
-};
+    description: siteConfig.description,
+    applicationName: siteConfig.name,
+    manifest: '/manifest.webmanifest',
+    alternates: {
+      types: {
+        'application/rss+xml': [
+          { url: '/feed.xml', title: `${siteConfig.name} Latest Movies & Trailers RSS` },
+        ],
+      },
+    },
+    icons: {
+      icon: [
+        { url: '/favicon.ico', sizes: 'any' },
+        { url: '/brand/movieflix-mark.svg', type: 'image/svg+xml' },
+      ],
+      apple: [{ url: '/brand/movieflix-apple-touch-icon.png', sizes: '180x180' }],
+    },
+    robots: {
+      index: indexingEnabled,
+      follow: indexingEnabled,
+      googleBot: {
+        index: indexingEnabled,
+        follow: indexingEnabled,
+        'max-image-preview': 'large',
+        'max-snippet': -1,
+        'max-video-preview': -1,
+      },
+    },
+    verification: googleVerification ? { google: googleVerification } : undefined,
+  };
+}
 
 export default function RootLayout({
   children,

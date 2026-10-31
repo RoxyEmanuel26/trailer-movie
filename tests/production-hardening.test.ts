@@ -24,6 +24,7 @@ test('origin token rejects missing, wrong, or duplicate values', () => {
 test('internal revalidation accepts only canonical public detail paths', () => {
   assert.equal(isAllowedRevalidationPath('/watch/example-1'), true);
   assert.equal(isAllowedRevalidationPath('/person/example-2'), true);
+  assert.equal(isAllowedRevalidationPath('/streaming/netflix'), true);
   assert.equal(isAllowedRevalidationPath('/api/admin/imports'), false);
   assert.equal(isAllowedRevalidationPath('/watch/example?preview=1'), false);
   assert.equal(isAllowedRevalidationPath('/watch/../admin'), false);
@@ -101,15 +102,15 @@ test('valid sitemap XML is served even when snapshot storage is unavailable', as
   }
 });
 
-test('sitemap cache warmer writes versioned v3 snapshot keys read by sitemap routes', async () => {
+test('sitemap cache warmer writes versioned v4 snapshot keys read by sitemap routes', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'movieflix-sitemap-warm-'));
   const previous = process.env.SITEMAP_CACHE_DIR;
   process.env.SITEMAP_CACHE_DIR = directory;
   try {
-    assert.equal(sitemapSnapshotKey('sitemap-index'), 'v3-sitemap-index');
-    assert.equal(sitemapSnapshotKey('core'), 'v3-core');
-    assert.equal(sitemapSnapshotKey('movies-0'), 'v3-movies-0');
-    assert.equal(sitemapSnapshotKey('people-0'), 'v3-people-0');
+    assert.equal(sitemapSnapshotKey('sitemap-index'), 'v4-sitemap-index');
+    assert.equal(sitemapSnapshotKey('core'), 'v4-core');
+    assert.equal(sitemapSnapshotKey('movies-0'), 'v4-movies-0');
+    assert.equal(sitemapSnapshotKey('people-0'), 'v4-people-0');
 
     const summary = await warmSitemapSnapshots({
       siteUrl: 'https://www.movieflix.site',

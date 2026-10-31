@@ -92,13 +92,25 @@ export class ImportRepository {
     const uniqueIds = [...new Set(tmdbIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
     if (uniqueIds.length === 0) return;
     const staleBefore = new Date(Date.now() - 90 * 86_400_000);
+    let candidateIds = uniqueIds;
+    if ((db as { person?: typeof prisma.person }).person?.findMany) {
+      const freshPeople = await db.person.findMany({
+        where: { tmdbId: { in: uniqueIds }, tmdbSyncedAt: { gte: staleBefore } },
+        select: { tmdbId: true },
+      });
+      const freshSet = new Set(
+        freshPeople.flatMap((person) => (typeof person.tmdbId === 'number' ? [person.tmdbId] : [])),
+      );
+      candidateIds = uniqueIds.filter((id) => !freshSet.has(id));
+      if (candidateIds.length === 0) return;
+    }
     await db.importJob.createMany({
-      data: uniqueIds.map((tmdbId) => ({ tmdbId, entityType: 'Person', status: ImportJobStatus.PENDING })),
+      data: candidateIds.map((tmdbId) => ({ tmdbId, entityType: 'Person', status: ImportJobStatus.PENDING })),
       skipDuplicates: true,
     });
     await db.importJob.updateMany({
       where: {
-        entityType: 'Person', tmdbId: { in: uniqueIds },
+        entityType: 'Person', tmdbId: { in: candidateIds },
         OR: [
           { status: { in: [ImportJobStatus.FAILED, ImportJobStatus.PARTIAL] }, retryable: true },
           {
@@ -352,7 +364,7 @@ export class ImportRepository {
     });
   }
 
-  static async cleanupCompleted(retentionDays = 90, db: DbClient = prisma) {
+  static async cleanupCompleted(retentionDays = 14, db: DbClient = prisma) {
     return db.importJob.deleteMany({
       where: {
         status: { in: [ImportJobStatus.COMPLETED, ImportJobStatus.SKIPPED, ImportJobStatus.CANCELED] },

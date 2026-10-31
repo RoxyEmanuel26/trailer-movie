@@ -122,7 +122,7 @@ export class SeoRepository {
           select: { sourceId: true, title: true, thumbnailUrl: true, publishedDate: true },
         },
       },
-      orderBy: [{ slug: 'asc' }, { id: 'asc' }],
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       skip: params.skip,
       take: params.take,
     });

@@ -6,6 +6,7 @@ import { cache } from 'react';
 import { MovieRepository } from '../repositories/MovieRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '../public-catalog';
+import { STREAMING_CATALOG } from '../streaming-catalog';
 import { moviePath, personPath } from '../public-routes';
 import { absoluteUrl, isValidContactEmail, normalizeMetaDescription, siteConfig } from '../site-config';
 import type { SitemapEntry } from '../sitemap-xml';
@@ -271,18 +272,21 @@ export class SeoService {
    * Generate Sitemap Data
    */
   static async generateSitemapData() {
-    const [{ genres, collections }, years, originCountMap, homepageLastModified, overrides] = await Promise.all([
+    const [{ genres, collections }, years, originCountMap, streamingCountMap, homepageLastModified, overrides] = await Promise.all([
       SeoRepository.getCoreSitemapData(),
       MovieRepository.listPublishedReleaseYearStats(),
       MovieRepository.countOriginGroups(ORIGIN_CATALOG),
+      MovieRepository.countStreamingGroups(STREAMING_CATALOG),
       SeoRepository.getHomepageLastModified(),
       SeoRepository.listSitemapOverrides(),
     ]);
     const originCounts = ORIGIN_CATALOG.map((item) => ({ item, total: originCountMap.get(item.slug) || 0 }));
+    const streamingCounts = STREAMING_CATALOG.map((item) => ({ item, total: streamingCountMap.get(item.slug) || 0 }));
 
     const sitemap: SitemapEntry[] = [
       { url: siteConfig.url, lastModified: homepageLastModified, changeFrequency: 'daily', priority: 1.0 },
       { url: absoluteUrl('/movies'), changeFrequency: 'daily', priority: 0.8 },
+      { url: absoluteUrl('/streaming'), changeFrequency: 'weekly', priority: 0.8 },
       { url: absoluteUrl('/genres'), changeFrequency: 'weekly', priority: 0.7 },
       { url: absoluteUrl('/countries'), changeFrequency: 'weekly', priority: 0.7 },
       { url: absoluteUrl('/years'), changeFrequency: 'weekly', priority: 0.7 },
@@ -322,6 +326,13 @@ export class SeoService {
         priority: 0.7,
       })
     );
+    streamingCounts.filter(({ total }) => total >= 3).forEach(({ item }) =>
+      sitemap.push({
+        url: absoluteUrl(`/streaming/${item.slug}`),
+        changeFrequency: 'weekly',
+        priority: 0.7,
+      })
+    );
     originCounts.filter(({ total }) => total >= 3).forEach(({ item }) =>
       sitemap.push({
         url: absoluteUrl(`/origin/${item.slug}`),
@@ -346,6 +357,7 @@ export class SeoService {
       let path = override.routePath || entityPaths.get(`${override.seoableType}:${override.seoableId}`);
       if (!path && override.seoableType === 'Page') path = override.seoableId === 'home' ? '/' : `/${override.seoableId.replace(/^\//, '')}`;
       if (!path && override.seoableType === 'OriginCatalog') path = `/origin/${override.seoableId}`;
+      if (!path && override.seoableType === 'StreamingCatalog') path = `/streaming/${override.seoableId}`;
       if (!path && override.seoableType === 'YearCatalog') path = `/year/${override.seoableId}`;
       if (!path && override.seoableType === 'PopularCatalog') path = `/popular/${override.seoableId}`;
       return path ? [absoluteUrl(path)] : [];

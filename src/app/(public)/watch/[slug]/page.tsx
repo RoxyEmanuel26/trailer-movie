@@ -20,6 +20,13 @@ import { absoluteUrl, normalizeMetaDescription } from '@/lib/site-config';
 import { ORIGIN_CATALOG } from '@/lib/public-catalog';
 import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 import { trailerSchema } from '@/lib/trailer-schema';
+import { ShareMovieButton } from '@/components/public/ShareMovieButton';
+import { MovieQuickFactsFaq } from '@/components/movie/MovieQuickFactsFaq';
+import {
+  buildFaqJsonLd,
+  buildMovieQuickFactsAndFaq,
+  extractUniqueProviders,
+} from '@/lib/movie-aeo';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -35,7 +42,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return SeoService.generateMetadata('Movie', movie.id, {
     title: `${movie.title}${year ? ` (${year})` : ''} Trailer, Cast & Where to Watch`,
     description: normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title}, explore its cast and crew, and find where it is available.`),
-    image: movie.backdropUrl || movie.posterUrl || undefined,
+    image: `${canonicalPath}/opengraph-image`,
     path: canonicalPath,
     indexable: movie.importQualityStatus === 'READY',
   });
@@ -113,6 +120,28 @@ export default async function MovieDetailPage({ params }: PageProps) {
     origin.countryCodes.some((code) => movie.countries.some(({ country }) => country.isoCode === code)) ||
     origin.languageCodes.some((code) => movie.languages.some(({ language }) => language.isoCode === code))
   );
+  const { names: providerNames, hubLinks } = extractUniqueProviders(
+    movie.watchProviderLinks as any,
+    movie.watchProviders,
+  );
+  const { quickSummary, faqs } = buildMovieQuickFactsAndFaq({
+    title: movie.title,
+    year,
+    releaseDate: movie.releaseDate,
+    runtimeMinutes: movie.runtimeMinutes,
+    ageRating: movie.ageRating,
+    mpaaRating: movie.mpaaRating,
+    voteAverage: movie.voteAverage,
+    voteCount: movie.voteCount,
+    genres: movie.genres.map(({ genre }) => genre.name),
+    directors: directors.map(({ person }) => person.name),
+    cast: cast.map((c) => ({ name: c.person.name, characterName: c.characterName })),
+    countries: movie.countries.map(({ country }) => country.name),
+    languages: movie.languages.map(({ language }) => language.name),
+    hasActiveTrailer: Boolean(youtubeId),
+    providerNames,
+  });
+  const faqSchema = buildFaqJsonLd(movieUrl, faqs);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -135,6 +164,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
         keywords: movie.keywords.map(({ keyword }) => keyword.name).join(', ') || undefined,
         trailer: trailerSchema({ videoId: youtubeId, title: primaryTrailer?.title || `${movie.title} trailer`, description, thumbnailUrl: primaryTrailer?.thumbnailUrl, publishedDate: primaryTrailer?.publishedDate }),
       },
+      ...(faqSchema ? [faqSchema] : []),
     ],
   };
 
@@ -222,6 +252,8 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 ))}
               </div>
             </div>
+
+            <ShareMovieButton title={movie.title} year={year} url={movieUrl} />
           </div>
 
           <div className="order-2 max-w-none lg:col-start-2 lg:row-start-2 lg:prose-base dark:prose-invert">
@@ -232,6 +264,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
             <div className="mt-5 flex flex-wrap gap-2 text-sm">
               {year ? <Link href={`/year/${year}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">More from {year}</Link> : null}
               {matchingOrigins.map((origin) => <Link key={origin.slug} href={`/origin/${origin.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">{origin.label}</Link>)}
+              {hubLinks.slice(0, 4).map((hub) => <Link key={hub.slug} href={`/streaming/${hub.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">On {hub.name}</Link>)}
             </div>
           </div>
 
@@ -468,6 +501,15 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 />
               </div>
             )}
+
+            <div className="order-11 lg:order-none">
+              <MovieQuickFactsFaq
+                movieTitle={movie.title}
+                quickSummary={quickSummary}
+                faqs={faqs}
+                streamingHubLinks={hubLinks}
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -17,6 +17,9 @@ export function paginatedMetadataTitle(title: string, path: string) {
 
 export function socialImage(image: string | null | undefined, alt: string) {
   if (!image) return { url: absoluteUrl('/opengraph-image'), width: 1200, height: 630, alt };
+  if (image.endsWith('/opengraph-image')) {
+    return { url: canonicalUrl(image, '/opengraph-image'), width: 1200, height: 630, alt };
+  }
   // Artwork is not necessarily a 1200x630 crop. Do not advertise invented
   // dimensions to social crawlers, or download unbounded TMDB originals.
   return { url: getTmdbImageUrl(image, 1280), alt };

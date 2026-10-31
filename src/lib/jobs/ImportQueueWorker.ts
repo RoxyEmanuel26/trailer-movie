@@ -103,7 +103,7 @@ export class ImportQueueWorker {
         ? await ImportQualityService.refreshLegacyBatch(250)
         : { processed: 0, unpublished: 0, remaining: false };
       if (now - this.lastCleanupAt >= 60 * 60_000) {
-        await ImportRepository.cleanupCompleted(90);
+        await ImportRepository.cleanupCompleted(14);
         this.lastCleanupAt = now;
       }
       if (now - this.lastFinalizationAt >= 30_000) {

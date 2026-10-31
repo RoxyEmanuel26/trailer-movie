@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '@/lib/public-catalog';
+import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
 
 interface BrowseNavProps {
   genres: Array<{ id: string; name: string; slug: string }>;
@@ -135,6 +136,43 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
                 className="nav-dropdown-item"
               >
                 {genre.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </NavDropdown>
+
+      <NavDropdown
+        menu="streaming"
+        label="Streaming"
+        active={isPathActive(pathname, ['/streaming'])}
+        openMenu={openMenu}
+        panelClassName="left-0 w-[30rem]"
+        onToggle={toggleMenu}
+        onClose={() => setOpenMenu(null)}
+      >
+        <div className="nav-dropdown-surface">
+          <div className="flex items-center justify-between px-3 pb-2 pt-1">
+            <p className="nav-dropdown-label">Where to watch</p>
+            <Link
+              href="/streaming"
+              prefetch={false}
+              onClick={() => setOpenMenu(null)}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              All services
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            {STREAMING_CATALOG.map((item) => (
+              <Link
+                key={item.slug}
+                href={`/streaming/${item.slug}`}
+                prefetch={false}
+                onClick={() => setOpenMenu(null)}
+                className="nav-dropdown-item"
+              >
+                {item.label}
               </Link>
             ))}
           </div>

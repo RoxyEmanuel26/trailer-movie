@@ -1,4 +1,4 @@
-import { serializeSitemapIndex, sitemapUnavailableResponse, xmlResponse } from '@/lib/sitemap-xml';
+import { serializeSitemapIndex, sitemapUnavailableResponse, xmlResponse, type SitemapIndexItem } from '@/lib/sitemap-xml';
 import { generateSitemapWithFallback, readSitemapSnapshot, sitemapSnapshotKey } from '@/lib/sitemap-cache';
 import { absoluteUrl } from '@/lib/site-config';
 import { getSitemapPageCounts } from '@/lib/sitemap-data';
@@ -15,18 +15,27 @@ export async function GET(request: Request) {
       : await readSitemapSnapshot(snapshotKey);
     if (freshSnapshot) return xmlResponse(freshSnapshot);
     const result = await generateSitemapWithFallback(snapshotKey, async () => {
-      const [moviePageCount, personPageCount] = await getSitemapPageCounts(forceRefresh);
-      const sitemapUrls = [absoluteUrl('/sitemaps/core')];
+      const [moviePageCount, personPageCount, latestModified] = await getSitemapPageCounts(forceRefresh);
+      const sitemapItems: SitemapIndexItem[] = [
+        {
+          url: absoluteUrl('/sitemaps/core'),
+          ...(latestModified ? { lastModified: latestModified } : {}),
+        },
+      ];
 
       for (let page = 0; page < moviePageCount; page += 1) {
-        sitemapUrls.push(absoluteUrl(`/sitemaps/movies-${page}`));
+        const isNewestShard = page === moviePageCount - 1;
+        sitemapItems.push({
+          url: absoluteUrl(`/sitemaps/movies-${page}`),
+          ...(isNewestShard && latestModified ? { lastModified: latestModified } : {}),
+        });
       }
 
       for (let page = 0; page < personPageCount; page += 1) {
-        sitemapUrls.push(absoluteUrl(`/sitemaps/people-${page}`));
+        sitemapItems.push({ url: absoluteUrl(`/sitemaps/people-${page}`) });
       }
 
-      return serializeSitemapIndex(sitemapUrls);
+      return serializeSitemapIndex(sitemapItems);
     });
     return xmlResponse(result.xml, { stale: result.stale });
   } catch (error) {

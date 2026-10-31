@@ -1,7 +1,12 @@
 import { notFound } from 'next/navigation';
 import { SeoService } from '@/lib/services/SeoService';
 import { serializeSitemap, sitemapUnavailableResponse, xmlResponse } from '@/lib/sitemap-xml';
-import { generateSitemapWithFallback, readSitemapSnapshot, sitemapSnapshotKey } from '@/lib/sitemap-cache';
+import {
+  generateSitemapWithFallback,
+  readSitemapSnapshot,
+  sitemapSnapshotKey,
+  STABLE_SITEMAP_SHARD_MAX_AGE_MS,
+} from '@/lib/sitemap-cache';
 import { hasValidRevalidationSecret } from '@/lib/revalidation';
 import { getSitemapPageCounts } from '@/lib/sitemap-data';
 
@@ -46,10 +51,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const page = Number(movieMatch[1]);
     if (!Number.isSafeInteger(page) || page < 0) notFound();
     try {
+      const quickSnapshot = forceRefresh ? null : await readSitemapSnapshot(snapshotKey);
+      if (quickSnapshot) return xmlResponse(quickSnapshot);
       const result = await generateSitemapWithFallback(snapshotKey, async () => {
         const [pageCount] = await getSitemapPageCounts(forceRefresh);
         if (page >= pageCount) notFound();
-        const freshSnapshot = forceRefresh ? null : await readSitemapSnapshot(snapshotKey);
+        const shardTtlMs = page < pageCount - 1 ? STABLE_SITEMAP_SHARD_MAX_AGE_MS : undefined;
+        const freshSnapshot = forceRefresh ? null : await readSitemapSnapshot(snapshotKey, shardTtlMs);
         if (freshSnapshot) return freshSnapshot;
         return serializeSitemap(await SeoService.generateMovieSitemapData(page));
       });
@@ -67,10 +75,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const page = Number(match[1]);
   if (!Number.isSafeInteger(page) || page < 0) notFound();
   try {
+    const quickSnapshot = forceRefresh
+      ? null
+      : await readSitemapSnapshot(snapshotKey, STABLE_SITEMAP_SHARD_MAX_AGE_MS);
+    if (quickSnapshot) return xmlResponse(quickSnapshot);
     const result = await generateSitemapWithFallback(snapshotKey, async () => {
       const [, pageCount] = await getSitemapPageCounts(forceRefresh);
       if (page >= pageCount) notFound();
-      const freshSnapshot = forceRefresh ? null : await readSitemapSnapshot(snapshotKey);
+      const freshSnapshot = forceRefresh
+        ? null
+        : await readSitemapSnapshot(snapshotKey, STABLE_SITEMAP_SHARD_MAX_AGE_MS);
       if (freshSnapshot) return freshSnapshot;
       return serializeSitemap(await SeoService.generatePersonSitemapData(page));
     });

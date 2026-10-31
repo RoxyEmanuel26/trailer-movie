@@ -12,6 +12,11 @@ export function catalogStatsQuery(filters: CatalogFilters) {
   }
   if (filters.collectionSlug) conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM "collection_movies" cm JOIN "collections" c ON c."id" = cm."collectionId" WHERE cm."movieId" = m."id" AND c."slug" = ${filters.collectionSlug})`);
   if (filters.tagSlug) conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM "movie_tags" mt JOIN "tags" t ON t."id" = mt."tagId" WHERE mt."movieId" = m."id" AND t."slug" = ${filters.tagSlug})`);
+  if (filters.providerTmdbIds?.length) {
+    conditions.push(
+      Prisma.sql`EXISTS (SELECT 1 FROM "movie_watch_provider_links" mwpl JOIN "watch_providers" wp ON wp."id" = mwpl."providerId" WHERE mwpl."movieId" = m."id" AND wp."tmdbId" IN (${Prisma.join(filters.providerTmdbIds)}))`
+    );
+  }
   const origins: Prisma.Sql[] = [];
   if (filters.countryCodes?.length) origins.push(Prisma.sql`EXISTS (SELECT 1 FROM "movie_countries" mc JOIN "countries" c ON c."id" = mc."countryId" WHERE mc."movieId" = m."id" AND c."isoCode" IN (${Prisma.join(filters.countryCodes)}))`);
   if (filters.languageCodes?.length) origins.push(Prisma.sql`EXISTS (SELECT 1 FROM "movie_languages" ml JOIN "languages" l ON l."id" = ml."languageId" WHERE ml."movieId" = m."id" AND l."isoCode" IN (${Prisma.join(filters.languageCodes)}))`);

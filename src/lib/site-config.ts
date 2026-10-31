@@ -6,22 +6,34 @@ function normalizeSiteUrl(value: string) {
   return value.replace(/\/+$/, '');
 }
 
-const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-const configuredContactEmail = process.env.CONTACT_EMAIL?.trim() || '';
-
 export const siteConfig = {
   // The public identity is intentionally code-owned so an environment typo or
   // stale deployment setting cannot replace MovieFlix in metadata or schema.
   name: BRAND_NAME,
-  url: normalizeSiteUrl(configuredUrl || (process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_URL : DEVELOPMENT_URL)),
+  get url() {
+    const current = process.env.NEXT_PUBLIC_APP_URL?.trim();
+    return normalizeSiteUrl(
+      current || (process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_URL : DEVELOPMENT_URL)
+    );
+  },
   description:
     'Explore movies, trailers, cast, ratings, and where to watch—all in one thoughtfully organized MovieFlix guide.',
-  googleVerification: process.env.GOOGLE_SITE_VERIFICATION?.trim() || '',
-  twitterHandle: process.env.NEXT_PUBLIC_TWITTER_HANDLE?.trim() || '',
-  contactEmail: configuredContactEmail,
-  indexingEnabled:
-    process.env.NODE_ENV === 'production' && process.env.SEO_INDEXING_ENABLED === 'true',
-} as const;
+  get googleVerification() {
+    return process.env.GOOGLE_SITE_VERIFICATION?.trim() || '';
+  },
+  get twitterHandle() {
+    return process.env.NEXT_PUBLIC_TWITTER_HANDLE?.trim() || '';
+  },
+  get contactEmail() {
+    return process.env.CONTACT_EMAIL?.trim() || '';
+  },
+  get indexingEnabled() {
+    return process.env.NODE_ENV === 'production' && process.env.SEO_INDEXING_ENABLED === 'true';
+  },
+  get indexNowKey() {
+    return process.env.INDEXNOW_KEY?.trim() || '';
+  },
+};
 
 export function absoluteUrl(path = '/') {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -95,10 +107,10 @@ export function assertProductionSiteConfig() {
     throw new Error('ORIGIN_GATE_SECRET must be a unique random value of at least 32 characters in production.');
   }
   const error = validateProductionSeoConfig({
-    url: configuredUrl,
+    url: process.env.NEXT_PUBLIC_APP_URL?.trim(),
     indexingEnabled: process.env.SEO_INDEXING_ENABLED === 'true',
     googleVerification: process.env.GOOGLE_SITE_VERIFICATION,
-    contactEmail: configuredContactEmail,
+    contactEmail: process.env.CONTACT_EMAIL?.trim() || '',
     analyticsHmacSecret: process.env.ANALYTICS_HMAC_SECRET,
     revalidationSecret: process.env.REVALIDATION_SECRET,
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,

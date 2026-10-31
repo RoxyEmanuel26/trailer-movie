@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { hasValidRevalidationSecret, isAllowedRevalidationPath } from '@/lib/revalidation';
 import { HOMEPAGE_CATALOG_TAG } from '@/lib/homepage-cache';
+import { coreIndexNowPaths, submitIndexNowUrls } from '@/lib/indexnow';
 
 const payloadSchema = z.object({
   scope: z.enum(['catalog', 'homepage']).default('catalog'),
@@ -42,14 +43,18 @@ export async function POST(request: NextRequest) {
     invalidate('/genres');
     invalidate('/countries');
     invalidate('/years');
+    invalidate('/streaming');
     invalidate('/popular', 'layout');
     invalidate('/genre', 'layout');
     invalidate('/origin', 'layout');
     invalidate('/year', 'layout');
+    invalidate('/streaming', 'layout');
     invalidate('/feed.xml');
+    invalidate('/llms.txt');
     invalidate('/sitemap.xml');
     invalidate('/sitemaps', 'layout');
     for (const path of requestedPaths) invalidate(path);
+    void submitIndexNowUrls([...coreIndexNowPaths(), ...requestedPaths]);
   }
 
   return NextResponse.json({

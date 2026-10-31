@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseStrictPage, pagePath, isPageOutOfRange } from '../src/lib/pagination';
 import { serializeJsonLd } from '../src/components/seo/JsonLd';
-import { serializeSitemap } from '../src/lib/sitemap-xml';
+import { serializeSitemap, serializeSitemapIndex } from '../src/lib/sitemap-xml';
 import { getTmdbImageUrl } from '../src/lib/tmdb-image-loader';
 import { moviePath } from '../src/lib/public-routes';
 import { canonicalUrl, isValidContactEmail, siteConfig, validateProductionSeoConfig } from '../src/lib/site-config';
@@ -12,6 +12,10 @@ import { trailerSchema } from '../src/lib/trailer-schema';
 import { PersonRepository } from '../src/lib/repositories/PersonRepository';
 import { providerRegion, providerRegionCodes } from '../src/lib/provider-region';
 import { catalogStatsQuery } from '../src/lib/catalog-stats-query';
+import { buildFaqJsonLd, buildMovieQuickFactsAndFaq, extractUniqueProviders } from '../src/lib/movie-aeo';
+import { getStreamingCatalogItem, STREAMING_CATALOG } from '../src/lib/streaming-catalog';
+import { buildIndexNowPayload } from '../src/lib/indexnow';
+import robots from '../src/app/robots';
 
 test('strict pagination accepts only positive integer pages', () => {
   assert.equal(parseStrictPage(undefined), 1);
@@ -151,4 +155,135 @@ test('catalog statistics use a public index-compatible predicate and parameteriz
   assert.ok(query.values.includes('en'));
   assert.ok(query.values.some((value) => value instanceof Date && value.toISOString() === '2026-01-01T00:00:00.000Z'));
   assert.ok(query.values.includes('%100\\%\\_free%'));
+});
+
+test('runtime siteConfig and robots() reflect live process.env without rebuilds', () => {
+  const envRecord = process.env as Record<string, string | undefined>;
+  const prevNodeEnv = envRecord.NODE_ENV;
+  const prevIndexing = envRecord.SEO_INDEXING_ENABLED;
+  const prevUrl = envRecord.NEXT_PUBLIC_APP_URL;
+  const prevVerify = envRecord.GOOGLE_SITE_VERIFICATION;
+  try {
+    envRecord.NODE_ENV = 'production';
+    envRecord.NEXT_PUBLIC_APP_URL = 'https://www.movieflix.site';
+    envRecord.GOOGLE_SITE_VERIFICATION = 'gsc-live-token';
+    envRecord.SEO_INDEXING_ENABLED = 'false';
+    assert.equal(siteConfig.indexingEnabled, false);
+    assert.equal(siteConfig.googleVerification, 'gsc-live-token');
+    const blocked = robots();
+    assert.deepEqual(blocked.rules, { userAgent: '*', disallow: '/' });
+
+    envRecord.SEO_INDEXING_ENABLED = 'true';
+    assert.equal(siteConfig.indexingEnabled, true);
+    const live = robots();
+    assert.ok(Array.isArray(live.rules));
+    assert.equal(live.sitemap, 'https://www.movieflix.site/sitemap.xml');
+    const wildcard = live.rules.find((r) => r.userAgent === '*');
+    assert.ok(Array.isArray(wildcard?.disallow) && wildcard.disallow.includes('/search'));
+    const aiAllow = live.rules.find((r) => Array.isArray(r.userAgent) && r.userAgent.includes('OAI-SearchBot'));
+    assert.ok(aiAllow);
+    const scraperBlock = live.rules.find((r) => Array.isArray(r.userAgent) && r.userAgent.includes('Bytespider'));
+    assert.equal(scraperBlock?.disallow, '/');
+  } finally {
+    if (prevNodeEnv === undefined) delete envRecord.NODE_ENV;
+    else envRecord.NODE_ENV = prevNodeEnv;
+    if (prevIndexing === undefined) delete envRecord.SEO_INDEXING_ENABLED;
+    else envRecord.SEO_INDEXING_ENABLED = prevIndexing;
+    if (prevUrl === undefined) delete envRecord.NEXT_PUBLIC_APP_URL;
+    else envRecord.NEXT_PUBLIC_APP_URL = prevUrl;
+    if (prevVerify === undefined) delete envRecord.GOOGLE_SITE_VERIFICATION;
+    else envRecord.GOOGLE_SITE_VERIFICATION = prevVerify;
+  }
+});
+
+test('sitemap index serializer includes optional lastmod for changed shards only', () => {
+  const xml = serializeSitemapIndex([
+    { url: 'https://www.movieflix.site/sitemaps/core', lastModified: '2026-10-31T00:00:00.000Z' },
+    { url: 'https://www.movieflix.site/sitemaps/movies-0' },
+  ]);
+  assert.match(xml, /<loc>https:\/\/www\.movieflix\.site\/sitemaps\/core<\/loc><lastmod>2026-10-31T00:00:00\.000Z<\/lastmod>/);
+  assert.match(xml, /<sitemap><loc>https:\/\/www\.movieflix\.site\/sitemaps\/movies-0<\/loc><\/sitemap>/);
+});
+
+test('dynamic per-movie opengraph-image route advertises 1200x630 social card metadata', () => {
+  const card = socialImage('/watch/f1-911430/opengraph-image', 'F1');
+  assert.deepEqual(card, {
+    url: `${siteConfig.url}/watch/f1-911430/opengraph-image`,
+    width: 1200,
+    height: 630,
+    alt: 'F1',
+  });
+});
+
+test('movie AEO quick summary and FAQ use real metadata without inventing ratings or upload dates', () => {
+  const providers = extractUniqueProviders([
+    { provider: { name: 'Netflix' } },
+    { provider: { name: 'Netflix Standard with Ads' } },
+    { provider: { name: 'Amazon Prime Video' } },
+  ]);
+  assert.deepEqual(providers.names, ['Netflix', 'Prime Video']);
+  assert.deepEqual(providers.hubLinks, [
+    { name: 'Netflix', slug: 'netflix' },
+    { name: 'Prime Video', slug: 'prime-video' },
+  ]);
+
+  const { quickSummary, faqs } = buildMovieQuickFactsAndFaq({
+    title: 'Dune: Part Two',
+    year: 2024,
+    releaseDate: new Date('2024-03-01T00:00:00.000Z'),
+    runtimeMinutes: 166,
+    ageRating: 'PG-13',
+    mpaaRating: 'PG-13',
+    voteAverage: 8.4,
+    voteCount: 6200,
+    genres: ['Science Fiction', 'Adventure'],
+    directors: ['Denis Villeneuve'],
+    cast: [{ name: 'Timothée Chalamet', characterName: 'Paul Atreides' }],
+    countries: ['United States'],
+    languages: ['English'],
+    hasActiveTrailer: true,
+    providerNames: providers.names,
+  });
+
+  assert.match(quickSummary, /Dune: Part Two \(2024\)/);
+  assert.match(quickSummary, /Denis Villeneuve/);
+  assert.match(quickSummary, /Netflix, Prime Video/);
+  assert.equal(faqs.length, 4);
+  const faqLd = buildFaqJsonLd('https://www.movieflix.site/watch/dune-part-two-693134', faqs);
+  assert.equal(faqLd?.['@type'], 'FAQPage');
+  assert.equal(faqLd?.mainEntity.length, 4);
+});
+
+test('streaming catalog maps curated slugs and parameterizes providerTmdbIds in stats SQL', () => {
+  assert.ok(STREAMING_CATALOG.length >= 15);
+  assert.deepEqual(getStreamingCatalogItem('netflix')?.tmdbIds, [8, 175, 1796]);
+  const query = catalogStatsQuery({ providerTmdbIds: [8, 175] });
+  assert.match(query.sql, /"movie_watch_provider_links"/);
+  assert.match(query.sql, /wp\."tmdbId" IN \(\?,\?\)/);
+  assert.deepEqual(query.values, [8, 175]);
+});
+
+test('IndexNow payload deduplicates same-host canonical URLs and ignores disabled indexing', () => {
+  assert.equal(
+    buildIndexNowPayload(['/watch/a-1'], {
+      siteUrl: 'https://www.movieflix.site',
+      key: 'a'.repeat(32),
+      indexingEnabled: false,
+    }),
+    null,
+  );
+  const payload = buildIndexNowPayload(
+    ['/watch/a-1', 'https://www.movieflix.site/watch/a-1', 'https://evil.example/watch/b-2'],
+    {
+      siteUrl: 'https://www.movieflix.site',
+      key: 'a'.repeat(32),
+      indexingEnabled: true,
+    },
+  );
+  assert.deepEqual(payload, {
+    host: 'www.movieflix.site',
+    key: 'a'.repeat(32),
+    keyLocation: 'https://www.movieflix.site/indexnow-key.txt',
+    urlList: ['https://www.movieflix.site/watch/a-1'],
+  });
 });

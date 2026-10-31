@@ -51,8 +51,18 @@ export function serializeSitemap(entries: SitemapEntry[]) {
   return xml;
 }
 
-export function serializeSitemapIndex(urls: string[]) {
-  const sitemaps = urls.map((url) => `<sitemap><loc>${escapeXml(url)}</loc></sitemap>`).join('');
+export type SitemapIndexItem = string | { url: string; lastModified?: Date | string };
+
+export function serializeSitemapIndex(items: SitemapIndexItem[]) {
+  const sitemaps = items
+    .map((item) => {
+      const entry = typeof item === 'string' ? { url: item } : item;
+      const lastModified = entry.lastModified
+        ? `<lastmod>${escapeXml(new Date(entry.lastModified).toISOString())}</lastmod>`
+        : '';
+      return `<sitemap><loc>${escapeXml(entry.url)}</loc>${lastModified}</sitemap>`;
+    })
+    .join('');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${sitemaps}</sitemapindex>`;
 }
 

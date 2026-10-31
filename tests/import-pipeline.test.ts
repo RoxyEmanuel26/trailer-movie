@@ -125,6 +125,22 @@ test('person bulk enqueue deduplicates IDs without requeueing recently completed
   assert.equal(filter[1].status, 'COMPLETED');
 });
 
+test('person bulk enqueue skips profiles with fresh tmdbSyncedAt even after completed jobs are pruned', async () => {
+  const calls: Array<{ operation: string; args: unknown }> = [];
+  const db = {
+    person: {
+      findMany: async () => [{ tmdbId: 976 }],
+    },
+    importJob: {
+      createMany: async (args: unknown) => { calls.push({ operation: 'createMany', args }); },
+      updateMany: async (args: unknown) => { calls.push({ operation: 'updateMany', args }); },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.enqueuePersons>[1]>;
+  await ImportRepository.enqueuePersons([976, 31], db);
+  assert.equal(calls.length, 2);
+  assert.deepEqual((calls[0].args as { data: Array<{ tmdbId: number }> }).data.map((job) => job.tmdbId), [31]);
+});
+
 test('worker state uses one aggregate query and normalizes bigint counts', async () => {
   let calls = 0;
   const db = {

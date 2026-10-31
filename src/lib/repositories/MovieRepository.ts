@@ -10,6 +10,7 @@ export interface CatalogFilters {
   genreIds?: string[];
   collectionSlug?: string;
   tagSlug?: string;
+  providerTmdbIds?: number[];
   excludeId?: string;
   countryCodes?: string[];
   languageCodes?: string[];
@@ -57,6 +58,11 @@ function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
   else if (params.genreSlug) where.genres = { some: { genre: { slug: params.genreSlug } } };
   if (params.collectionSlug) where.collections = { some: { collection: { slug: params.collectionSlug } } };
   if (params.tagSlug) where.tags = { some: { tag: { slug: params.tagSlug } } };
+  if (params.providerTmdbIds?.length) {
+    where.watchProviderLinks = {
+      some: { provider: { tmdbId: { in: params.providerTmdbIds } } },
+    };
+  }
 
   const originFilters: Prisma.MovieWhereInput[] = [];
   if (params.countryCodes?.length) originFilters.push({ countries: { some: { country: { isoCode: { in: params.countryCodes } } } } });
@@ -129,6 +135,32 @@ export class MovieRepository {
         OR (codes."kind" = 'language' AND filters."languageCodes" ? codes."code")
       )
       GROUP BY filters."slug"
+    `);
+    return new Map(rows.map((row) => [row.slug, Number(row.total)]));
+  }
+
+  static async countStreamingGroups(
+    platforms: Array<{ slug: string; tmdbIds: number[] }>,
+    db: DbClient = prisma,
+  ) {
+    if (!platforms.length) return new Map<string, number>();
+    const payload = JSON.stringify(platforms);
+    const rows = await db.$queryRaw<Array<{ slug: string; total: number }>>(Prisma.sql`
+      WITH platform_filters AS (
+        SELECT "slug", jsonb_array_elements_text("tmdbIds")::int AS "tmdbId"
+        FROM jsonb_to_recordset(${payload}::jsonb)
+          AS item("slug" text, "tmdbIds" jsonb)
+      ), matched_providers AS (
+        SELECT pf."slug", wp."id" AS "providerId"
+        FROM platform_filters pf
+        JOIN "watch_providers" wp ON wp."tmdbId" = pf."tmdbId"
+      )
+      SELECT mp."slug", COUNT(DISTINCT mwpl."movieId")::int AS "total"
+      FROM matched_providers mp
+      JOIN "movie_watch_provider_links" mwpl ON mwpl."providerId" = mp."providerId"
+      JOIN "movies" m ON m."id" = mwpl."movieId"
+      WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+      GROUP BY mp."slug"
     `);
     return new Map(rows.map((row) => [row.slug, Number(row.total)]));
   }
@@ -357,6 +389,7 @@ export class MovieRepository {
       genreSlug?: string;
       collectionSlug?: string;
       tagSlug?: string;
+      providerTmdbIds?: number[];
       countryCodes?: string[];
       languageCodes?: string[];
       releaseYear?: number;

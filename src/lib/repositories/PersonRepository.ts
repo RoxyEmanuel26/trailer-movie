@@ -73,22 +73,26 @@ export class PersonRepository {
 
   static async countIndexableForSitemap(db: DbClient = prisma) {
     const rows = await db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
-      WITH published_credits AS (
-        SELECT mp."personId", COUNT(DISTINCT mp."movieId")::integer AS "creditCount"
+      WITH headshot_people AS (
+        SELECT p."id", p."biography"
+        FROM "people" p
+        WHERE p."headshotUrl" IS NOT NULL AND BTRIM(p."headshotUrl") <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM "seo_pages" s
+            WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap")
+          )
+      ), published_credits AS (
+        SELECT mp."personId", count(DISTINCT mp."movieId") AS credit_count
         FROM "movie_people" mp
-        JOIN "movies" m ON m."id" = mp."movieId"
-        WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        JOIN "movies" m ON m."id" = mp."movieId" AND m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        WHERE mp."personId" IN (SELECT "id" FROM headshot_people)
         GROUP BY mp."personId"
       )
-      SELECT COUNT(*)::bigint AS "count"
-      FROM "people" p
-      JOIN published_credits pc ON pc."personId" = p."id"
-      WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM "seo_pages" s WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap"))
-        AND (
-          LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
-          OR pc."creditCount" >= 3
-        )
+      SELECT count(*)::bigint AS "count"
+      FROM headshot_people hp
+      JOIN published_credits pc ON pc."personId" = hp."id"
+      WHERE pc.credit_count >= 3
+         OR (pc.credit_count >= 1 AND LENGTH(BTRIM(COALESCE(hp."biography", ''))) >= 160)
     `);
     return Number(rows[0]?.count || 0);
   }
@@ -100,23 +104,27 @@ export class PersonRepository {
     const skip = Math.max(0, params.skip || 0);
     const take = Math.min(45_000, Math.max(1, params.take || 45_000));
     return db.$queryRaw<Array<{ slug: string; updatedAt: Date }>>(Prisma.sql`
-      WITH published_credits AS (
-        SELECT mp."personId", COUNT(DISTINCT mp."movieId")::integer AS "creditCount"
+      WITH headshot_people AS (
+        SELECT p."id", p."slug", p."updatedAt", p."biography"
+        FROM "people" p
+        WHERE p."headshotUrl" IS NOT NULL AND BTRIM(p."headshotUrl") <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM "seo_pages" s
+            WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap")
+          )
+      ), published_credits AS (
+        SELECT mp."personId", count(DISTINCT mp."movieId") AS credit_count
         FROM "movie_people" mp
-        JOIN "movies" m ON m."id" = mp."movieId"
-        WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        JOIN "movies" m ON m."id" = mp."movieId" AND m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        WHERE mp."personId" IN (SELECT "id" FROM headshot_people)
         GROUP BY mp."personId"
       )
-      SELECT p."slug", p."updatedAt"
-      FROM "people" p
-      JOIN published_credits pc ON pc."personId" = p."id"
-      WHERE NULLIF(BTRIM(p."headshotUrl"), '') IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM "seo_pages" s WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap"))
-        AND (
-          LENGTH(BTRIM(COALESCE(p."biography", ''))) >= 160
-          OR pc."creditCount" >= 3
-        )
-      ORDER BY p."slug" ASC
+      SELECT hp."slug", hp."updatedAt"
+      FROM headshot_people hp
+      JOIN published_credits pc ON pc."personId" = hp."id"
+      WHERE pc.credit_count >= 3
+         OR (pc.credit_count >= 1 AND LENGTH(BTRIM(COALESCE(hp."biography", ''))) >= 160)
+      ORDER BY hp."slug" ASC
       OFFSET ${skip}
       LIMIT ${take}
     `);

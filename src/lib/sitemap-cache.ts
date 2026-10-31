@@ -1,10 +1,11 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { serializeSitemap, serializeSitemapIndex, type SitemapEntry } from './sitemap-xml';
+import { serializeSitemap, serializeSitemapIndex, type SitemapEntry, type SitemapIndexItem } from './sitemap-xml';
 
 const DEFAULT_CACHE_DIR = path.join(process.cwd(), '.cache', 'sitemaps');
-export const SITEMAP_SNAPSHOT_VERSION = 'v3';
+export const SITEMAP_SNAPSHOT_VERSION = 'v4';
+export const STABLE_SITEMAP_SHARD_MAX_AGE_MS = 6 * 3_600_000;
 
 export function sitemapSnapshotKey(id: string) {
   if (!/^[a-z0-9-]+$/i.test(id)) throw new Error('Invalid sitemap cache key');
@@ -72,16 +73,28 @@ export interface WarmSitemapSnapshotsInput {
 
 export async function warmSitemapSnapshots(input: WarmSitemapSnapshotsInput) {
   const baseUrl = input.siteUrl.replace(/\/+$/, '');
-  const [moviePageCount, personPageCount] = await Promise.all([
+  const [moviePageCount, personPageCount, coreEntries] = await Promise.all([
     input.getMoviePageCount(),
     input.getPersonPageCount(),
+    input.getCoreEntries(),
   ]);
-  const urls = [`${baseUrl}/sitemaps/core`];
-  for (let page = 0; page < moviePageCount; page += 1) urls.push(`${baseUrl}/sitemaps/movies-${page}`);
-  for (let page = 0; page < personPageCount; page += 1) urls.push(`${baseUrl}/sitemaps/people-${page}`);
+  const coreLastMod = coreEntries[0]?.lastModified;
+  const items: SitemapIndexItem[] = [
+    { url: `${baseUrl}/sitemaps/core`, ...(coreLastMod ? { lastModified: coreLastMod } : {}) },
+  ];
+  for (let page = 0; page < moviePageCount; page += 1) {
+    const isNewestMovieShard = page === moviePageCount - 1;
+    items.push({
+      url: `${baseUrl}/sitemaps/movies-${page}`,
+      ...(isNewestMovieShard && coreLastMod ? { lastModified: coreLastMod } : {}),
+    });
+  }
+  for (let page = 0; page < personPageCount; page += 1) {
+    items.push({ url: `${baseUrl}/sitemaps/people-${page}` });
+  }
 
-  await writeSitemapSnapshot(sitemapSnapshotKey('sitemap-index'), serializeSitemapIndex(urls));
-  await writeSitemapSnapshot(sitemapSnapshotKey('core'), serializeSitemap(await input.getCoreEntries()));
+  await writeSitemapSnapshot(sitemapSnapshotKey('sitemap-index'), serializeSitemapIndex(items));
+  await writeSitemapSnapshot(sitemapSnapshotKey('core'), serializeSitemap(coreEntries));
 
   for (let page = 0; page < moviePageCount; page += 1) {
     await writeSitemapSnapshot(

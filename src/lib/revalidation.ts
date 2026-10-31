@@ -1,5 +1,5 @@
 const PUBLIC_PATH_PREFIXES = [
-  '/watch/', '/person/', '/genre/', '/origin/', '/year/', '/popular/', '/tag/', '/collection/',
+  '/watch/', '/person/', '/genre/', '/origin/', '/year/', '/popular/', '/tag/', '/collection/', '/streaming/',
 ] as const;
 
 export function isAllowedRevalidationPath(path: string) {

@@ -90,7 +90,14 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('X-Request-Id', requestId);
   response.headers.set('X-MovieFlix-Release', process.env.APP_RELEASE_SHA || 'development');
-  if (!siteConfig.indexingEnabled || requestHost !== canonicalHost || pathname.startsWith('/api/')) {
+  const nonIndexableRoute =
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/admin') ||
+    pathname === '/login' ||
+    pathname === '/search' ||
+    pathname === '/monitoring' ||
+    pathname === '/person-not-found';
+  if (!siteConfig.indexingEnabled || requestHost !== canonicalHost || nonIndexableRoute) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   }
   return response;

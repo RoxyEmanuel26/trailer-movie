@@ -9,8 +9,9 @@ import { requireAdmin } from '../auth/utils';
 import { prisma } from '../prisma';
 import type { Prisma } from '@prisma/client';
 import { moviePath, publicMovieSlug } from '../public-routes';
-import { unstable_cache } from 'next/cache';
+import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
+import { coreIndexNowPaths, submitIndexNowUrls } from '../indexnow';
 
 const RELATED_MOVIE_LIMIT = 8;
 
@@ -116,6 +117,7 @@ export interface PublicCatalogPageQuery {
   genreSlug?: string;
   collectionSlug?: string;
   tagSlug?: string;
+  providerTmdbIds?: number[];
   countryCodes?: string[];
   languageCodes?: string[];
   releaseYear?: number;
@@ -133,6 +135,7 @@ const cachedPublicCatalogPage = unstable_cache(
       genreSlug: query.genreSlug,
       collectionSlug: query.collectionSlug,
       tagSlug: query.tagSlug,
+      providerTmdbIds: query.providerTmdbIds,
       countryCodes: query.countryCodes,
       languageCodes: query.languageCodes,
       releaseYear: query.releaseYear,
@@ -145,6 +148,15 @@ const cachedPublicCatalogPage = unstable_cache(
   },
   ['public-catalog-pages-v2'],
   { revalidate: 300, tags: [HOMEPAGE_CATALOG_TAG] },
+);
+
+const cachedStreamingGroupCounts = unstable_cache(
+  async (platforms: Array<{ slug: string; tmdbIds: number[] }>) => {
+    const map = await MovieRepository.countStreamingGroups(platforms);
+    return Object.fromEntries(map.entries());
+  },
+  ['public-streaming-hub-counts-v1'],
+  { revalidate: 600, tags: [HOMEPAGE_CATALOG_TAG] },
 );
 
 const cachedPublicTopRatedPage = unstable_cache(
@@ -188,12 +200,38 @@ const dedupeRelatedMoviesInRequest = cache(async (movieId: string, genreKey: str
   return items.map(hydrateCard);
 });
 
+function notifyPublicCatalogMutation(slug?: string, submitToIndexNow = false) {
+  const detailPath = slug ? moviePath(slug) : undefined;
+  try {
+    revalidateTag(HOMEPAGE_CATALOG_TAG, 'max');
+    revalidatePath('/');
+    revalidatePath('/movies');
+    revalidatePath('/streaming');
+    revalidatePath('/feed.xml');
+    revalidatePath('/sitemap.xml');
+    revalidatePath('/sitemaps', 'layout');
+    if (detailPath) revalidatePath(detailPath);
+  } catch {
+    // Revalidation APIs require an active Next.js server store; ignore in CLI/tests.
+  }
+  if (submitToIndexNow && detailPath) {
+    void submitIndexNowUrls([...coreIndexNowPaths(), detailPath]);
+  }
+}
+
 export class MovieService {
   static getPopularHubCounts = cache(async () => MovieRepository.getPopularHubCounts());
 
   static countOriginGroups = cache(async (
     origins: Array<{ slug: string; countryCodes: string[]; languageCodes: string[] }>,
   ) => MovieRepository.countOriginGroups(origins));
+
+  static countStreamingGroups = cache(async (
+    platforms: Array<{ slug: string; tmdbIds: number[] }>,
+  ) => {
+    const entries = await cachedStreamingGroupCounts(platforms);
+    return new Map(Object.entries(entries).map(([slug, count]) => [slug, Number(count)]));
+  });
 
   static listPublishedReleaseYears = cache(async () => {
     return MovieRepository.listPublishedReleaseYears();
@@ -268,7 +306,9 @@ export class MovieService {
       throw new ValidationError(`Movie with id ${id} is already published`);
     }
 
-    return MovieRepository.update(id, { status: 'PUBLISHED' });
+    const updated = await MovieRepository.update(id, { status: 'PUBLISHED' });
+    notifyPublicCatalogMutation(updated.slug, true);
+    return updated;
   }
 
   static async archiveMovie(id: string) {
@@ -278,7 +318,9 @@ export class MovieService {
       throw new NotFoundError(`Movie with id ${id} not found`);
     }
 
-    return MovieRepository.update(id, { status: 'ARCHIVED' });
+    const updated = await MovieRepository.update(id, { status: 'ARCHIVED' });
+    notifyPublicCatalogMutation(updated.slug, false);
+    return updated;
   }
 
   static async deleteMovie(id: string) {
@@ -287,7 +329,9 @@ export class MovieService {
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
     }
-    return MovieRepository.delete(id);
+    const deleted = await MovieRepository.delete(id);
+    notifyPublicCatalogMutation(deleted.slug, false);
+    return deleted;
   }
 
   static async updateMovie(id: string, data: any) {
@@ -296,7 +340,9 @@ export class MovieService {
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
     }
-    return MovieRepository.update(id, data);
+    const updated = await MovieRepository.update(id, data);
+    notifyPublicCatalogMutation(updated.slug, updated.status === 'PUBLISHED');
+    return updated;
   }
 
   static async adminListMovies(params: {

@@ -25,6 +25,7 @@ const envSchema = z.object({
   REVALIDATION_BASE_URL: z.string().url().optional(),
   APP_RELEASE_SHA: z.string().min(7).optional(),
   SITEMAP_CACHE_DIR: z.string().min(1).optional(),
+  INDEXNOW_KEY: z.string().min(8).max(128).regex(/^[a-zA-Z0-9-]+$/).optional(),
   IMPORT_HEALTHCHECK_URL: z.string().url().optional(),
   IMPORT_DB_POOL_MAX: z.coerce.number().int().min(1).max(20).optional(),
 });

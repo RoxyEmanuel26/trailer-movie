@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '@/lib/public-catalog';
+import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
 import { MovieFlixMark } from '@/components/brand/MovieFlixLogo';
 
 interface NavbarMobileProps {
@@ -102,6 +103,25 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
                   onClick={closeMenu}
                 >
                   {genre.name}
+                </Link>
+              ))}
+            </MobileNavSection>
+
+            <MobileNavSection label="Streaming" active={pathname.startsWith('/streaming')}>
+              <Link href="/streaming" prefetch={false} className="mobile-nav-link font-semibold text-primary" onClick={closeMenu}>All streaming services</Link>
+              {STREAMING_CATALOG.map((item) => (
+                <Link
+                  key={item.slug}
+                  href={`/streaming/${item.slug}`}
+                  prefetch={false}
+                  className={cn(
+                    'mobile-nav-link',
+                    pathname === `/streaming/${item.slug}` && 'bg-muted text-primary'
+                  )}
+                  aria-current={pathname === `/streaming/${item.slug}` ? 'page' : undefined}
+                  onClick={closeMenu}
+                >
+                  {item.label}
                 </Link>
               ))}
             </MobileNavSection>

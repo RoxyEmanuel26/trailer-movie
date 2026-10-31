@@ -198,14 +198,15 @@ export default async function HomePage() {
       </section>
 
       <section className="mx-auto w-full max-w-[90rem] px-4 pb-8 pt-3 sm:px-6 sm:pb-12 lg:px-8">
-        <div className="grid gap-4 border-t pt-7 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
+        <div className="grid gap-4 border-t pt-7 sm:grid-cols-2 sm:gap-6 lg:grid-cols-5">
           {[
             { href: '/movies', title: 'Explore all movies', text: 'Browse the newest releases first, then filter the catalog by what matters to you.' },
+            { href: '/streaming', title: 'Browse by streaming', text: 'Find movies on Netflix, Prime Video, Disney+, Apple TV, Vidio, Tubi, and more.' },
             { href: '/popular', title: 'See what is popular', text: 'Find audience favorites, highly rated movies and current releases.' },
             { href: '/countries', title: 'Discover by origin', text: 'Explore movies through production countries and spoken languages.' },
             { href: '/years', title: 'Browse by year', text: 'Travel through recent releases and earlier eras of cinema.' },
           ].map((item) => (
-            <Link key={item.href} href={item.href} className="group rounded-2xl border bg-card/55 p-4 transition hover:border-primary/35 hover:bg-card sm:p-5">
+            <Link key={item.href} href={item.href} prefetch={false} className="group rounded-2xl border bg-card/55 p-4 transition hover:border-primary/35 hover:bg-card sm:p-5">
               <h2 className="font-semibold tracking-[-0.02em] group-hover:text-primary">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.text}</p>
             </Link>
