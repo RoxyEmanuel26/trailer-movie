@@ -1,4 +1,5 @@
-FROM node:22.12-alpine AS base
+FROM node:22-alpine AS base
+RUN npm install -g pnpm@11
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -8,7 +9,7 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json pnpm-lock.yaml* ./
-RUN corepack enable pnpm && pnpm i --frozen-lockfile
+RUN pnpm i --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -30,8 +31,8 @@ ENV DATABASE_DRIVER="pg"
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN corepack enable pnpm && pnpm prisma generate
-RUN corepack enable pnpm && pnpm build
+RUN pnpm prisma generate
+RUN pnpm build
 
 # Production image, copy all the files and run next
 FROM base AS runner
