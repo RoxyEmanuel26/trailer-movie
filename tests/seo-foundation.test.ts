@@ -66,8 +66,8 @@ test('movie paths use a readable fallback when transliteration is empty', () => 
 });
 
 test('canonical URLs cannot be overridden by another host', () => {
-  assert.equal(canonicalUrl('https://spam.example/movies', '/movies'), 'http://localhost:3000/movies');
-  assert.equal(canonicalUrl('/movies?page=2', '/movies'), 'http://localhost:3000/movies?page=2');
+  assert.equal(canonicalUrl('https://spam.example/movies', '/movies'), `${siteConfig.url}/movies`);
+  assert.equal(canonicalUrl('/movies?page=2', '/movies'), `${siteConfig.url}/movies?page=2`);
 });
 
 test('pagination preserves its self canonical and page title despite CMS overrides', () => {
