@@ -202,12 +202,34 @@ export APP_RELEASE_SHA="$SHA"
 export SITEMAP_CACHE_DIR="${SITEMAP_CACHE_DIR:-$SHARED/sitemaps}"
 
 if [[ ! -f "$TARGET/node_modules/.modules.yaml" ]]; then
-  NODE_ENV=development pnpm install --frozen-lockfile --prod=false
-  pnpm exec prisma generate
+  PREV_RELEASE=""
+  if [[ -L "$ROOT/current" && -f "$ROOT/current/node_modules/.modules.yaml" ]]; then
+    PREV_RELEASE="$(readlink -f "$ROOT/current")"
+  elif [[ -L "$ROOT/previous" && -f "$ROOT/previous/node_modules/.modules.yaml" ]]; then
+    PREV_RELEASE="$(readlink -f "$ROOT/previous")"
+  fi
+
+  if [[ -n "$PREV_RELEASE" && -f "$PREV_RELEASE/pnpm-lock.yaml" ]] && cmp -s "$TARGET/pnpm-lock.yaml" "$PREV_RELEASE/pnpm-lock.yaml"; then
+    echo "[MovieFlix] Dependencies unchanged. Fast-linking node_modules from active release ($PREV_RELEASE)..."
+    cp -al "$PREV_RELEASE/node_modules" "$TARGET/node_modules" 2>/dev/null || cp -R "$PREV_RELEASE/node_modules" "$TARGET/node_modules"
+    pnpm exec prisma generate
+  else
+    echo "[MovieFlix] Installing dependencies with pnpm (using cached store)..."
+    NODE_ENV=development pnpm install --frozen-lockfile --prod=false --store-dir "$SHARED/.pnpm-store"
+    pnpm exec prisma generate
+  fi
 else
   echo "[MovieFlix] Reusing existing node_modules in $TARGET"
   if [[ ! -d "$TARGET/node_modules/@prisma/client" ]]; then
     pnpm exec prisma generate
+  fi
+fi
+
+if [[ ! -d "$TARGET/.next/cache" ]]; then
+  if [[ -L "$ROOT/current" && -d "$ROOT/current/.next/cache" ]]; then
+    echo "[MovieFlix] Fast incremental build: Seeding Next.js compiler cache from current release..."
+    mkdir -p "$TARGET/.next"
+    cp -al "$ROOT/current/.next/cache" "$TARGET/.next/cache" 2>/dev/null || cp -R "$ROOT/current/.next/cache" "$TARGET/.next/cache" 2>/dev/null || true
   fi
 fi
 
