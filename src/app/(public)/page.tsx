@@ -91,7 +91,7 @@ export default async function HomePage() {
             alt={hero ? `${hero.title} movie backdrop` : 'MovieFlix featured movie'}
             fill
             priority
-            sizes="100vw"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 100vw, 100vw"
             className="object-cover object-center opacity-70"
           />
         ) : null}

@@ -39,7 +39,7 @@ export function MovieCard({ movie, className = '', priority = false }: MovieCard
             src={movie.posterUrl}
             alt={movie.title}
             fill
-            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 25vw, 20vw"
+            sizes="(max-width: 640px) 46vw, (max-width: 768px) 31vw, (max-width: 1024px) 23vw, (max-width: 1280px) 15vw, 220px"
             className="object-cover transition duration-500 [@media(hover:hover)]:group-hover:scale-[1.045] [@media(hover:hover)]:group-hover:brightness-[.72]"
             priority={priority}
           />

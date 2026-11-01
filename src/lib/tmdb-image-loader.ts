@@ -3,7 +3,21 @@ import type { ImageLoaderProps } from 'next/image';
 const TMDB_WIDTHS = [92, 154, 185, 300, 342, 500, 780, 1280];
 
 function closestTmdbWidth(width: number) {
-  return TMDB_WIDTHS.find((candidate) => candidate >= width) || TMDB_WIDTHS.at(-1)!;
+  const direct = TMDB_WIDTHS.find((candidate) => candidate >= width);
+  if (direct) {
+    const prevIndex = TMDB_WIDTHS.indexOf(direct) - 1;
+    if (prevIndex >= 0) {
+      const prev = TMDB_WIDTHS[prevIndex];
+      // Allow ~15% scaling tolerance before jumping to a much larger TMDB tier.
+      // E.g., an 828px request will use 780 instead of jumping to 1280 (saving ~75KB),
+      // and a 360-384px mobile request will use 342 instead of jumping to 500 (saving ~50KB per poster).
+      if (prev >= 342 && prev * 1.15 >= width) {
+        return prev;
+      }
+    }
+    return direct;
+  }
+  return TMDB_WIDTHS.at(-1)!;
 }
 
 export function getTmdbImageUrl(src: string, width: number) {
