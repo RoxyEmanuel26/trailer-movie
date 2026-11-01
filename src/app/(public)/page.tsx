@@ -55,6 +55,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description: homepageDescription,
       images: [image],
     },
+    verification: siteConfig.googleVerification ? { google: siteConfig.googleVerification } : undefined,
   };
 }
 

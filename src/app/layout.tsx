@@ -4,6 +4,7 @@ import './globals.css';
 import { siteConfig } from '@/lib/site-config';
 
 // Force dynamic to allow Next.js build to succeed in CI environments without a live database.
+export const dynamic = 'force-dynamic';
 
 
 const geistSans = Geist({

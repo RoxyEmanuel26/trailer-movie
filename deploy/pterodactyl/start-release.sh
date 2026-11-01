@@ -5,7 +5,7 @@ ROOT="${MOVIEFLIX_ROOT:-/home/container}"
 RELEASES="$ROOT/releases"
 SHARED="$ROOT/shared"
 
-if [[ -f "$SHARED/env.production" && ! -f "$SHARED/.env.production.local" ]]; then
+if [[ -f "$SHARED/env.production" ]]; then
   cp -f "$SHARED/env.production" "$SHARED/.env.production.local"
 fi
 
