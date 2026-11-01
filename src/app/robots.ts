@@ -14,6 +14,7 @@ const DISALLOWED_PATHS = [
 
 export const AI_SEARCH_CRAWLERS = [
   'Googlebot',
+  'Google-InspectionTool',
   'Google-Extended',
   'Bingbot',
   'Applebot',
