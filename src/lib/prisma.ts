@@ -12,14 +12,37 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const connectionString = process.env.DATABASE_URL || '';
+const rawConnectionString = process.env.DATABASE_URL || '';
 const driver = process.env.DATABASE_DRIVER || 'neon';
 
 if (driver !== 'neon' && driver !== 'pg') {
   throw new Error('DATABASE_DRIVER must be neon or pg');
 }
 
+export function getEffectiveDatabaseUrl(inputUrl?: string): string {
+  const raw = inputUrl || process.env.DATABASE_URL || '';
+  if (!raw) return raw;
+
+  try {
+    const url = new URL(raw);
+    // When running on Linux inside NuraHost container (Pterodactyl),
+    // loopback to the public domain 'nano-1.nura.host' fails with timeout because
+    // Docker containers cannot loop back to their own host's public IP (hairpin NAT blocked).
+    // In that environment, route to the internal container Docker network instead.
+    if (process.platform === 'linux' && url.hostname === 'nano-1.nura.host') {
+      const internalHost = process.env.INTERNAL_DB_HOST || '461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw';
+      url.hostname = internalHost;
+      return url.toString();
+    }
+  } catch {
+    // If URL parsing fails, fallback to raw string
+  }
+
+  return raw;
+}
+
 function postgresAdapter() {
+  const connectionString = getEffectiveDatabaseUrl();
   const url = new URL(connectionString);
   const isLocal = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
   const sslmode = url.searchParams.get('sslmode');
@@ -47,6 +70,7 @@ function postgresAdapter() {
 }
 
 function createPrismaClient() {
+  const connectionString = getEffectiveDatabaseUrl();
   const adapter = driver === 'pg'
     ? postgresAdapter()
     : new PrismaNeon({ connectionString });

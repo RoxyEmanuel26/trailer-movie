@@ -5,6 +5,18 @@ import { defineConfig } from "prisma/config";
 
 dotenv.config({ path: [".env.production.local", ".env"], quiet: true });
 
+function resolveDatasourceUrl(raw: string | undefined): string | undefined {
+  if (!raw) return raw;
+  try {
+    const url = new URL(raw);
+    if (process.platform === 'linux' && url.hostname === 'nano-1.nura.host') {
+      url.hostname = process.env.INTERNAL_DB_HOST || '461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw';
+      return url.toString();
+    }
+  } catch {}
+  return raw;
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -12,6 +24,6 @@ export default defineConfig({
   },
   datasource: {
     // Prisma migrations require a direct connection, not a pooled PgBouncer connection.
-    url: process.env["DIRECT_DATABASE_URL"] || process.env["DATABASE_URL"],
+    url: resolveDatasourceUrl(process.env["DIRECT_DATABASE_URL"] || process.env["DATABASE_URL"]),
   },
 });
