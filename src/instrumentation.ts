@@ -23,5 +23,20 @@ export async function register() {
     // Attach to termination signals
     process.on('SIGTERM', cleanup);
     process.on('SIGINT', cleanup);
+
+    // Periodic background database maintenance in production (every 24 hours, first run after 10m)
+    if (process.env.NODE_ENV === 'production') {
+      const { DatabaseMaintenanceService } = await import('@/lib/services/DatabaseMaintenanceService');
+      const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+      const INITIAL_DELAY_MS = 10 * 60 * 1000;
+
+      setTimeout(() => {
+        void DatabaseMaintenanceService.runPruning().catch(() => {});
+        const timer = setInterval(() => {
+          void DatabaseMaintenanceService.runPruning().catch(() => {});
+        }, MAINTENANCE_INTERVAL_MS);
+        timer.unref?.();
+      }, INITIAL_DELAY_MS).unref?.();
+    }
   }
 }
