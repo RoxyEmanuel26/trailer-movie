@@ -52,7 +52,11 @@ async function main() {
   }
 
   process.stdout.write('[prune-import-jobs] Running VACUUM (ANALYZE) on "import_jobs" to mark freed pages reusable...\n');
-  await prisma.$executeRawUnsafe('VACUUM (ANALYZE) "import_jobs"');
+  try {
+    await prisma.$executeRawUnsafe('VACUUM (ANALYZE) "import_jobs"');
+  } catch (err: any) {
+    process.stdout.write(`[prune-import-jobs] Note: VACUUM skipped (${err.message}). Space will be reused by PostgreSQL on upcoming writes.\n`);
+  }
   process.stdout.write(`[prune-import-jobs] Done. Reclaimed ${totalDeleted.toLocaleString()} terminal import_jobs rows.\n`);
 }
 
