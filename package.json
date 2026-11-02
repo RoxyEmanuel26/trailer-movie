@@ -29,6 +29,8 @@
     "import:quality:apply": "npx tsx --env-file=.env scripts/backfill-import-quality.ts --apply",
     "release:prepare": "bash deploy/pterodactyl/prepare-release.sh",
     "release:start": "bash deploy/pterodactyl/start-release.sh",
+    "deploy:pack": "pnpm build && tsx scripts/package-standalone.ts",
+    "pack:only": "tsx scripts/package-standalone.ts",
     "db:backup:production": "powershell -ExecutionPolicy Bypass -File scripts/backup-production.ps1",
     "db:restore-test": "powershell -ExecutionPolicy Bypass -File scripts/test-backup-restore.ps1"
   },
