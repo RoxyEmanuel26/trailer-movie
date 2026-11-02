@@ -184,14 +184,24 @@ if ! command -v pnpm >/dev/null 2>&1; then
   corepack enable --install-directory "$ROOT/.local/bin"
 fi
 
-if [[ ! -d "$TARGET/.git" ]]; then
+if [[ ! -f "$TARGET/package.json" || ! -d "$TARGET/.git" ]]; then
+  echo "[MovieFlix] Checking out release $SHA from GitHub..."
   rm -rf -- "$TARGET"
   git init "$TARGET"
   git -C "$TARGET" remote add origin "$REPOSITORY_URL"
-  git -C "$TARGET" fetch --depth 1 origin "$SHA"
-  git -C "$TARGET" checkout --detach FETCH_HEAD
+  if ! git -C "$TARGET" fetch --depth 20 origin main; then
+    echo "[MovieFlix] Shallow fetch failed, fetching full main branch..."
+    git -C "$TARGET" fetch origin main
+  fi
+  git -C "$TARGET" checkout --detach "$SHA" || git -C "$TARGET" checkout --detach FETCH_HEAD
 else
   echo "[MovieFlix] Reusing existing Git checkout in $TARGET"
+fi
+
+if [[ ! -f "$TARGET/package.json" ]]; then
+  echo "[MovieFlix] Error: Failed to checkout valid release files in $TARGET (package.json not found)." >&2
+  rm -rf -- "$TARGET"
+  exit 1
 fi
 
 cp -f "$SHARED/.env.production.local" "$TARGET/.env.production.local"

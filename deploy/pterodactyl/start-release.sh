@@ -24,7 +24,17 @@ CURRENT="$ROOT/current"
 
 chmod 600 "$SHARED/.env.production.local" 2>/dev/null || true
 chmod +x "$(dirname "$0")"/*.sh 2>/dev/null || true
-bash "$(dirname "$0")/prepare-release.sh"
+
+# Auto-sync latest prepare-release.sh from GitHub if reachable
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v curl >/dev/null 2>&1; then
+  curl -sSfL "https://raw.githubusercontent.com/RoxyEmanuel26/trailer-movie/main/deploy/pterodactyl/prepare-release.sh" -o "$SCRIPT_DIR/prepare-release.sh.new" 2>/dev/null && \
+  [[ -s "$SCRIPT_DIR/prepare-release.sh.new" ]] && \
+  mv -f "$SCRIPT_DIR/prepare-release.sh.new" "$SCRIPT_DIR/prepare-release.sh" && \
+  chmod +x "$SCRIPT_DIR/prepare-release.sh" 2>/dev/null || rm -f "$SCRIPT_DIR/prepare-release.sh.new"
+fi
+
+bash "$SCRIPT_DIR/prepare-release.sh"
 
 if [[ ! -f "$TARGET/.release-ready" ]]; then
   echo "Release $SHA is not ready." >&2
