@@ -201,6 +201,31 @@ export NEXT_TELEMETRY_DISABLED=1
 export APP_RELEASE_SHA="$SHA"
 export SITEMAP_CACHE_DIR="${SITEMAP_CACHE_DIR:-$SHARED/sitemaps}"
 
+run_prisma() {
+  if [[ -x "./node_modules/.bin/prisma" ]]; then
+    ./node_modules/.bin/prisma "$@"
+  elif [[ -f "./node_modules/.bin/prisma" ]]; then
+    node ./node_modules/.bin/prisma "$@"
+  else
+    pnpm exec prisma "$@"
+  fi
+}
+
+run_tsx() {
+  if [[ -x "./node_modules/.bin/tsx" ]]; then
+    ./node_modules/.bin/tsx "$@"
+  elif [[ -f "./node_modules/.bin/tsx" ]]; then
+    node ./node_modules/.bin/tsx "$@"
+  else
+    pnpm exec tsx "$@"
+  fi
+}
+
+if [[ -d "$TARGET/node_modules" && ! -f "$TARGET/node_modules/.bin/prisma" ]]; then
+  echo "[MovieFlix] Incomplete node_modules detected in $TARGET. Reinstalling cleanly..."
+  rm -rf "$TARGET/node_modules"
+fi
+
 if [[ ! -f "$TARGET/node_modules/.modules.yaml" ]]; then
   PREV_RELEASE=""
   if [[ -L "$ROOT/current" && -f "$ROOT/current/node_modules/.modules.yaml" ]]; then
@@ -212,16 +237,16 @@ if [[ ! -f "$TARGET/node_modules/.modules.yaml" ]]; then
   if [[ -n "$PREV_RELEASE" && -f "$PREV_RELEASE/pnpm-lock.yaml" ]] && cmp -s "$TARGET/pnpm-lock.yaml" "$PREV_RELEASE/pnpm-lock.yaml"; then
     echo "[MovieFlix] Dependencies unchanged. Fast-linking node_modules from active release ($PREV_RELEASE)..."
     cp -al "$PREV_RELEASE/node_modules" "$TARGET/node_modules" 2>/dev/null || cp -R "$PREV_RELEASE/node_modules" "$TARGET/node_modules"
-    pnpm exec prisma generate
+    run_prisma generate
   else
     echo "[MovieFlix] Installing dependencies with pnpm (using cached store)..."
     NODE_ENV=development pnpm install --frozen-lockfile --prod=false --store-dir "$SHARED/.pnpm-store"
-    pnpm exec prisma generate
+    run_prisma generate
   fi
 else
   echo "[MovieFlix] Reusing existing node_modules in $TARGET"
   if [[ ! -d "$TARGET/node_modules/@prisma/client" ]]; then
-    pnpm exec prisma generate
+    run_prisma generate
   fi
 fi
 
@@ -234,9 +259,9 @@ if [[ ! -d "$TARGET/.next/cache" ]]; then
 fi
 
 export NODE_ENV=production
-pnpm exec prisma migrate deploy
+run_prisma migrate deploy
 pnpm build
-pnpm exec tsx --env-file=.env.production.local scripts/warm-sitemap-cache.ts
+run_tsx --env-file=.env.production.local scripts/warm-sitemap-cache.ts
 
 mkdir -p .next/standalone/.next
 cp -R .next/static .next/standalone/.next/static

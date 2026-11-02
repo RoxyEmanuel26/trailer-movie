@@ -131,6 +131,9 @@ importers:
       pino:
         specifier: ^10.3.1
         version: 10.3.1
+      prisma:
+        specifier: 7.10.0
+        version: 7.10.0(@types/node@20.19.43)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -155,6 +158,9 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
       use-debounce:
         specifier: ^10.1.1
         version: 10.1.1(react@19.2.4)
@@ -201,15 +207,9 @@ importers:
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
-      prisma:
-        specifier: 7.10.0
-        version: 7.10.0(@types/node@20.19.43)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       tailwindcss:
         specifier: ^4
         version: 4.3.3
-      tsx:
-        specifier: ^4.23.13
-        version: 4.23.13
       typescript:
         specifier: ^5
         version: 5.9.3
