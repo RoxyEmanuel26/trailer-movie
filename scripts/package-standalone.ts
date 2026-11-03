@@ -26,6 +26,78 @@ function copyRecursiveSync(src: string, dest: string) {
   }
 }
 
+function derefCopy(src: string, dest: string) {
+  try {
+    let realPath = src;
+    const stat = fs.lstatSync(src);
+    if (stat.isSymbolicLink()) {
+      realPath = fs.realpathSync(src);
+    }
+    if (fs.existsSync(dest)) {
+      const destStat = fs.lstatSync(dest);
+      if (destStat.isSymbolicLink()) {
+        fs.unlinkSync(dest);
+      } else {
+        return;
+      }
+    }
+    copyRecursiveSync(realPath, dest);
+  } catch {
+    // ignore copy errors for optional files
+  }
+}
+
+function derefReplace(targetPath: string) {
+  try {
+    const stat = fs.lstatSync(targetPath);
+    if (stat.isSymbolicLink()) {
+      const realPath = fs.realpathSync(targetPath);
+      fs.unlinkSync(targetPath);
+      copyRecursiveSync(realPath, targetPath);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function flattenAndDerefNodeModules(nmDir: string) {
+  log('Flattening and dereferencing node_modules to eliminate Windows symlinks...');
+  if (!fs.existsSync(nmDir)) return;
+
+  // 1. Copy any virtual packages from .pnpm/node_modules directly into root node_modules
+  const pnpmVirtualNm = path.join(nmDir, '.pnpm', 'node_modules');
+  if (fs.existsSync(pnpmVirtualNm)) {
+    for (const item of fs.readdirSync(pnpmVirtualNm)) {
+      const src = path.join(pnpmVirtualNm, item);
+      const dest = path.join(nmDir, item);
+      if (item.startsWith('@')) {
+        fs.mkdirSync(dest, { recursive: true });
+        for (const subItem of fs.readdirSync(src)) {
+          const subSrc = path.join(src, subItem);
+          const subDest = path.join(dest, subItem);
+          derefCopy(subSrc, subDest);
+        }
+      } else {
+        derefCopy(src, dest);
+      }
+    }
+  }
+
+  // 2. Resolve all symlinks in root node_modules (e.g. next, react, sharp, pg, pino)
+  for (const item of fs.readdirSync(nmDir)) {
+    if (item === '.pnpm') continue;
+    const itemPath = path.join(nmDir, item);
+    if (item.startsWith('@')) {
+      for (const subItem of fs.readdirSync(itemPath)) {
+        const subPath = path.join(itemPath, subItem);
+        derefReplace(subPath);
+      }
+    } else {
+      derefReplace(itemPath);
+    }
+  }
+}
+
 async function main() {
   log('Step 1/5: Checking Next.js standalone build...');
   if (!fs.existsSync(STANDALONE_DIR) || !fs.existsSync(path.join(STANDALONE_DIR, 'server.js'))) {
@@ -104,6 +176,8 @@ else
 fi
 `.replace(/\r\n/g, '\n');
   fs.writeFileSync(path.join(compatDir, 'start-release.sh'), compatStartContent, { encoding: 'utf8', mode: 0o755 });
+
+  flattenAndDerefNodeModules(path.join(STANDALONE_DIR, 'node_modules'));
 
   log('Step 5/5: Compressing package into movieflix-deploy.zip...');
   if (fs.existsSync(OUTPUT_ZIP)) {

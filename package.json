@@ -85,7 +85,8 @@
     "use-debounce": "^10.1.1",
     "ws": "8.22.0",
     "zod": "^4.4.3",
-    "prisma": "7.10.0"
+    "prisma": "7.10.0",
+    "@swc/helpers": "0.5.23"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -106,7 +107,7 @@
   "overrides": {
     "deepmerge-ts": "8.0.1",
     "fast-uri": "3.1.8",
-    "minimatch@10>brace-expansion": "5.0.12",
+    "brace-expansion": "5.0.12",
     "undici": "8.10.2",
     "mysql2": "3.23.1",
     "dompurify": "3.4.16",
