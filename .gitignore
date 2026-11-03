@@ -30,6 +30,8 @@
 *.pem
 *.zip
 movieflix-deploy.zip
+*.tar.gz
+movieflix-deploy.tar.gz
 
 # debug
 npm-debug.log*

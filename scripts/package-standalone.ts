@@ -6,7 +6,8 @@ const ROOT = process.cwd();
 const STANDALONE_DIR = path.join(ROOT, '.next', 'standalone');
 const STATIC_DIR = path.join(ROOT, '.next', 'static');
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const OUTPUT_ZIP = path.join(ROOT, 'movieflix-deploy.zip');
+const OUTPUT_ARCHIVE = path.join(ROOT, 'movieflix-deploy.tar.gz');
+const OLD_ZIP = path.join(ROOT, 'movieflix-deploy.zip');
 
 function log(msg: string) {
   console.log(`\x1b[36m[Deploy Pack]\x1b[0m ${msg}`);
@@ -179,33 +180,36 @@ fi
 
   flattenAndDerefNodeModules(path.join(STANDALONE_DIR, 'node_modules'));
 
-  log('Step 5/5: Compressing package into movieflix-deploy.zip...');
-  if (fs.existsSync(OUTPUT_ZIP)) {
-    fs.unlinkSync(OUTPUT_ZIP);
+  log('Step 5/5: Compressing package into movieflix-deploy.tar.gz...');
+  if (fs.existsSync(OUTPUT_ARCHIVE)) {
+    fs.unlinkSync(OUTPUT_ARCHIVE);
+  }
+  if (fs.existsSync(OLD_ZIP)) {
+    fs.unlinkSync(OLD_ZIP);
   }
 
-  // Use tar.exe on Windows or zip on Linux
+  // Create tar.gz archive
   try {
-    execSync(`tar.exe -a -cf "${OUTPUT_ZIP}" -C "${STANDALONE_DIR}" .`, { stdio: 'inherit' });
-  } catch {
-    log('tar.exe failed or unavailable, falling back to powershell Compress-Archive...');
-    execSync(`powershell -Command "Compress-Archive -Path '${STANDALONE_DIR}\\*' -DestinationPath '${OUTPUT_ZIP}' -Force"`, { stdio: 'inherit' });
+    execSync(`tar.exe -czf "${OUTPUT_ARCHIVE}" -C "${STANDALONE_DIR}" .`, { stdio: 'inherit' });
+  } catch (err) {
+    log('Failed to create tar.gz archive: ' + String(err));
+    throw err;
   }
 
-  if (fs.existsSync(OUTPUT_ZIP)) {
-    const stats = fs.statSync(OUTPUT_ZIP);
+  if (fs.existsSync(OUTPUT_ARCHIVE)) {
+    const stats = fs.statSync(OUTPUT_ARCHIVE);
     const sizeMb = (stats.size / (1024 * 1024)).toFixed(2);
     console.log('\n\x1b[32m============================================================');
-    console.log(`[SUCCESS] Package created: movieflix-deploy.zip (${sizeMb} MB)`);
+    console.log(`[SUCCESS] Package created: movieflix-deploy.tar.gz (${sizeMb} MB)`);
     console.log('============================================================\x1b[0m\n');
     console.log('Cara Deploy ke NuraHost:');
     console.log('1. Buka File Manager di panel NuraHost.');
-    console.log('2. Drag & drop file "movieflix-deploy.zip" ke File Manager.');
+    console.log('2. Drag & drop file "movieflix-deploy.tar.gz" ke File Manager.');
     console.log('3. Klik tombol titik tiga (...) pada file -> pilih "Unarchive".');
     console.log('4. Klik tombol "Restart" di Console NuraHost.');
     console.log('5. Web langsung online dalam 2 detik tanpa perlu build di server!\n');
   } else {
-    throw new Error('Failed to create movieflix-deploy.zip');
+    throw new Error('Failed to create movieflix-deploy.tar.gz');
   }
 }
 
