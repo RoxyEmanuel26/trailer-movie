@@ -61,6 +61,28 @@ function derefReplace(targetPath: string) {
   }
 }
 
+function derefSymlinksRecursively(dir: string): number {
+  if (!fs.existsSync(dir)) return 0;
+  let count = 0;
+  for (const item of fs.readdirSync(dir)) {
+    const full = path.join(dir, item);
+    try {
+      const stat = fs.lstatSync(full);
+      if (stat.isSymbolicLink()) {
+        const real = fs.realpathSync(full);
+        fs.unlinkSync(full);
+        copyRecursiveSync(real, full);
+        count++;
+      } else if (stat.isDirectory()) {
+        count += derefSymlinksRecursively(full);
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return count;
+}
+
 function flattenAndDerefNodeModules(nmDir: string) {
   log('Flattening and dereferencing node_modules to eliminate Windows symlinks...');
   if (!fs.existsSync(nmDir)) return;
@@ -178,9 +200,15 @@ fi
 `.replace(/\r\n/g, '\n');
   fs.writeFileSync(path.join(compatDir, 'start-release.sh'), compatStartContent, { encoding: 'utf8', mode: 0o755 });
 
-  flattenAndDerefNodeModules(path.join(STANDALONE_DIR, 'node_modules'));
+  log('Dereferencing internal .next/node_modules (Turbopack external modules)...');
+  const internalNm = path.join(STANDALONE_DIR, '.next', 'node_modules');
+  const internalDerefCount = derefSymlinksRecursively(internalNm);
+  log(`Dereferenced ${internalDerefCount} modules in .next/node_modules`);
 
-  log('Step 5/5: Compressing package into movieflix-deploy.tar.gz...');
+  flattenAndDerefNodeModules(path.join(STANDALONE_DIR, 'node_modules'));
+  derefSymlinksRecursively(path.join(STANDALONE_DIR, 'node_modules'));
+
+  log('Step 5/5: Compressing package into movieflix-deploy.tar.gz (with -h dereference)...');
   if (fs.existsSync(OUTPUT_ARCHIVE)) {
     fs.unlinkSync(OUTPUT_ARCHIVE);
   }
@@ -188,9 +216,9 @@ fi
     fs.unlinkSync(OLD_ZIP);
   }
 
-  // Create tar.gz archive
+  // Create tar.gz archive with -h (--dereference) to guarantee NO broken Windows symlinks
   try {
-    execSync(`tar.exe -czf "${OUTPUT_ARCHIVE}" -C "${STANDALONE_DIR}" .`, { stdio: 'inherit' });
+    execSync(`tar.exe -h -czf "${OUTPUT_ARCHIVE}" -C "${STANDALONE_DIR}" .`, { stdio: 'inherit' });
   } catch (err) {
     log('Failed to create tar.gz archive: ' + String(err));
     throw err;
