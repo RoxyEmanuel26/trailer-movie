@@ -22,34 +22,54 @@ echo "[MovieFlix] Checking dependencies & build on NuraHost Linux..."
 echo "[MovieFlix] Port: $PORT | Host: $HOSTNAME"
 echo "============================================================"
 
-# 1. Enable Corepack & pnpm if not available
+# 1. Setup local user-space bin directory for pnpm (avoiding EROFS on /usr/local/bin)
+export PATH="$ROOT/.local/bin:$PATH"
+mkdir -p "$ROOT/.local/bin"
+
 if ! command -v pnpm >/dev/null 2>&1; then
-  corepack enable 2>/dev/null || npm install -g pnpm 2>/dev/null || true
+  if command -v corepack >/dev/null 2>&1; then
+    corepack enable --install-directory "$ROOT/.local/bin" 2>/dev/null || true
+  fi
 fi
+
+# Determine package manager command
+if command -v pnpm >/dev/null 2>&1; then
+  PM="pnpm"
+elif [ -x "$ROOT/.local/bin/pnpm" ]; then
+  PM="$ROOT/.local/bin/pnpm"
+elif command -v corepack >/dev/null 2>&1; then
+  PM="corepack pnpm"
+elif command -v npx >/dev/null 2>&1; then
+  PM="npx pnpm"
+else
+  PM="npm"
+fi
+
+echo "[MovieFlix] Using package manager: $PM"
 
 # 2. Install dependencies if node_modules is missing
 if [ ! -d "$ROOT/node_modules" ]; then
-  echo "[MovieFlix] node_modules not found. Running pnpm install..."
-  if command -v pnpm >/dev/null 2>&1; then
-    pnpm install --frozen-lockfile
+  echo "[MovieFlix] Installing dependencies (this may take 1-2 minutes)..."
+  if [[ "$PM" == *"pnpm"* ]]; then
+    $PM install --frozen-lockfile
   else
     npm install --legacy-peer-deps
   fi
 fi
 
 # 3. Generate Prisma client
-echo "[MovieFlix] Ensuring Prisma Client is generated..."
-if command -v pnpm >/dev/null 2>&1; then
-  pnpm exec prisma generate
+echo "[MovieFlix] Generating Prisma Client..."
+if [[ "$PM" == *"pnpm"* ]]; then
+  $PM exec prisma generate
 else
   npx prisma generate
 fi
 
-# 4. Build Next.js if .next is missing or rebuilt
+# 4. Build Next.js if .next is missing
 if [ ! -d "$ROOT/.next" ]; then
-  echo "[MovieFlix] .next build not found. Running build..."
-  if command -v pnpm >/dev/null 2>&1; then
-    pnpm build
+  echo "[MovieFlix] Building application (.next not found)..."
+  if [[ "$PM" == *"pnpm"* ]]; then
+    $PM build
   else
     npm run build
   fi
@@ -72,8 +92,8 @@ if [ -f "$ROOT/.next/standalone/server.js" ]; then
     exec node server.js
   fi
 else
-  if command -v pnpm >/dev/null 2>&1; then
-    exec pnpm start
+  if [[ "$PM" == *"pnpm"* ]]; then
+    exec $PM start
   else
     exec npm start
   fi
