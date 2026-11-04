@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const Module = require('module');
 
 const dir = path.resolve(__dirname);
 
@@ -38,69 +38,60 @@ function loadEnvFileSafe(filePath) {
 loadEnvFileSafe(path.join(dir, '.env.production.local'));
 loadEnvFileSafe(path.join(dir, '.env'));
 
-// 2. Ensure Prisma Client (.prisma) is linked & resolvable across pnpm isolation
-function linkPrismaClient() {
-  const rootModules = path.join(dir, 'node_modules');
-  const rootPrisma = path.join(rootModules, '.prisma');
-  const pnpmDir = path.join(rootModules, '.pnpm');
+// 2. Comprehensive pnpm virtual store resolver
+// Turbopack extracts synthetic external modules into .next/node_modules/ which breaks pnpm's strict isolation.
+// This O(1) resolver bridges any missing transitive dependency (e.g. pino-std-serializers, pg-types, .prisma)
+const pnpmDir = path.resolve(dir, 'node_modules', '.pnpm');
+const pnpmPackageMap = new Map();
 
-  let sourcePrisma = null;
-
-  if (fs.existsSync(rootPrisma)) {
-    sourcePrisma = rootPrisma;
-  } else if (fs.existsSync(pnpmDir)) {
-    try {
-      for (const folder of fs.readdirSync(pnpmDir)) {
-        if (folder.startsWith('@prisma+client@')) {
-          const candidate = path.join(pnpmDir, folder, 'node_modules', '.prisma');
-          if (fs.existsSync(candidate)) {
-            sourcePrisma = candidate;
-            try {
-              fs.symlinkSync(candidate, rootPrisma, 'junction');
-            } catch {
-              try {
-                fs.cpSync(candidate, rootPrisma, { recursive: true });
-              } catch {}
+if (fs.existsSync(pnpmDir)) {
+  try {
+    for (const folder of fs.readdirSync(pnpmDir)) {
+      const nm = path.join(pnpmDir, folder, 'node_modules');
+      if (fs.existsSync(nm)) {
+        for (const pkg of fs.readdirSync(nm)) {
+          if (!pnpmPackageMap.has(pkg)) {
+            pnpmPackageMap.set(pkg, path.join(nm, pkg));
+          }
+          if (pkg.startsWith('@')) {
+            const scopeDir = path.join(nm, pkg);
+            for (const subPkg of fs.readdirSync(scopeDir)) {
+              const fullScope = pkg + '/' + subPkg;
+              if (!pnpmPackageMap.has(fullScope)) {
+                pnpmPackageMap.set(fullScope, path.join(scopeDir, subPkg));
+              }
             }
-            break;
           }
         }
       }
-    } catch {}
-  }
+    }
+  } catch {}
+}
 
-  // Also link into .next/node_modules/.prisma if .next/node_modules exists
-  const nextNodeModules = path.join(dir, '.next', 'node_modules');
-  if (fs.existsSync(nextNodeModules)) {
-    const nextPrisma = path.join(nextNodeModules, '.prisma');
-    if (!fs.existsSync(nextPrisma)) {
-      const src = sourcePrisma || rootPrisma;
-      if (src && fs.existsSync(src)) {
+// Ensure .prisma is mapped explicitly
+const rootPrisma = path.join(dir, 'node_modules', '.prisma');
+if (fs.existsSync(rootPrisma)) {
+  pnpmPackageMap.set('.prisma', rootPrisma);
+  pnpmPackageMap.set('.prisma/client', path.join(rootPrisma, 'client'));
+  pnpmPackageMap.set('.prisma/client/default', path.join(rootPrisma, 'client', 'default.js'));
+}
+
+const origResolve = Module._resolveFilename;
+Module._resolveFilename = function (request, parent, isMain, options) {
+  try {
+    return origResolve.call(this, request, parent, isMain, options);
+  } catch (err) {
+    if (err.code === 'MODULE_NOT_FOUND') {
+      const matched = pnpmPackageMap.get(request);
+      if (matched) {
         try {
-          fs.symlinkSync(src, nextPrisma, 'junction');
-        } catch {
-          try {
-            fs.cpSync(src, nextPrisma, { recursive: true });
-          } catch {}
-        }
+          return origResolve.call(this, matched, parent, isMain, options);
+        } catch {}
       }
     }
+    throw err;
   }
-}
-
-try {
-  linkPrismaClient();
-  require.resolve('.prisma/client/default');
-} catch {
-  // If .prisma still cannot be resolved, run prisma generate once
-  try {
-    console.log('[MovieFlix] Generating Prisma Client for current environment...');
-    execSync('npx prisma generate', { cwd: dir, stdio: 'inherit' });
-    linkPrismaClient();
-  } catch (err) {
-    console.warn('[MovieFlix] Notice: npx prisma generate completed or skipped:', err.message);
-  }
-}
+};
 
 const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '5060', 10);
 const hostname = process.env.HOSTNAME || '0.0.0.0';
