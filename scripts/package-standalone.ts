@@ -3,11 +3,8 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 
 const ROOT = process.cwd();
-const STANDALONE_DIR = path.join(ROOT, '.next', 'standalone');
-const STATIC_DIR = path.join(ROOT, '.next', 'static');
-const PUBLIC_DIR = path.join(ROOT, 'public');
+const STAGING_DIR = path.join(ROOT, '.deploy-staging');
 const OUTPUT_ARCHIVE = path.join(ROOT, 'movieflix-deploy.tar.gz');
-const OLD_ZIP = path.join(ROOT, 'movieflix-deploy.zip');
 
 function log(msg: string) {
   console.log(`\x1b[36m[Deploy Pack]\x1b[0m ${msg}`);
@@ -27,216 +24,217 @@ function copyRecursiveSync(src: string, dest: string) {
   }
 }
 
-function derefCopy(src: string, dest: string) {
-  try {
-    let realPath = src;
-    const stat = fs.lstatSync(src);
-    if (stat.isSymbolicLink()) {
-      realPath = fs.realpathSync(src);
-    }
-    if (fs.existsSync(dest)) {
-      const destStat = fs.lstatSync(dest);
-      if (destStat.isSymbolicLink()) {
-        fs.unlinkSync(dest);
-      } else {
-        return;
-      }
-    }
-    copyRecursiveSync(realPath, dest);
-  } catch {
-    // ignore copy errors for optional files
-  }
-}
-
-function derefReplace(targetPath: string) {
-  try {
-    const stat = fs.lstatSync(targetPath);
-    if (stat.isSymbolicLink()) {
-      const realPath = fs.realpathSync(targetPath);
-      fs.unlinkSync(targetPath);
-      copyRecursiveSync(realPath, targetPath);
-    }
-  } catch {
-    // ignore
-  }
-}
-
-function derefSymlinksRecursively(dir: string): number {
-  if (!fs.existsSync(dir)) return 0;
-  let count = 0;
-  for (const item of fs.readdirSync(dir)) {
-    const full = path.join(dir, item);
-    try {
-      const stat = fs.lstatSync(full);
-      if (stat.isSymbolicLink()) {
-        const real = fs.realpathSync(full);
-        fs.unlinkSync(full);
-        copyRecursiveSync(real, full);
-        count++;
-      } else if (stat.isDirectory()) {
-        count += derefSymlinksRecursively(full);
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return count;
-}
-
-function flattenAndDerefNodeModules(nmDir: string) {
-  log('Flattening and dereferencing node_modules to eliminate Windows symlinks...');
-  if (!fs.existsSync(nmDir)) return;
-
-  // 1. Copy any virtual packages from .pnpm/node_modules directly into root node_modules
-  const pnpmVirtualNm = path.join(nmDir, '.pnpm', 'node_modules');
-  if (fs.existsSync(pnpmVirtualNm)) {
-    for (const item of fs.readdirSync(pnpmVirtualNm)) {
-      const src = path.join(pnpmVirtualNm, item);
-      const dest = path.join(nmDir, item);
-      if (item.startsWith('@')) {
-        fs.mkdirSync(dest, { recursive: true });
-        for (const subItem of fs.readdirSync(src)) {
-          const subSrc = path.join(src, subItem);
-          const subDest = path.join(dest, subItem);
-          derefCopy(subSrc, subDest);
-        }
-      } else {
-        derefCopy(src, dest);
-      }
-    }
-  }
-
-  // 2. Resolve all symlinks in root node_modules (e.g. next, react, sharp, pg, pino)
-  for (const item of fs.readdirSync(nmDir)) {
-    if (item === '.pnpm') continue;
-    const itemPath = path.join(nmDir, item);
-    if (item.startsWith('@')) {
-      for (const subItem of fs.readdirSync(itemPath)) {
-        const subPath = path.join(itemPath, subItem);
-        derefReplace(subPath);
-      }
-    } else {
-      derefReplace(itemPath);
-    }
-  }
-}
-
 async function main() {
-  log('Step 1/5: Checking Next.js standalone build...');
-  if (!fs.existsSync(STANDALONE_DIR) || !fs.existsSync(path.join(STANDALONE_DIR, 'server.js'))) {
-    log('Standalone build not found. Running pnpm build first...');
+  log('Step 1/4: Checking Next.js pre-compiled production build...');
+  if (!fs.existsSync(path.join(ROOT, '.next', 'server')) || !fs.existsSync(path.join(ROOT, '.next', 'BUILD_ID'))) {
+    log('Pre-compiled build not found. Running pnpm build on PC first...');
     execSync('pnpm build', { stdio: 'inherit' });
   }
 
-  log('Step 2/5: Copying static assets (.next/static)...');
-  const targetStatic = path.join(STANDALONE_DIR, '.next', 'static');
-  copyRecursiveSync(STATIC_DIR, targetStatic);
+  log('Step 2/4: Preparing clean staging folder (EXCLUDING node_modules)...');
+  if (fs.existsSync(STAGING_DIR)) {
+    fs.rmSync(STAGING_DIR, { recursive: true, force: true });
+  }
+  fs.mkdirSync(STAGING_DIR, { recursive: true });
 
-  log('Step 3/5: Copying public directory...');
-  const targetPublic = path.join(STANDALONE_DIR, 'public');
-  copyRecursiveSync(PUBLIC_DIR, targetPublic);
+  // 1. Copy essential compiled Next.js output (.next/server, .next/static, manifests)
+  const stagingNext = path.join(STAGING_DIR, '.next');
+  fs.mkdirSync(stagingNext, { recursive: true });
 
-  log('Step 4/5: Creating portable start.sh and compat launcher...');
-  // Ensure standalone environment files use internal container Docker host for PostgreSQL
-  for (const envName of ['.env', '.env.production.local']) {
-    const envFile = path.join(STANDALONE_DIR, envName);
-    if (fs.existsSync(envFile)) {
-      let rawEnv = fs.readFileSync(envFile, 'utf8');
-      rawEnv = rawEnv.replace(
-        /@nano-1\.(nura\.host|nurahost\.com):5112/g,
-        '@461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw:5112'
-      );
-      fs.writeFileSync(envFile, rawEnv, 'utf8');
+  log('Copying .next/server and .next/static...');
+  copyRecursiveSync(path.join(ROOT, '.next', 'server'), path.join(stagingNext, 'server'));
+  copyRecursiveSync(path.join(ROOT, '.next', 'static'), path.join(stagingNext, 'static'));
+
+  if (fs.existsSync(path.join(ROOT, '.next', 'types'))) {
+    copyRecursiveSync(path.join(ROOT, '.next', 'types'), path.join(stagingNext, 'types'));
+  }
+
+  // Copy manifest files
+  for (const file of fs.readdirSync(path.join(ROOT, '.next'))) {
+    if (file.endsWith('.json') || file === 'BUILD_ID') {
+      fs.copyFileSync(path.join(ROOT, '.next', file), path.join(stagingNext, file));
     }
   }
 
+  // 2. Copy public directory
+  log('Copying public assets...');
+  copyRecursiveSync(path.join(ROOT, 'public'), path.join(STAGING_DIR, 'public'));
+
+  // 3. Copy Prisma schema & migrations
+  log('Copying Prisma schema...');
+  copyRecursiveSync(path.join(ROOT, 'prisma'), path.join(STAGING_DIR, 'prisma'));
+
+  // 4. Copy config files
+  const configFiles = [
+    'package.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'next.config.ts',
+    'tsconfig.json',
+    'postcss.config.mjs',
+    'prisma.config.ts',
+    '.gitattributes'
+  ];
+  for (const cf of configFiles) {
+    const srcPath = path.join(ROOT, cf);
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, path.join(STAGING_DIR, cf));
+    }
+  }
+
+  // 5. Setup production environment files with internal Docker DB host
+  log('Configuring production environment files (.env & .env.production.local)...');
+  const envSource = fs.existsSync(path.join(ROOT, '.env.production.local'))
+    ? path.join(ROOT, '.env.production.local')
+    : path.join(ROOT, '.env');
+
+  if (fs.existsSync(envSource)) {
+    let rawEnv = fs.readFileSync(envSource, 'utf8');
+    rawEnv = rawEnv.replace(
+      /@nano-1\.(nura\.host|nurahost\.com):5112/g,
+      '@461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw:5112'
+    );
+    if (!rawEnv.includes('GOOGLE_SITE_VERIFICATION=')) {
+      rawEnv += '\nGOOGLE_SITE_VERIFICATION="v2Cbd4dYoP-RAJi4ThQSTcrnAX6WlN_xEIIF8dhzjV8"\n';
+    }
+    if (!rawEnv.includes('SEO_INDEXING_ENABLED=')) {
+      rawEnv += '\nSEO_INDEXING_ENABLED="true"\n';
+    }
+    if (!rawEnv.includes('INDEXNOW_KEY=')) {
+      rawEnv += '\nINDEXNOW_KEY="014b76f401bfd193126b9e04845499de"\n';
+    }
+    fs.writeFileSync(path.join(STAGING_DIR, '.env.production.local'), rawEnv, 'utf8');
+    fs.writeFileSync(path.join(STAGING_DIR, '.env'), rawEnv, 'utf8');
+  }
+
+  // 6. Copy start.sh script
+  log('Step 3/4: Creating Linux launcher start.sh...');
   const startShContent = `#!/usr/bin/env bash
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-ENV_FILE=""
-if [[ -f "$ROOT/.env.production.local" ]]; then
+if [ -f "$ROOT/.env.production.local" ]; then
   ENV_FILE="$ROOT/.env.production.local"
-elif [[ -f "$ROOT/shared/.env.production.local" ]]; then
-  ENV_FILE="$ROOT/shared/.env.production.local"
-elif [[ -f "$ROOT/.env.production" ]]; then
-  ENV_FILE="$ROOT/.env.production"
-elif [[ -f "$ROOT/.env" ]]; then
+elif [ -f "$ROOT/.env" ]; then
   ENV_FILE="$ROOT/.env"
+else
+  ENV_FILE=""
 fi
 
 export NODE_ENV=production
 export HOSTNAME=0.0.0.0
 export PORT="\${SERVER_PORT:-\${PORT:-5060}}"
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+export COREPACK_ENABLE_AUTO_PIN=0
 
 echo "============================================================"
-echo "[MovieFlix] Starting Standalone Production Server"
+echo "[MovieFlix] Starting Server (Pre-built on PC)"
 echo "[MovieFlix] Port: $PORT | Host: $HOSTNAME"
-if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
-  echo "[MovieFlix] Env:  $ENV_FILE"
-  echo "============================================================"
-  exec node --env-file="$ENV_FILE" server.js
+echo "============================================================"
+
+# Ensure pnpm path
+export PATH="$ROOT/.local/bin:$PATH"
+mkdir -p "$ROOT/.local/bin"
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  if command -v corepack >/dev/null 2>&1; then
+    corepack enable --install-directory "$ROOT/.local/bin" 2>/dev/null || true
+  fi
+fi
+
+if command -v pnpm >/dev/null 2>&1; then
+  PM="pnpm"
+elif [ -x "$ROOT/.local/bin/pnpm" ]; then
+  PM="$ROOT/.local/bin/pnpm"
+elif command -v corepack >/dev/null 2>&1; then
+  PM="corepack pnpm"
+elif command -v npx >/dev/null 2>&1; then
+  PM="npx pnpm"
 else
-  echo "[MovieFlix] Warning: No .env file found. Using environment."
-  echo "============================================================"
-  exec node server.js
+  PM="npm"
+fi
+
+# 1. Install dependencies only if node_modules is missing on server
+if [ ! -d "$ROOT/node_modules" ]; then
+  echo "[MovieFlix] node_modules not found. Installing dependencies..."
+  if [[ "$PM" == *"pnpm"* ]]; then
+    $PM install --frozen-lockfile || $PM install --no-frozen-lockfile
+  else
+    npm install --legacy-peer-deps
+  fi
+else
+  echo "[MovieFlix] node_modules found. Skipping installation."
+fi
+
+# 2. Check Prisma Client
+if [ ! -d "$ROOT/node_modules/.prisma" ] && [ ! -d "$ROOT/node_modules/@prisma/client" ]; then
+  echo "[MovieFlix] Generating Prisma Client..."
+  if [[ "$PM" == *"pnpm"* ]]; then
+    $PM exec prisma generate
+  else
+    npx prisma generate
+  fi
+fi
+
+# 3. Check if .next was uploaded
+if [ ! -d "$ROOT/.next/server" ]; then
+  echo "[MovieFlix] .next not found. Running build..."
+  if [[ "$PM" == *"pnpm"* ]]; then
+    $PM build
+  else
+    npm run build
+  fi
+else
+  echo "[MovieFlix] Pre-built .next found. Skipping build!"
+fi
+
+echo "============================================================"
+echo "[MovieFlix] Launching Next.js Production Server..."
+echo "============================================================"
+
+if [ -f "$ROOT/node_modules/next/dist/bin/next" ]; then
+  if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+    exec node --env-file="$ENV_FILE" ./node_modules/next/dist/bin/next start -p "$PORT" -H "$HOSTNAME"
+  else
+    exec node ./node_modules/next/dist/bin/next start -p "$PORT" -H "$HOSTNAME"
+  fi
+elif [[ "$PM" == *"pnpm"* ]]; then
+  exec $PM start
+else
+  exec npm start
 fi
 `.replace(/\r\n/g, '\n');
 
-  fs.writeFileSync(path.join(STANDALONE_DIR, 'start.sh'), startShContent, { encoding: 'utf8', mode: 0o755 });
+  fs.writeFileSync(path.join(STAGING_DIR, 'start.sh'), startShContent, { encoding: 'utf8', mode: 0o755 });
+  // Also update local start.sh
+  fs.writeFileSync(path.join(ROOT, 'start.sh'), startShContent, { encoding: 'utf8', mode: 0o755 });
 
-  // Compatibility runner in case Pterodactyl is configured with deploy/pterodactyl/start-release.sh
-  const compatDir = path.join(STANDALONE_DIR, 'deploy', 'pterodactyl');
-  fs.mkdirSync(compatDir, { recursive: true });
-  const compatStartContent = `#!/usr/bin/env bash
-ROOT="/home/container"
-if [[ -f "$ROOT/start.sh" ]]; then
-  exec bash "$ROOT/start.sh"
-else
-  cd "$ROOT"
-  exec node server.js
-fi
-`.replace(/\r\n/g, '\n');
-  fs.writeFileSync(path.join(compatDir, 'start-release.sh'), compatStartContent, { encoding: 'utf8', mode: 0o755 });
-
-  log('Dereferencing internal .next/node_modules (Turbopack external modules)...');
-  const internalNm = path.join(STANDALONE_DIR, '.next', 'node_modules');
-  const internalDerefCount = derefSymlinksRecursively(internalNm);
-  log(`Dereferenced ${internalDerefCount} modules in .next/node_modules`);
-
-  flattenAndDerefNodeModules(path.join(STANDALONE_DIR, 'node_modules'));
-  derefSymlinksRecursively(path.join(STANDALONE_DIR, 'node_modules'));
-
-  log('Step 5/5: Compressing package into movieflix-deploy.tar.gz (with -h dereference)...');
+  log('Step 4/4: Compressing package into movieflix-deploy.tar.gz...');
   if (fs.existsSync(OUTPUT_ARCHIVE)) {
     fs.unlinkSync(OUTPUT_ARCHIVE);
   }
-  if (fs.existsSync(OLD_ZIP)) {
-    fs.unlinkSync(OLD_ZIP);
-  }
 
-  // Create tar.gz archive with -h (--dereference) to guarantee NO broken Windows symlinks
-  try {
-    execSync(`tar.exe -h -czf "${OUTPUT_ARCHIVE}" -C "${STANDALONE_DIR}" .`, { stdio: 'inherit' });
-  } catch (err) {
-    log('Failed to create tar.gz archive: ' + String(err));
-    throw err;
-  }
+  execSync(`tar.exe -czf "${OUTPUT_ARCHIVE}" -C "${STAGING_DIR}" .`, { stdio: 'inherit' });
+
+  // Cleanup staging dir
+  fs.rmSync(STAGING_DIR, { recursive: true, force: true });
 
   if (fs.existsSync(OUTPUT_ARCHIVE)) {
     const stats = fs.statSync(OUTPUT_ARCHIVE);
     const sizeMb = (stats.size / (1024 * 1024)).toFixed(2);
     console.log('\n\x1b[32m============================================================');
     console.log(`[SUCCESS] Package created: movieflix-deploy.tar.gz (${sizeMb} MB)`);
+    console.log(`[INFO] ZERO node_modules included! Upload size is super light.`);
     console.log('============================================================\x1b[0m\n');
     console.log('Cara Deploy ke NuraHost:');
     console.log('1. Buka File Manager di panel NuraHost.');
     console.log('2. Drag & drop file "movieflix-deploy.tar.gz" ke File Manager.');
-    console.log('3. Klik tombol titik tiga (...) pada file -> pilih "Unarchive".');
-    console.log('4. Klik tombol "Restart" di Console NuraHost.');
-    console.log('5. Web langsung online dalam 2 detik tanpa perlu build di server!\n');
+    console.log('3. Klik tombol titik tiga (...) -> pilih "Unarchive" (timpa saja, node_modules lama akan tetap aman).');
+    console.log('4. Hapus file "movieflix-deploy.tar.gz" setelah diekstrak.');
+    console.log('5. Klik "Restart" di Console NuraHost.');
+    console.log('6. Web langsung online dalam 1 detik tanpa perlu build di server!\n');
   } else {
     throw new Error('Failed to create movieflix-deploy.tar.gz');
   }

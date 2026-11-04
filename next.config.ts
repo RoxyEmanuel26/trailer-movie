@@ -13,7 +13,6 @@ const sentryConnectOrigin = (() => {
 })();
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   // Keep build-time database fan-out within a small self-hosted PostgreSQL server.
   experimental: { cpus: 1 },
   // Resolve metadata before sending headers so redirects and not-found responses
