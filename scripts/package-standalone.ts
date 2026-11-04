@@ -137,16 +137,17 @@ async function main() {
   copyRecursiveSync(PUBLIC_DIR, targetPublic);
 
   log('Step 4/5: Creating portable start.sh and compat launcher...');
-  // Ensure standalone .env uses internal container Docker host for PostgreSQL
-  const standaloneEnv = path.join(STANDALONE_DIR, '.env');
-  if (fs.existsSync(standaloneEnv)) {
-    let rawEnv = fs.readFileSync(standaloneEnv, 'utf8');
-    rawEnv = rawEnv.replace(
-      /@nano-1\.nura\.host:5112/g,
-      '@461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw:5112'
-    );
-    fs.writeFileSync(standaloneEnv, rawEnv, 'utf8');
-    fs.writeFileSync(path.join(STANDALONE_DIR, '.env.production.local'), rawEnv, 'utf8');
+  // Ensure standalone environment files use internal container Docker host for PostgreSQL
+  for (const envName of ['.env', '.env.production.local']) {
+    const envFile = path.join(STANDALONE_DIR, envName);
+    if (fs.existsSync(envFile)) {
+      let rawEnv = fs.readFileSync(envFile, 'utf8');
+      rawEnv = rawEnv.replace(
+        /@nano-1\.(nura\.host|nurahost\.com):5112/g,
+        '@461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw:5112'
+      );
+      fs.writeFileSync(envFile, rawEnv, 'utf8');
+    }
   }
 
   const startShContent = `#!/usr/bin/env bash
