@@ -16,6 +16,8 @@ fi
 export NODE_ENV=production
 export HOSTNAME=0.0.0.0
 export PORT="${SERVER_PORT:-${PORT:-5060}}"
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+export COREPACK_ENABLE_AUTO_PIN=0
 
 echo "============================================================"
 echo "[MovieFlix] Checking dependencies & build on NuraHost Linux..."
@@ -51,7 +53,7 @@ echo "[MovieFlix] Using package manager: $PM"
 if [ ! -d "$ROOT/node_modules" ]; then
   echo "[MovieFlix] Installing dependencies (this may take 1-2 minutes)..."
   if [[ "$PM" == *"pnpm"* ]]; then
-    $PM install --frozen-lockfile
+    $PM install --frozen-lockfile || $PM install --no-frozen-lockfile
   else
     npm install --legacy-peer-deps
   fi
