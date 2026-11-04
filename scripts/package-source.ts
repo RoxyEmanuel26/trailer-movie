@@ -67,12 +67,23 @@ async function main() {
     : path.join(ROOT, '.env');
 
   if (fs.existsSync(envSource)) {
-    log('Configuring .env.production.local for internal NuraHost network...');
+    log('Configuring environment files for internal NuraHost network...');
     let rawEnv = fs.readFileSync(envSource, 'utf8');
     rawEnv = rawEnv.replace(
-      /@nano-1\.nura\.host:5112/g,
+      /@nano-1\.(nura\.host|nurahost\.com):5112/g,
       '@461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw:5112'
     );
+    // Ensure Google verification and SEO indexing keys are present
+    if (!rawEnv.includes('GOOGLE_SITE_VERIFICATION=')) {
+      rawEnv += '\nGOOGLE_SITE_VERIFICATION="v2Cbd4dYoP-RAJi4ThQSTcrnAX6WlN_xEIIF8dhzjV8"\n';
+    }
+    if (!rawEnv.includes('SEO_INDEXING_ENABLED=')) {
+      rawEnv += '\nSEO_INDEXING_ENABLED="true"\n';
+    }
+    if (!rawEnv.includes('INDEXNOW_KEY=')) {
+      rawEnv += '\nINDEXNOW_KEY="014b76f401bfd193126b9e04845499de"\n';
+    }
+
     fs.writeFileSync(path.join(STAGING_DIR, '.env.production.local'), rawEnv, 'utf8');
     fs.writeFileSync(path.join(STAGING_DIR, '.env'), rawEnv, 'utf8');
   }
