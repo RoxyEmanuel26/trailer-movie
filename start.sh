@@ -58,12 +58,18 @@ else
 fi
 
 # 2. Check Prisma Client
-if [ ! -d "$ROOT/node_modules/.prisma" ] && [ ! -d "$ROOT/node_modules/@prisma/client" ]; then
-  echo "[MovieFlix] Generating Prisma Client..."
-  if [[ "$PM" == *"pnpm"* ]]; then
-    $PM exec prisma generate
-  else
-    npx prisma generate
+if [ ! -d "$ROOT/node_modules/.prisma" ]; then
+  echo "[MovieFlix] Linking or generating Prisma Client..."
+  PNPM_PRISMA="$(find "$ROOT/node_modules/.pnpm" -type d -name ".prisma" 2>/dev/null | head -n 1 || true)"
+  if [ -n "$PNPM_PRISMA" ] && [ -d "$PNPM_PRISMA" ]; then
+    ln -sfn "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || cp -r "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || true
+  fi
+  if [ ! -d "$ROOT/node_modules/.prisma" ]; then
+    if [[ "$PM" == *"pnpm"* ]]; then
+      $PM exec prisma generate || npx prisma generate || true
+    else
+      npx prisma generate || true
+    fi
   fi
 fi
 

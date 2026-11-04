@@ -11,15 +11,19 @@ export async function register() {
 
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     // Only register cleanup handlers on the Node.js runtime (not Edge)
-    const { prisma } = await import('@/lib/prisma');
     let isShuttingDown = false;
     // Attempt graceful shutdown
     const cleanup = async () => {
       if (isShuttingDown) return;
       isShuttingDown = true;
-      const { logger } = await import('@/lib/logger');
-      logger.info('Shutting down server, disconnecting Prisma...');
-      await prisma.$disconnect();
+      try {
+        const { prisma } = await import('@/lib/prisma');
+        const { logger } = await import('@/lib/logger');
+        logger.info('Shutting down server, disconnecting Prisma...');
+        await prisma.$disconnect();
+      } catch {
+        // ignore
+      }
       if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
         try {
           const Sentry = await import('@sentry/nextjs');

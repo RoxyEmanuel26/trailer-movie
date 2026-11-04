@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const dir = path.resolve(__dirname);
 
-// Fallback line-by-line env parser in case process.loadEnvFile is unavailable or encounters quirks
+// 1. Auto-load env files (.env.production.local > .env)
 function loadEnvFileSafe(filePath) {
   if (!fs.existsSync(filePath)) return;
   try {
@@ -12,9 +13,7 @@ function loadEnvFileSafe(filePath) {
       process.loadEnvFile(filePath);
       return;
     }
-  } catch {
-    // fallback to manual parse if syntax error in loadEnvFile
-  }
+  } catch {}
 
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
@@ -33,14 +32,75 @@ function loadEnvFileSafe(filePath) {
         }
       }
     }
-  } catch (err) {
-    console.warn('[MovieFlix] Warning: failed reading env file ' + filePath, err.message);
+  } catch {}
+}
+
+loadEnvFileSafe(path.join(dir, '.env.production.local'));
+loadEnvFileSafe(path.join(dir, '.env'));
+
+// 2. Ensure Prisma Client (.prisma) is linked & resolvable across pnpm isolation
+function linkPrismaClient() {
+  const rootModules = path.join(dir, 'node_modules');
+  const rootPrisma = path.join(rootModules, '.prisma');
+  const pnpmDir = path.join(rootModules, '.pnpm');
+
+  let sourcePrisma = null;
+
+  if (fs.existsSync(rootPrisma)) {
+    sourcePrisma = rootPrisma;
+  } else if (fs.existsSync(pnpmDir)) {
+    try {
+      for (const folder of fs.readdirSync(pnpmDir)) {
+        if (folder.startsWith('@prisma+client@')) {
+          const candidate = path.join(pnpmDir, folder, 'node_modules', '.prisma');
+          if (fs.existsSync(candidate)) {
+            sourcePrisma = candidate;
+            try {
+              fs.symlinkSync(candidate, rootPrisma, 'junction');
+            } catch {
+              try {
+                fs.cpSync(candidate, rootPrisma, { recursive: true });
+              } catch {}
+            }
+            break;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Also link into .next/node_modules/.prisma if .next/node_modules exists
+  const nextNodeModules = path.join(dir, '.next', 'node_modules');
+  if (fs.existsSync(nextNodeModules)) {
+    const nextPrisma = path.join(nextNodeModules, '.prisma');
+    if (!fs.existsSync(nextPrisma)) {
+      const src = sourcePrisma || rootPrisma;
+      if (src && fs.existsSync(src)) {
+        try {
+          fs.symlinkSync(src, nextPrisma, 'junction');
+        } catch {
+          try {
+            fs.cpSync(src, nextPrisma, { recursive: true });
+          } catch {}
+        }
+      }
+    }
   }
 }
 
-// 1. Load production env files in order of priority (.env.production.local > .env)
-loadEnvFileSafe(path.join(dir, '.env.production.local'));
-loadEnvFileSafe(path.join(dir, '.env'));
+try {
+  linkPrismaClient();
+  require.resolve('.prisma/client/default');
+} catch {
+  // If .prisma still cannot be resolved, run prisma generate once
+  try {
+    console.log('[MovieFlix] Generating Prisma Client for current environment...');
+    execSync('npx prisma generate', { cwd: dir, stdio: 'inherit' });
+    linkPrismaClient();
+  } catch (err) {
+    console.warn('[MovieFlix] Notice: npx prisma generate completed or skipped:', err.message);
+  }
+}
 
 const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '5060', 10);
 const hostname = process.env.HOSTNAME || '0.0.0.0';
