@@ -73,7 +73,8 @@ async function main() {
     'tsconfig.json',
     'postcss.config.mjs',
     'prisma.config.ts',
-    '.gitattributes'
+    '.gitattributes',
+    'server.js'
   ];
   for (const cf of configFiles) {
     const srcPath = path.join(ROOT, cf);
@@ -194,7 +195,13 @@ echo "============================================================"
 echo "[MovieFlix] Launching Next.js Production Server..."
 echo "============================================================"
 
-if [ -f "$ROOT/node_modules/next/dist/bin/next" ]; then
+if [ -f "$ROOT/server.js" ]; then
+  if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+    exec node --env-file="$ENV_FILE" server.js
+  else
+    exec node server.js
+  fi
+elif [ -f "$ROOT/node_modules/next/dist/bin/next" ]; then
   if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
     exec node --env-file="$ENV_FILE" ./node_modules/next/dist/bin/next start -p "$PORT" -H "$HOSTNAME"
   else
