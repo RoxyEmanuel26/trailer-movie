@@ -15,11 +15,11 @@ test('invalid pool timeouts cannot cause indefinite or immediate failures', () =
   }
 });
 
-test('getEffectiveDatabaseUrl routes nano-1.nura.host to internal container network on linux', () => {
+test('getEffectiveDatabaseUrl routes nano-1.nurahost.com to internal container network on linux', () => {
   const originalPlatform = process.platform;
   try {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
-    const input = 'postgresql://user:pass@nano-1.nura.host:5112/movieflix?schema=public';
+    const input = 'postgresql://user:pass@nano-1.nurahost.com:5112/movieflix?schema=public';
     const resolved = getEffectiveDatabaseUrl(input);
     assert.match(resolved, /461b710f-642a-4ea8-af0a-668edcfa5d6a\.pterodactyl_nw:5112/);
 
