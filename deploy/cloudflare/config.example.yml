@@ -4,7 +4,7 @@ credentials-file: /home/container/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
 ingress:
   - hostname: www.movieflix.site
     # Replace REPLACE_WITH_APP_CONTAINER_HOSTNAME with the Node container hostname/UUID on NuraHost
-    # (check with `hostname` inside the Node container; never substitute the public nano-1.nura.host:5060 allocation).
+    # (check with `hostname` inside the Node container; never substitute the public nano-1.nurahost.com:5060 allocation).
     service: http://REPLACE_WITH_APP_CONTAINER_HOSTNAME:5060
     originRequest:
       connectTimeout: 10s

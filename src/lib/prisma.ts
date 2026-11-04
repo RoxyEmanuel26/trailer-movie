@@ -26,10 +26,10 @@ export function getEffectiveDatabaseUrl(inputUrl?: string): string {
   try {
     const url = new URL(raw);
     // When running on Linux inside NuraHost container (Pterodactyl),
-    // loopback to the public domain 'nano-1.nura.host' fails with timeout because
+    // loopback to the public domain 'nano-1.nurahost.com' fails with timeout because
     // Docker containers cannot loop back to their own host's public IP (hairpin NAT blocked).
     // In that environment, route to the internal container Docker network instead.
-    if (process.platform === 'linux' && url.hostname === 'nano-1.nura.host') {
+    if (process.platform === 'linux' && url.hostname === 'nano-1.nurahost.com') {
       const internalHost = process.env.INTERNAL_DB_HOST || '461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw';
       url.hostname = internalHost;
       return url.toString();

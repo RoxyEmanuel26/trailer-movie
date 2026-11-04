@@ -71,7 +71,7 @@ echo "[MovieFlix] Active release           : $SHA"
 echo "[MovieFlix] Container hostname       : $CONTAINER_HOST"
 echo "[MovieFlix] Listening address        : 0.0.0.0:$PORT"
 echo "[MovieFlix] Tunnel target (internal) : http://$CONTAINER_HOST:$PORT"
-echo "[MovieFlix] Tunnel target (fallback) : http://nano-1.nura.host:$PORT"
+echo "[MovieFlix] Tunnel target (fallback) : http://nano-1.nurahost.com:$PORT"
 echo "============================================================"
 cd "$CURRENT/.next/standalone"
 exec node --env-file=.env.production.local server.js

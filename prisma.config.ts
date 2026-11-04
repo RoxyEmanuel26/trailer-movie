@@ -9,7 +9,7 @@ function resolveDatasourceUrl(raw: string | undefined): string | undefined {
   if (!raw) return raw;
   try {
     const url = new URL(raw);
-    if (process.platform === 'linux' && url.hostname === 'nano-1.nura.host') {
+    if (process.platform === 'linux' && url.hostname === 'nano-1.nurahost.com') {
       url.hostname = process.env.INTERNAL_DB_HOST || '461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw';
       return url.toString();
     }

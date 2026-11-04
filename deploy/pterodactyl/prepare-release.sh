@@ -25,7 +25,7 @@ if [[ ! -f "$SHARED/.env.production.local" ]]; then
   exit 1
 fi
 
-ENV_FILE="$SHARED/.env.production.local" DB_FALLBACK_HOST="${DB_FALLBACK_HOST:-nano-1.nura.host}" node - <<'NODE'
+ENV_FILE="$SHARED/.env.production.local" DB_FALLBACK_HOST="${DB_FALLBACK_HOST:-nano-1.nurahost.com}" node - <<'NODE'
 const dns = require('node:dns').promises;
 const fs = require('node:fs');
 const net = require('node:net');
@@ -33,7 +33,7 @@ const os = require('node:os');
 const util = require('node:util');
 
 const envPath = process.env.ENV_FILE;
-const fallbackHost = process.env.DB_FALLBACK_HOST || 'nano-1.nura.host';
+const fallbackHost = process.env.DB_FALLBACK_HOST || 'nano-1.nurahost.com';
 const defaultInternalHost = '461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw';
 const shortInternalHost = '461b710f-642a-4ea8-af0a-668edcfa5d6a';
 
