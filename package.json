@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test:imports": "tsx --test tests/import-pipeline.test.ts tests/import-monitoring.test.ts",
@@ -31,6 +31,7 @@
     "release:start": "bash deploy/pterodactyl/start-release.sh",
     "deploy:pack": "pnpm build && tsx scripts/package-standalone.ts",
     "pack:only": "tsx scripts/package-standalone.ts",
+    "source:pack": "tsx scripts/package-source.ts",
     "db:backup:production": "powershell -ExecutionPolicy Bypass -File scripts/backup-production.ps1",
     "db:restore-test": "powershell -ExecutionPolicy Bypass -File scripts/test-backup-restore.ps1"
   },

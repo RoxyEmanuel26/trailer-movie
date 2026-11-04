@@ -30,6 +30,8 @@
 *.pem
 *.zip
 movieflix-deploy.zip
+movieflix-source.zip
+.source-staging
 *.tar.gz
 movieflix-deploy.tar.gz
 
