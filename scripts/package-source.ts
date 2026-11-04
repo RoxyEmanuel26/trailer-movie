@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 
 const ROOT = process.cwd();
-const OUTPUT_ZIP = path.join(ROOT, 'movieflix-source.zip');
+const OUTPUT_TAR = path.join(ROOT, 'movieflix-source.tar.gz');
 const STAGING_DIR = path.join(ROOT, '.source-staging');
 
 function log(msg: string) {
@@ -77,36 +77,39 @@ async function main() {
     fs.writeFileSync(path.join(STAGING_DIR, '.env'), rawEnv, 'utf8');
   }
 
-  log('Step 2/3: Compressing source code into movieflix-source.zip...');
-  if (fs.existsSync(OUTPUT_ZIP)) {
-    fs.unlinkSync(OUTPUT_ZIP);
+  // Ensure start.sh has Unix line endings and executable mode
+  const startShPath = path.join(STAGING_DIR, 'start.sh');
+  if (fs.existsSync(startShPath)) {
+    const content = fs.readFileSync(startShPath, 'utf8').replace(/\r\n/g, '\n');
+    fs.writeFileSync(startShPath, content, { encoding: 'utf8', mode: 0o755 });
   }
 
-  try {
-    execSync(`tar.exe -a -cf "${OUTPUT_ZIP}" -C "${STAGING_DIR}" .`, { stdio: 'inherit' });
-  } catch {
-    execSync(`powershell -Command "Compress-Archive -Path '${STAGING_DIR}\\*' -DestinationPath '${OUTPUT_ZIP}' -Force"`, { stdio: 'inherit' });
+  log('Step 2/3: Compressing source code into movieflix-source.tar.gz...');
+  if (fs.existsSync(OUTPUT_TAR)) {
+    fs.unlinkSync(OUTPUT_TAR);
   }
+
+  execSync(`tar.exe -czf "${OUTPUT_TAR}" -C "${STAGING_DIR}" .`, { stdio: 'inherit' });
 
   // Cleanup staging dir
   fs.rmSync(STAGING_DIR, { recursive: true, force: true });
 
-  if (fs.existsSync(OUTPUT_ZIP)) {
-    const stats = fs.statSync(OUTPUT_ZIP);
+  if (fs.existsSync(OUTPUT_TAR)) {
+    const stats = fs.statSync(OUTPUT_TAR);
     const sizeMb = (stats.size / (1024 * 1024)).toFixed(2);
     console.log('\n\x1b[32m============================================================');
-    console.log(`[SUCCESS] Source package created: movieflix-source.zip (${sizeMb} MB)`);
+    console.log(`[SUCCESS] Source package created: movieflix-source.tar.gz (${sizeMb} MB)`);
     console.log('============================================================\x1b[0m\n');
     console.log('Cara Deploy ke NuraHost:');
     console.log('1. Buka File Manager di panel NuraHost.');
     console.log('2. Hapus semua file lama di NuraHost (agar bersih).');
-    console.log('3. Drag & drop file "movieflix-source.zip" ke File Manager.');
+    console.log('3. Drag & drop file "movieflix-source.tar.gz" ke File Manager.');
     console.log('4. Klik tombol titik tiga (...) -> pilih "Unarchive".');
-    console.log('5. Hapus file "movieflix-source.zip" setelah diekstrak.');
+    console.log('5. Hapus file "movieflix-source.tar.gz" setelah diekstrak.');
     console.log('6. Di tab "Startup" NuraHost, pastikan CUSTOM STARTUP diisi: bash start.sh');
     console.log('7. Klik "Restart" di Console. NuraHost akan otomatis meng-install dependensi dan mem-build website di server Linux secara native!\n');
   } else {
-    throw new Error('Failed to create movieflix-source.zip');
+    throw new Error('Failed to create movieflix-source.tar.gz');
   }
 }
 
