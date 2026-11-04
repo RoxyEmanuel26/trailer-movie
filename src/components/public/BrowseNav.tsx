@@ -22,8 +22,9 @@ interface NavDropdownProps {
   active: boolean;
   openMenu: string | null;
   panelClassName: string;
+  onOpen: (menu: string) => void;
   onToggle: (menu: string) => void;
-  onClose: () => void;
+  onClose: (delay?: number) => void;
   children: React.ReactNode;
 }
 
@@ -33,6 +34,7 @@ function NavDropdown({
   active,
   openMenu,
   panelClassName,
+  onOpen,
   onToggle,
   onClose,
   children,
@@ -42,7 +44,7 @@ function NavDropdown({
 
   const closeOnEscape = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape') return;
-    onClose();
+    onClose(0);
     event.currentTarget.querySelector<HTMLElement>(':focus')?.blur();
   };
 
@@ -50,8 +52,11 @@ function NavDropdown({
     <div
       className="nav-dropdown relative"
       onKeyDown={closeOnEscape}
-      onPointerLeave={(event) => {
-        if (event.pointerType === 'mouse') onClose();
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'touch') onOpen(menu);
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== 'touch') onClose(180);
       }}
       data-active={active}
       data-state={isOpen ? 'open' : 'closed'}
@@ -66,7 +71,11 @@ function NavDropdown({
       >
         {label} <ChevronDown className="nav-dropdown-chevron h-3.5 w-3.5" />
       </button>
-      <div id={panelId} className={`nav-dropdown-panel ${panelClassName}`}>
+      <div
+        id={panelId}
+        className={`nav-dropdown-panel ${panelClassName}`}
+        aria-hidden={!isOpen}
+      >
         {children}
       </div>
     </div>
@@ -77,30 +86,71 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
   const pathname = usePathname();
   const navRef = React.useRef<HTMLElement>(null);
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  React.useEffect(() => {
-    const closeFromOutside = (event: PointerEvent) => {
-      if (!navRef.current?.contains(event.target as Node)) setOpenMenu(null);
-    };
-    document.addEventListener('pointerdown', closeFromOutside);
-    return () => document.removeEventListener('pointerdown', closeFromOutside);
-  }, []);
+  const clearTimer = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
 
-  const toggleMenu = (menu: string) => {
+  const handleOpen = (menu: string) => {
+    clearTimer();
+    setOpenMenu(menu);
+  };
+
+  const handleClose = (delay = 180) => {
+    clearTimer();
+    if (delay === 0) {
+      setOpenMenu(null);
+    } else {
+      timeoutRef.current = setTimeout(() => {
+        setOpenMenu(null);
+      }, delay);
+    }
+  };
+
+  const handleToggle = (menu: string) => {
+    clearTimer();
     setOpenMenu((current) => (current === menu ? null : menu));
   };
+
+  // Close immediately on page navigation without useEffect setState
+  const [prevPathname, setPrevPathname] = React.useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    setOpenMenu(null);
+  }
+
+  // Close when clicking outside nav
+  React.useEffect(() => {
+    const closeFromOutside = (event: PointerEvent) => {
+      if (!navRef.current?.contains(event.target as Node)) {
+        clearTimer();
+        setOpenMenu(null);
+      }
+    };
+    document.addEventListener('pointerdown', closeFromOutside);
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside);
+      clearTimer();
+    };
+  }, []);
 
   return (
     <nav
       ref={navRef}
       className="hidden items-center gap-0.5 lg:flex"
       aria-label="Primary navigation"
+      onPointerLeave={() => handleClose(180)}
     >
       <Link
         href="/movies"
         prefetch={false}
         className="nav-link"
         aria-current={pathname === '/movies' ? 'page' : undefined}
+        onPointerEnter={() => handleClose(0)}
       >
         Movies
       </Link>
@@ -111,8 +161,9 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         active={isPathActive(pathname, ['/genres', '/genre'])}
         openMenu={openMenu}
         panelClassName="left-0 w-[34rem]"
-        onToggle={toggleMenu}
-        onClose={() => setOpenMenu(null)}
+        onOpen={handleOpen}
+        onToggle={handleToggle}
+        onClose={handleClose}
       >
         <div className="nav-dropdown-surface">
           <div className="flex items-center justify-between px-3 pb-2 pt-1">
@@ -120,7 +171,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
             <Link
               href="/genres"
               prefetch={false}
-              onClick={() => setOpenMenu(null)}
+              onClick={() => handleClose(0)}
               className="text-xs font-semibold text-primary hover:underline"
             >
               All genres
@@ -132,7 +183,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
                 key={genre.id}
                 href={`/genre/${genre.slug}`}
                 prefetch={false}
-                onClick={() => setOpenMenu(null)}
+                onClick={() => handleClose(0)}
                 className="nav-dropdown-item"
               >
                 {genre.name}
@@ -148,8 +199,9 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         active={isPathActive(pathname, ['/streaming'])}
         openMenu={openMenu}
         panelClassName="left-0 w-[30rem]"
-        onToggle={toggleMenu}
-        onClose={() => setOpenMenu(null)}
+        onOpen={handleOpen}
+        onToggle={handleToggle}
+        onClose={handleClose}
       >
         <div className="nav-dropdown-surface">
           <div className="flex items-center justify-between px-3 pb-2 pt-1">
@@ -157,7 +209,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
             <Link
               href="/streaming"
               prefetch={false}
-              onClick={() => setOpenMenu(null)}
+              onClick={() => handleClose(0)}
               className="text-xs font-semibold text-primary hover:underline"
             >
               All services
@@ -169,7 +221,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
                 key={item.slug}
                 href={`/streaming/${item.slug}`}
                 prefetch={false}
-                onClick={() => setOpenMenu(null)}
+                onClick={() => handleClose(0)}
                 className="nav-dropdown-item"
               >
                 {item.label}
@@ -185,17 +237,28 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         active={isPathActive(pathname, ['/popular'])}
         openMenu={openMenu}
         panelClassName="left-0 w-[17rem]"
-        onToggle={toggleMenu}
-        onClose={() => setOpenMenu(null)}
+        onOpen={handleOpen}
+        onToggle={handleToggle}
+        onClose={handleClose}
       >
         <div className="nav-dropdown-surface p-2">
-          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Choose a ranking</p><Link href="/popular" prefetch={false} onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1">
+            <p className="nav-dropdown-label">Choose a ranking</p>
+            <Link
+              href="/popular"
+              prefetch={false}
+              onClick={() => handleClose(0)}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Overview
+            </Link>
+          </div>
           {POPULAR_CATALOG.map((item) => (
             <Link
               key={item.slug}
               href={`/popular/${item.slug}`}
               prefetch={false}
-              onClick={() => setOpenMenu(null)}
+              onClick={() => handleClose(0)}
               className="nav-dropdown-item block"
             >
               {item.label}
@@ -210,18 +273,29 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         active={isPathActive(pathname, ['/origin'])}
         openMenu={openMenu}
         panelClassName="left-1/2 w-[38rem] -translate-x-1/2"
-        onToggle={toggleMenu}
-        onClose={() => setOpenMenu(null)}
+        onOpen={handleOpen}
+        onToggle={handleToggle}
+        onClose={handleClose}
       >
         <div className="nav-dropdown-surface">
-          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Production country or spoken language</p><Link href="/countries" prefetch={false} onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1">
+            <p className="nav-dropdown-label">Production country or spoken language</p>
+            <Link
+              href="/countries"
+              prefetch={false}
+              onClick={() => handleClose(0)}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Overview
+            </Link>
+          </div>
           <div className="grid grid-cols-2 gap-1">
             {ORIGIN_CATALOG.map((item) => (
               <Link
                 key={item.slug}
                 href={`/origin/${item.slug}`}
                 prefetch={false}
-                onClick={() => setOpenMenu(null)}
+                onClick={() => handleClose(0)}
                 className="nav-dropdown-item"
               >
                 {item.label}
@@ -237,18 +311,29 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         active={isPathActive(pathname, ['/year'])}
         openMenu={openMenu}
         panelClassName="right-0 w-[24rem]"
-        onToggle={toggleMenu}
-        onClose={() => setOpenMenu(null)}
+        onOpen={handleOpen}
+        onToggle={handleToggle}
+        onClose={handleClose}
       >
         <div className="nav-dropdown-surface">
-          <div className="flex items-center justify-between px-3 pb-2 pt-1"><p className="nav-dropdown-label">Browse by release year</p><Link href="/years" prefetch={false} onClick={() => setOpenMenu(null)} className="text-xs font-semibold text-primary hover:underline">Overview</Link></div>
+          <div className="flex items-center justify-between px-3 pb-2 pt-1">
+            <p className="nav-dropdown-label">Browse by release year</p>
+            <Link
+              href="/years"
+              prefetch={false}
+              onClick={() => handleClose(0)}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Overview
+            </Link>
+          </div>
           <div className="grid max-h-[22rem] grid-cols-4 gap-1 overflow-y-auto overscroll-contain pr-1">
             {years.map((year) => (
               <Link
                 key={year}
                 href={`/year/${year}`}
                 prefetch={false}
-                onClick={() => setOpenMenu(null)}
+                onClick={() => handleClose(0)}
                 className="nav-dropdown-item text-center tabular-nums"
               >
                 {year}
