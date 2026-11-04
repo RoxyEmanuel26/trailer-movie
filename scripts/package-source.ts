@@ -88,6 +88,13 @@ async function main() {
     fs.writeFileSync(path.join(STAGING_DIR, '.env'), rawEnv, 'utf8');
   }
 
+  // Create release marker timestamp so start.sh knows when an update is unarchived
+  fs.writeFileSync(
+    path.join(STAGING_DIR, '.release-marker'),
+    new Date().toISOString(),
+    'utf8'
+  );
+
   // Ensure start.sh has Unix line endings and executable mode
   const startShPath = path.join(STAGING_DIR, 'start.sh');
   if (fs.existsSync(startShPath)) {

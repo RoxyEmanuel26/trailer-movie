@@ -49,14 +49,18 @@ fi
 
 echo "[MovieFlix] Using package manager: $PM"
 
-# 2. Install dependencies if node_modules is missing
-if [ ! -d "$ROOT/node_modules" ]; then
-  echo "[MovieFlix] Installing dependencies (this may take 1-2 minutes)..."
+# 2. Install dependencies if node_modules is missing or package.json changed
+PKG_HASH=$(md5sum "$ROOT/package.json" 2>/dev/null | cut -d' ' -f1 || cksum "$ROOT/package.json" 2>/dev/null | cut -d' ' -f1 || echo "default")
+if [ ! -d "$ROOT/node_modules" ] || [ ! -f "$ROOT/node_modules/.pkg-hash" ] || [ "$(cat "$ROOT/node_modules/.pkg-hash" 2>/dev/null)" != "$PKG_HASH" ]; then
+  echo "[MovieFlix] Installing / updating dependencies..."
   if [[ "$PM" == *"pnpm"* ]]; then
     $PM install --frozen-lockfile || $PM install --no-frozen-lockfile
   else
     npm install --legacy-peer-deps
   fi
+  echo "$PKG_HASH" > "$ROOT/node_modules/.pkg-hash" 2>/dev/null || true
+else
+  echo "[MovieFlix] Dependencies are up to date."
 fi
 
 # 3. Generate Prisma client
@@ -67,14 +71,29 @@ else
   npx prisma generate
 fi
 
-# 4. Build Next.js if .next is missing
+# 4. Build Next.js if .next is missing or new release detected
+REBUILD_NEEDED=false
 if [ ! -d "$ROOT/.next" ]; then
-  echo "[MovieFlix] Building application (.next not found)..."
+  REBUILD_NEEDED=true
+elif [ -f "$ROOT/.release-marker" ]; then
+  if [ ! -f "$ROOT/.next/.release-marker" ] || ! cmp -s "$ROOT/.release-marker" "$ROOT/.next/.release-marker"; then
+    echo "[MovieFlix] New release detected! Rebuilding application..."
+    REBUILD_NEEDED=true
+  fi
+fi
+
+if [ "$REBUILD_NEEDED" = true ]; then
+  echo "[MovieFlix] Building application..."
   if [[ "$PM" == *"pnpm"* ]]; then
     $PM build
   else
     npm run build
   fi
+  if [ -f "$ROOT/.release-marker" ]; then
+    cp "$ROOT/.release-marker" "$ROOT/.next/.release-marker" 2>/dev/null || true
+  fi
+else
+  echo "[MovieFlix] Build is already up to date."
 fi
 
 echo "============================================================"
