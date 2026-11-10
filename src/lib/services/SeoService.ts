@@ -13,6 +13,7 @@ import type { SitemapEntry } from '../sitemap-xml';
 import { getTmdbImageUrl } from '../tmdb-image-loader';
 import { catalogMetadataCanonical, paginatedMetadataTitle, socialImage } from '../seo-metadata';
 import { trailerSchema } from '../trailer-schema';
+import { clearAllPublicMemoryCaches, createMemoryCache } from '../memory-cache';
 
 export const PERSON_SITEMAP_PAGE_SIZE = 45_000;
 // Movie entries include image/video metadata; leave headroom below Google's
@@ -27,6 +28,25 @@ function normalizeLegacyBrand(value: string) {
   return value.replace(/TrailerTube|Trailer Movie|Trailer CMS|TrailerMovie/gi, siteConfig.name);
 }
 
+const globalSeoSettingsCache = createMemoryCache<{
+  defaultTitle: string;
+  defaultDescription: string;
+  defaultKeywords: string;
+  ogSiteName: string;
+  twitterHandle: string;
+  googleVerification: string;
+  bingVerification: string;
+  yandexVerification: string;
+}>({
+  maxEntries: 2,
+  ttlMs: 10 * 60_000,
+});
+
+const pageSeoCache = createMemoryCache<Awaited<ReturnType<typeof SeoRepository.findPageSEO>>>({
+  maxEntries: 3000,
+  ttlMs: 10 * 60_000,
+});
+
 export class SeoService {
   // --------------------------------------------------------------------------
   // Basic SEO Page CRUD
@@ -39,7 +59,9 @@ export class SeoService {
   static async updateHomepageSeo(
     data: Omit<Prisma.SeoPageCreateInput, 'routePath' | 'seoableType' | 'seoableId'>
   ) {
-    return SeoRepository.upsertByRoute('/', data);
+    const result = await SeoRepository.upsertByRoute('/', data);
+    clearAllPublicMemoryCaches();
+    return result;
   }
 
   static getEntitySeo = cache(async (seoableType: string, seoableId: string) => {
@@ -51,30 +73,34 @@ export class SeoService {
     seoableId: string,
     data: Omit<Prisma.SeoPageCreateInput, 'seoableType' | 'seoableId'>
   ) {
-    return SeoRepository.upsertByEntity(seoableType, seoableId, data);
+    const result = await SeoRepository.upsertByEntity(seoableType, seoableId, data);
+    clearAllPublicMemoryCaches();
+    return result;
   }
 
   // --------------------------------------------------------------------------
   // Global Settings
   // --------------------------------------------------------------------------
 
-  static getGlobalSeoSettings = cache(async () => {
-    const settings = await SettingsRepository.getGroup('seo');
-    const map = settings.reduce(
-      (acc, curr) => ({ ...acc, [curr.key]: curr.value }),
-      {} as Record<string, string>
-    );
-    return {
-      defaultTitle: normalizeLegacyBrand(map['seo.defaultTitle'] || siteConfig.name),
-      defaultDescription: normalizeLegacyBrand(map['seo.defaultDescription'] || siteConfig.description),
-      defaultKeywords: map['seo.defaultKeywords'] || 'movies, trailers',
-      ogSiteName: siteConfig.name,
-      twitterHandle: siteConfig.twitterHandle,
-      googleVerification: siteConfig.googleVerification,
-      bingVerification: map['seo.bingVerification'] || '',
-      yandexVerification: map['seo.yandexVerification'] || '',
-    };
-  });
+  static getGlobalSeoSettings = cache(async () =>
+    globalSeoSettingsCache.getOrLoad('global-seo-settings', async () => {
+      const settings = await SettingsRepository.getGroup('seo');
+      const map = settings.reduce(
+        (acc, curr) => ({ ...acc, [curr.key]: curr.value }),
+        {} as Record<string, string>
+      );
+      return {
+        defaultTitle: normalizeLegacyBrand(map['seo.defaultTitle'] || siteConfig.name),
+        defaultDescription: normalizeLegacyBrand(map['seo.defaultDescription'] || siteConfig.description),
+        defaultKeywords: map['seo.defaultKeywords'] || 'movies, trailers',
+        ogSiteName: siteConfig.name,
+        twitterHandle: siteConfig.twitterHandle,
+        googleVerification: siteConfig.googleVerification,
+        bingVerification: map['seo.bingVerification'] || '',
+        yandexVerification: map['seo.yandexVerification'] || '',
+      };
+    })
+  );
 
   static async updateGlobalSeoSettings(data: {
     defaultTitle: string;
@@ -93,6 +119,7 @@ export class SeoService {
       group: 'seo',
     }));
     await SettingsRepository.upsertMany(settings);
+    clearAllPublicMemoryCaches();
     return data;
   }
 
@@ -117,7 +144,9 @@ export class SeoService {
   ): Promise<Metadata> {
     const [globalSettings, pageSeo] = await Promise.all([
       this.getGlobalSeoSettings(),
-      SeoRepository.findPageSEO(seoableType, seoableId),
+      pageSeoCache.getOrLoad(`${seoableType}:${seoableId}`, () =>
+        SeoRepository.findPageSEO(seoableType, seoableId)
+      ),
     ]);
 
     const title = paginatedMetadataTitle(normalizeLegacyBrand(pageSeo?.metaTitle || fallback.title || globalSettings.defaultTitle), fallback.path || '/');

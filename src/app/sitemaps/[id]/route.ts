@@ -8,7 +8,10 @@ import {
   STABLE_SITEMAP_SHARD_MAX_AGE_MS,
 } from '@/lib/sitemap-cache';
 import { hasValidRevalidationSecret } from '@/lib/revalidation';
-import { getSitemapPageCounts } from '@/lib/sitemap-data';
+import {
+  getMovieSitemapPageCountCached,
+  getPersonSitemapPageCountCached,
+} from '@/lib/sitemap-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +57,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       const quickSnapshot = forceRefresh ? null : await readSitemapSnapshot(snapshotKey);
       if (quickSnapshot) return xmlResponse(quickSnapshot);
       const result = await generateSitemapWithFallback(snapshotKey, async () => {
-        const [pageCount] = await getSitemapPageCounts(forceRefresh);
+        const pageCount = await getMovieSitemapPageCountCached(forceRefresh);
         if (page >= pageCount) notFound();
         const shardTtlMs = page < pageCount - 1 ? STABLE_SITEMAP_SHARD_MAX_AGE_MS : undefined;
         const freshSnapshot = forceRefresh ? null : await readSitemapSnapshot(snapshotKey, shardTtlMs);
@@ -80,7 +83,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       : await readSitemapSnapshot(snapshotKey, STABLE_SITEMAP_SHARD_MAX_AGE_MS);
     if (quickSnapshot) return xmlResponse(quickSnapshot);
     const result = await generateSitemapWithFallback(snapshotKey, async () => {
-      const [, pageCount] = await getSitemapPageCounts(forceRefresh);
+      const pageCount = await getPersonSitemapPageCountCached(forceRefresh);
       if (page >= pageCount) notFound();
       const freshSnapshot = forceRefresh
         ? null

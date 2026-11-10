@@ -15,6 +15,15 @@ const loadPersonCount = async () => SeoService.getPersonSitemapPageCount();
 const cachedMovieMeta = unstable_cache(loadMovieCountAndLastMod, ['sitemap-movie-meta-v4'], { revalidate: 300 });
 const cachedPersonCount = unstable_cache(loadPersonCount, ['sitemap-person-count-v4'], { revalidate: 3600 });
 
+export async function getMovieSitemapPageCountCached(forceRefresh = false) {
+  const movieMeta = await (forceRefresh ? loadMovieCountAndLastMod() : cachedMovieMeta());
+  return movieMeta.movies;
+}
+
+export async function getPersonSitemapPageCountCached(forceRefresh = false) {
+  return forceRefresh ? loadPersonCount() : cachedPersonCount();
+}
+
 export async function getSitemapPageCounts(forceRefresh = false) {
   const [movieMeta, people] = await Promise.all([
     forceRefresh ? loadMovieCountAndLastMod() : cachedMovieMeta(),

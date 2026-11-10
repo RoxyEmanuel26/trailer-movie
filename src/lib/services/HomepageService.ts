@@ -7,6 +7,7 @@ import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { isTransientDatabaseError } from '../database-errors';
 import { logger } from '../logger';
 import { loadPublicDataWithSnapshot } from '../public-catalog-snapshot';
+import { clearAllPublicMemoryCaches } from '../memory-cache';
 
 type SmartHomepageData = Awaited<ReturnType<typeof HomepageRepository.getSmartHomepageData>>;
 
@@ -46,6 +47,7 @@ const getCachedSmartHomepageData = unstable_cache(
 );
 
 function revalidateHomepage() {
+  clearAllPublicMemoryCaches();
   revalidateTag(HOMEPAGE_CATALOG_TAG, { expire: 0 });
   revalidatePath('/', 'page');
   revalidatePath('/opengraph-image', 'page');

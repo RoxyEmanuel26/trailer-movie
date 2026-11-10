@@ -12,6 +12,7 @@ import { moviePath, publicMovieSlug } from '../public-routes';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { coreIndexNowPaths, submitIndexNowUrls } from '../indexnow';
+import { clearAllPublicMemoryCaches, createMemoryCache } from '../memory-cache';
 
 const RELATED_MOVIE_LIMIT = 8;
 
@@ -200,7 +201,39 @@ const dedupeRelatedMoviesInRequest = cache(async (movieId: string, genreKey: str
   return items.map(hydrateCard);
 });
 
+type PublicMovieLookupResult = {
+  movie: NonNullable<Awaited<ReturnType<typeof MovieRepository.findBySlug>>>;
+  canonicalPath: string;
+  shouldRedirect: boolean;
+} | null;
+
+const publicMovieCache = createMemoryCache<PublicMovieLookupResult>({
+  maxEntries: 1500,
+  ttlMs: 30 * 60_000,
+});
+
+const popularHubCountsCache = createMemoryCache<Awaited<ReturnType<typeof MovieRepository.getPopularHubCounts>>>({
+  maxEntries: 2,
+  ttlMs: 10 * 60_000,
+});
+
+const originGroupsCache = createMemoryCache<Map<string, number>>({
+  maxEntries: 5,
+  ttlMs: 10 * 60_000,
+});
+
+const releaseYearsCache = createMemoryCache<number[]>({
+  maxEntries: 2,
+  ttlMs: 10 * 60_000,
+});
+
+const releaseYearStatsCache = createMemoryCache<Awaited<ReturnType<typeof MovieRepository.listPublishedReleaseYearStats>>>({
+  maxEntries: 2,
+  ttlMs: 10 * 60_000,
+});
+
 function notifyPublicCatalogMutation(slug?: string, submitToIndexNow = false) {
+  clearAllPublicMemoryCaches();
   const detailPath = slug ? moviePath(slug) : undefined;
   try {
     revalidateTag(HOMEPAGE_CATALOG_TAG, 'max');
@@ -220,11 +253,18 @@ function notifyPublicCatalogMutation(slug?: string, submitToIndexNow = false) {
 }
 
 export class MovieService {
-  static getPopularHubCounts = cache(async () => MovieRepository.getPopularHubCounts());
+  static getPopularHubCounts = cache(async () =>
+    popularHubCountsCache.getOrLoad('popular-hub-counts', () => MovieRepository.getPopularHubCounts())
+  );
 
   static countOriginGroups = cache(async (
     origins: Array<{ slug: string; countryCodes: string[]; languageCodes: string[] }>,
-  ) => MovieRepository.countOriginGroups(origins));
+  ) =>
+    originGroupsCache.getOrLoad(
+      JSON.stringify(origins.map((o) => o.slug)),
+      () => MovieRepository.countOriginGroups(origins),
+    )
+  );
 
   static countStreamingGroups = cache(async (
     platforms: Array<{ slug: string; tmdbIds: number[] }>,
@@ -233,13 +273,13 @@ export class MovieService {
     return new Map(Object.entries(entries).map(([slug, count]) => [slug, Number(count)]));
   });
 
-  static listPublishedReleaseYears = cache(async () => {
-    return MovieRepository.listPublishedReleaseYears();
-  });
+  static listPublishedReleaseYears = cache(async () =>
+    releaseYearsCache.getOrLoad('release-years', () => MovieRepository.listPublishedReleaseYears())
+  );
 
-  static listPublishedReleaseYearStats = cache(async () => {
-    return MovieRepository.listPublishedReleaseYearStats();
-  });
+  static listPublishedReleaseYearStats = cache(async () =>
+    releaseYearStatsCache.getOrLoad('release-year-stats', () => MovieRepository.listPublishedReleaseYearStats())
+  );
 
   static getMovie = cache(async (id: string) => {
     const movie = await MovieRepository.findById(id);
@@ -257,31 +297,33 @@ export class MovieService {
     return movie;
   });
 
-  static getPublicMovie = cache(async (routeParam: string) => {
-    const directMovie = await MovieRepository.findBySlug(routeParam);
-    if (directMovie) {
-      if (directMovie.status !== 'PUBLISHED') return null;
-      return {
-        movie: directMovie,
-        canonicalPath: moviePath(directMovie.slug),
-        shouldRedirect: publicMovieSlug(directMovie.slug) !== routeParam,
-      };
-    }
+  static getPublicMovie = cache(async (routeParam: string) =>
+    publicMovieCache.getOrLoad(routeParam, async () => {
+      const directMovie = await MovieRepository.findBySlug(routeParam);
+      if (directMovie) {
+        if (directMovie.status !== 'PUBLISHED') return null;
+        return {
+          movie: directMovie,
+          canonicalPath: moviePath(directMovie.slug),
+          shouldRedirect: publicMovieSlug(directMovie.slug) !== routeParam,
+        };
+      }
 
-    const canonicalSlug = await MovieRepository.resolveCanonicalSlug(routeParam);
-    if (!canonicalSlug) return null;
-    try {
-      const movie = await this.getBySlug(canonicalSlug);
-      return {
-        movie,
-        canonicalPath: moviePath(movie.slug),
-        shouldRedirect: publicMovieSlug(movie.slug) !== routeParam,
-      };
-    } catch (error) {
-      if (error instanceof NotFoundError) return null;
-      throw error;
-    }
-  });
+      const canonicalSlug = await MovieRepository.resolveCanonicalSlug(routeParam);
+      if (!canonicalSlug) return null;
+      try {
+        const movie = await this.getBySlug(canonicalSlug);
+        return {
+          movie,
+          canonicalPath: moviePath(movie.slug),
+          shouldRedirect: publicMovieSlug(movie.slug) !== routeParam,
+        };
+      } catch (error) {
+        if (error instanceof NotFoundError) return null;
+        throw error;
+      }
+    })
+  );
 
   static async getRelatedMovies(movieId: string, genreIds: string[]) {
     const sortedGenreIds = [...new Set(genreIds)].sort();

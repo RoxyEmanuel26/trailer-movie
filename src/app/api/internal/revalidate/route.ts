@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { hasValidRevalidationSecret, isAllowedRevalidationPath } from '@/lib/revalidation';
 import { HOMEPAGE_CATALOG_TAG } from '@/lib/homepage-cache';
 import { coreIndexNowPaths, submitIndexNowUrls } from '@/lib/indexnow';
+import { clearAllPublicMemoryCaches } from '@/lib/memory-cache';
 
 const payloadSchema = z.object({
   scope: z.enum(['catalog', 'homepage']).default('catalog'),
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
     revalidated.add(path);
   };
 
+  clearAllPublicMemoryCaches();
   invalidate('/');
   revalidateTag(HOMEPAGE_CATALOG_TAG, 'max');
   revalidatePath('/opengraph-image', 'page');
