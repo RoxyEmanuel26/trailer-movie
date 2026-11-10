@@ -77,6 +77,61 @@ if (fs.existsSync(rootPrisma)) {
   pnpmPackageMap.set('.prisma/client/default', path.join(rootPrisma, 'client', 'default.js'));
 }
 
+const TURBOPACK_HASH_RE = /^((?:@[^/]+\/)?[^/]+)-[0-9a-f]{16}(\/.*)?$/;
+
+// Auto-create .next/node_modules symlinks for Turbopack hashed externals
+// Required because Node.js ESM `await import('pg-4c0d8067d674414d')` bypasses Module._resolveFilename
+// and looks directly on disk inside .next/node_modules/.
+function ensureTurbopackExternalLinks() {
+  const chunksDir = path.join(dir, '.next', 'server', 'chunks');
+  const nextNodeModules = path.join(dir, '.next', 'node_modules');
+  if (!fs.existsSync(chunksDir)) return;
+
+  const scanRe = /((?:@[a-z0-9._-]+\/)?[a-z0-9._-]+)-[0-9a-f]{16}/g;
+  const hashedNames = new Set([
+    '@prisma/client-e2ab672a1d5aaaa9',
+    'pg-4c0d8067d674414d',
+    'pino-2e79642258e38174',
+  ]);
+
+  try {
+    for (const file of fs.readdirSync(chunksDir)) {
+      if (!file.endsWith('.js')) continue;
+      const content = fs.readFileSync(path.join(chunksDir, file), 'utf8');
+      let match;
+      while ((match = scanRe.exec(content)) !== null) {
+        hashedNames.add(match[0]);
+      }
+    }
+  } catch {}
+
+  for (const hashedName of hashedNames) {
+    const parsed = TURBOPACK_HASH_RE.exec(hashedName);
+    if (!parsed) continue;
+    const basePkg = parsed[1];
+    const targetDir =
+      pnpmPackageMap.get(basePkg) ||
+      (fs.existsSync(path.join(dir, 'node_modules', basePkg))
+        ? path.join(dir, 'node_modules', basePkg)
+        : null);
+    if (!targetDir || !fs.existsSync(targetDir)) continue;
+
+    const linkPath = path.join(nextNodeModules, hashedName);
+    if (fs.existsSync(linkPath)) continue;
+
+    try {
+      fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+      fs.symlinkSync(targetDir, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch {
+      try {
+        fs.cpSync(targetDir, linkPath, { recursive: true });
+      } catch {}
+    }
+  }
+}
+
+ensureTurbopackExternalLinks();
+
 const origResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, isMain, options) {
   try {
@@ -88,6 +143,22 @@ Module._resolveFilename = function (request, parent, isMain, options) {
         try {
           return origResolve.call(this, matched, parent, isMain, options);
         } catch {}
+      }
+
+      const hashMatch = typeof request === 'string' ? TURBOPACK_HASH_RE.exec(request) : null;
+      if (hashMatch) {
+        const basePkg = hashMatch[1];
+        const subPath = hashMatch[2] || '';
+        const strippedRequest = basePkg + subPath;
+        try {
+          return origResolve.call(this, strippedRequest, parent, isMain, options);
+        } catch {}
+        const mappedPkg = pnpmPackageMap.get(basePkg);
+        if (mappedPkg) {
+          try {
+            return origResolve.call(this, mappedPkg + subPath, parent, isMain, options);
+          } catch {}
+        }
       }
     }
     throw err;
@@ -160,6 +231,11 @@ function installPublicCacheHeaderHook() {
     try {
       const req = this.__movieflixReq;
       const code = typeof statusCode === 'number' ? statusCode : this.statusCode;
+      if (req && code === 200 && req.method === 'POST' && (req.url || '').startsWith('/api/internal/revalidate')) {
+        if (typeof global.__movieflixTriggerSitemapRefresh === 'function') {
+          global.__movieflixTriggerSitemapRefresh();
+        }
+      }
       if (req && code === 200 && (req.method === 'GET' || req.method === 'HEAD')) {
         const rawUrl = req.url || '/';
         const qIndex = rawUrl.indexOf('?');
@@ -223,19 +299,20 @@ function installPublicCacheHeaderHook() {
 
 installPublicCacheHeaderHook();
 
-// 4. Gentle Background Sitemap Warmer
-function fetchLocalText(port, urlPath, hostHeader, originToken) {
+// 4. Gentle Background Sitemap Warmer & Local Force-Rebuilder
+function fetchLocalText(port, urlPath, hostHeader, originToken, revalidationSecret) {
   return new Promise((resolve, reject) => {
     const req = http.get(
       {
         hostname: '127.0.0.1',
         port,
         path: urlPath,
-        timeout: 45_000,
+        timeout: 120_000,
         headers: {
           Host: hostHeader,
           'User-Agent': 'MovieFlix-Sitemap-Warmer/1.0',
           ...(originToken ? { 'x-movieflix-origin-token': originToken } : {}),
+          ...(revalidationSecret ? { Authorization: `Bearer ${revalidationSecret}` } : {}),
         },
       },
       (res) => {
@@ -267,31 +344,72 @@ function scheduleSitemapWarmup(port) {
     hostHeader = new URL(appUrl).host;
   } catch {}
   const originToken = process.env.ORIGIN_GATE_SECRET || '';
+  const revalidationSecret = process.env.REVALIDATION_SECRET || '';
+  let warmupRunning = false;
+  let pendingForceRefresh = false;
+  let debounceTimer = null;
 
-  const runWarmup = async () => {
+  const runWarmup = async (forceRefresh = false) => {
+    if (warmupRunning) {
+      if (forceRefresh) pendingForceRefresh = true;
+      return;
+    }
+    warmupRunning = true;
     try {
-      const indexXml = await fetchLocalText(port, '/sitemap.xml', hostHeader, originToken);
+      const secretToUse = forceRefresh ? revalidationSecret : '';
+      const indexXml = await fetchLocalText(port, '/sitemap.xml', hostHeader, originToken, secretToUse);
       const locMatches = [...indexXml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+      const movieShards = locMatches.filter((u) => u.includes('/sitemaps/movies-'));
+      const peopleShards = locMatches.filter((u) => u.includes('/sitemaps/people-'));
+      const newestMovieShard = movieShards[movieShards.length - 1] || '';
+      const newestPeopleShard = peopleShards[peopleShards.length - 1] || '';
+
       for (const loc of locMatches) {
         try {
           const parsed = new URL(loc);
-          await fetchLocalText(port, parsed.pathname, hostHeader, originToken);
+          const isHotShard =
+            parsed.pathname === '/sitemaps/core' ||
+            loc === newestMovieShard ||
+            loc === newestPeopleShard;
+          await fetchLocalText(
+            port,
+            parsed.pathname,
+            hostHeader,
+            originToken,
+            forceRefresh && isHotShard ? revalidationSecret : '',
+          );
           // Pause 1.5s between shards to keep CPU and DB load minimal
           await new Promise((r) => setTimeout(r, 1500));
         } catch {}
       }
-      console.log(`[MovieFlix] Background sitemap cache warmed (${locMatches.length} shards ready).`);
+      console.log(
+        `[MovieFlix] Background sitemap cache ${forceRefresh ? 'rebuilt' : 'warmed'} (${locMatches.length} shards ready).`,
+      );
     } catch (err) {
       console.warn('[MovieFlix] Background sitemap warmup skipped:', err && err.message ? err.message : err);
+    } finally {
+      warmupRunning = false;
+      if (pendingForceRefresh) {
+        pendingForceRefresh = false;
+        void runWarmup(true);
+      }
     }
   };
 
+  global.__movieflixTriggerSitemapRefresh = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      void runWarmup(true);
+    }, 3_000).unref();
+  };
+
   setTimeout(() => {
-    void runWarmup();
+    void runWarmup(false);
     setInterval(() => {
-      void runWarmup();
+      void runWarmup(true);
     }, 4 * 3600 * 1000).unref();
-  }, 10_000).unref();
+  }, 25_000).unref();
 }
 
 const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '5060', 10);

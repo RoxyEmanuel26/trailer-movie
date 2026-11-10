@@ -10,6 +10,7 @@ import { ImportRepository } from '../src/lib/repositories/ImportRepository';
 import { ImportJobStatus } from '@prisma/client';
 import { safeUpsertCompany, safeUpsertKeyword } from '../src/lib/services/import-service';
 import { ImportBatchService } from '../src/lib/services/ImportBatchService';
+import { drainImportQueue } from '../src/lib/jobs/drain-import-queue';
 
 const completeMovie = {
   title: 'Complete movie',
@@ -371,4 +372,44 @@ test('production-company creation tolerates a concurrent insert without emitting
     data: [{ name: 'Studio', tmdbId: 456, logoUrl: null, slug: 'studio-456' }],
     skipDuplicates: true,
   });
+});
+
+test('drainImportQueue continues through duplicate-only discovery pages and enforces 1000ms minimum backoff on no-progress cycles', async () => {
+  const pauses: number[] = [];
+  let step = 0;
+  const pastDate = new Date(Date.now() - 10_000);
+  const result = await drainImportQueue({
+    processBatch: async () => {
+      step++;
+      if (step <= 12) {
+        return {
+          claimed: 0, completed: 0, skipped: 0, partial: 0, failed: 0, deferred: 0,
+          remaining: 0, readyRemaining: 0, busy: false,
+          discoveryProcessed: step % 2 === 1,
+          discoveryRemaining: 7,
+          discoveryReady: 6,
+          nextDiscoveryAt: pastDate,
+          qualityProcessed: 0, qualityUnpublished: 0,
+        };
+      }
+      return {
+        claimed: 0, completed: 0, skipped: 0, partial: 0, failed: 0, deferred: 0,
+        remaining: 0, readyRemaining: 0, busy: false,
+        discoveryProcessed: false,
+        discoveryRemaining: 0,
+        discoveryReady: 0,
+        nextDiscoveryAt: null,
+        qualityProcessed: 0, qualityUnpublished: 0,
+      };
+    },
+    shouldStop: () => false,
+    onBatch: () => {},
+    pause: async (ms) => { pauses.push(ms); },
+  });
+
+  assert.equal(result.reason, 'drained');
+  assert.equal(result.cycles, 13);
+  // Odd steps (discoveryProcessed: true) pause 250ms; even steps (no progress with discoveryReady > 0) pause 1000ms
+  assert.equal(pauses[0], 250);
+  assert.equal(pauses[1], 1_000);
 });

@@ -136,16 +136,28 @@ export class ImportBatchService {
     return finalized;
   }
 
-  static async claimNext() {
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      UPDATE "import_batches"
-      SET status = 'RUNNING', "startedAt" = COALESCE("startedAt", CURRENT_TIMESTAMP), "updatedAt" = CURRENT_TIMESTAMP
-      WHERE id IN (
-        SELECT id FROM "import_batches"
-        WHERE status = 'PENDING' AND ("nextRunAt" IS NULL OR "nextRunAt" <= CURRENT_TIMESTAMP)
-        ORDER BY "createdAt" ASC LIMIT 1 FOR UPDATE SKIP LOCKED
-      ) RETURNING id
-    `);
+  static async claimNext(allowEarlyClaim = false) {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(
+      allowEarlyClaim
+        ? Prisma.sql`
+            UPDATE "import_batches"
+            SET status = 'RUNNING', "startedAt" = COALESCE("startedAt", CURRENT_TIMESTAMP), "updatedAt" = CURRENT_TIMESTAMP
+            WHERE id IN (
+              SELECT id FROM "import_batches"
+              WHERE status = 'PENDING'
+              ORDER BY "nextRunAt" ASC NULLS FIRST, "createdAt" ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) RETURNING id
+          `
+        : Prisma.sql`
+            UPDATE "import_batches"
+            SET status = 'RUNNING', "startedAt" = COALESCE("startedAt", CURRENT_TIMESTAMP), "updatedAt" = CURRENT_TIMESTAMP
+            WHERE id IN (
+              SELECT id FROM "import_batches"
+              WHERE status = 'PENDING' AND ("nextRunAt" IS NULL OR "nextRunAt" <= CURRENT_TIMESTAMP)
+              ORDER BY "createdAt" ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) RETURNING id
+          `,
+    );
     return rows[0] ? this.find(rows[0].id) : null;
   }
 
@@ -175,8 +187,8 @@ export class ImportBatchService {
     });
   }
 
-  static async processNextPage() {
-    const batch = await this.claimNext();
+  static async processNextPage(options?: { allowEarlyClaim?: boolean }) {
+    const batch = await this.claimNext(Boolean(options?.allowEarlyClaim));
     if (!batch) return { processed: false, queued: 0, skipped: 0 };
 
     try {
@@ -216,7 +228,7 @@ export class ImportBatchService {
             skippedCount: { increment: skipped },
             status: completed ? ImportBatchStatus.IMPORTING : ImportBatchStatus.PENDING,
             completedAt: null,
-            nextRunAt: completed ? null : new Date(Date.now() + 5_000),
+            nextRunAt: completed ? null : new Date(Date.now() + (queued > 0 ? 2_000 : 500)),
             errorMessage: null,
           },
         });

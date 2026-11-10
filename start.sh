@@ -83,6 +83,7 @@ if [ ! -d "$ROOT/.next/server" ]; then
   fi
 else
   echo "[MovieFlix] Pre-built .next found. Skipping build!"
+  rm -rf "$ROOT/.next/node_modules/jsdom"* 2>/dev/null || true
 fi
 
 echo "============================================================"

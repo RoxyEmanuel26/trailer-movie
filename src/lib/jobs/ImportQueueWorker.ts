@@ -75,20 +75,21 @@ export class ImportQueueWorker {
         ]);
         this.lastRecoveryAt = now;
       }
-      const shouldPollDiscovery = now - this.lastDiscoveryPollAt >= 5_000;
-      if (shouldPollDiscovery) this.lastDiscoveryPollAt = now;
-      const discoveryPromise = shouldPollDiscovery
-        ? ImportBatchService.processNextPage().catch((error) => {
-            logger.warn({ err: error }, '[ImportQueueWorker] Bulk discovery page deferred');
-            return { processed: false };
-          })
-        : Promise.resolve({ processed: false });
-
       const [movieJobs, personJobs] = await Promise.all([
         ImportRepository.claimJobs('Movie', throughput.movieBatchSize),
         ImportRepository.claimJobs('Person', throughput.personBatchSize),
       ]);
       const jobs = [...movieJobs, ...personJobs];
+      const discoveryCooldownMs = jobs.length === 0 ? 200 : 5_000;
+      const shouldPollDiscovery = now - this.lastDiscoveryPollAt >= discoveryCooldownMs;
+      if (shouldPollDiscovery) this.lastDiscoveryPollAt = now;
+      const discoveryPromise = shouldPollDiscovery
+        ? ImportBatchService.processNextPage({ allowEarlyClaim: jobs.length === 0 }).catch((error) => {
+            logger.warn({ err: error }, '[ImportQueueWorker] Bulk discovery page deferred');
+            return { processed: false };
+          })
+        : Promise.resolve({ processed: false });
+
       const [movieResults, personResults, discovery] = await Promise.all([
         runBounded(movieJobs, throughput.movieConcurrency, (job) => new MovieImportPipeline(job.id).run({ tmdbId: job.tmdbId })),
         runBounded(personJobs, throughput.personConcurrency, (job) => new PersonImportPipeline(job.id).run({ tmdbId: job.tmdbId })),
@@ -114,6 +115,13 @@ export class ImportQueueWorker {
       const discoveryState = await this.readDiscoveryState(
         Boolean(discovery.processed) || workerState.ready === 0,
       );
+      const nextPollAllowedAt = shouldPollDiscovery
+        ? null
+        : new Date(this.lastDiscoveryPollAt + (workerState.ready === 0 ? 200 : 5_000));
+      const effectiveNextDiscoveryAt =
+        discoveryState.nextRunAt && nextPollAllowedAt
+          ? new Date(Math.max(discoveryState.nextRunAt.getTime(), nextPollAllowedAt.getTime()))
+          : discoveryState.nextRunAt ?? nextPollAllowedAt;
 
       return {
         claimed: jobs.length,
@@ -128,7 +136,7 @@ export class ImportQueueWorker {
         discoveryProcessed: discovery.processed,
         discoveryRemaining: discoveryState.remaining,
         discoveryReady: discoveryState.ready,
-        nextDiscoveryAt: discoveryState.nextRunAt,
+        nextDiscoveryAt: effectiveNextDiscoveryAt,
         qualityProcessed: quality.processed,
         qualityUnpublished: quality.unpublished,
       };

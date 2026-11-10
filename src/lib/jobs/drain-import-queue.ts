@@ -57,9 +57,10 @@ export async function drainImportQueue({
     if (idleCycles >= 10) {
       throw new Error('Import queue made no progress after 10 attempts; pending jobs remain safe in the database');
     }
+    const minIdleDelay = readyWorkMadeNoProgress ? 1_000 : 250;
     const nextDiscoveryDelay = summary.nextDiscoveryAt
-      ? Math.max(250, Math.min(5_000, summary.nextDiscoveryAt.getTime() - Date.now()))
-      : 1_000;
+      ? Math.max(minIdleDelay, Math.min(5_000, summary.nextDiscoveryAt.getTime() - Date.now()))
+      : Math.max(minIdleDelay, 1_000);
     await pause(summary.busy ? 1_500 : summary.claimed === 0 ? nextDiscoveryDelay : 250);
   }
 

@@ -160,7 +160,9 @@ export class SyncService {
         const existingByTmdbId = new Map(existingPeople.map((person) => [person.tmdbId, person]));
         const staleBefore = Date.now() - 90 * 86_400_000;
         const uniquePeople = [...new Map(allPeople.map((person: any) => [person.id as number, person])).values()];
-        const missingPeople = uniquePeople.filter((person: any) => !existingByTmdbId.has(person.id));
+        const missingPeople = uniquePeople
+          .filter((person: any) => !existingByTmdbId.has(person.id))
+          .sort((a: any, b: any) => Number(a.id) - Number(b.id));
         if (missingPeople.length > 0) {
           await prisma.person.createMany({
             data: missingPeople.map((person: any) => ({
