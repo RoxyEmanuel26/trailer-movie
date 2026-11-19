@@ -12,8 +12,13 @@ const publicProfileInclude = {
     },
     include: {
       movie: {
-        include: {
-          genres: { include: { genre: true } },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          posterUrl: true,
+          releaseDate: true,
+          voteAverage: true,
         },
       },
     },
@@ -73,26 +78,32 @@ export class PersonRepository {
 
   static async countIndexableForSitemap(db: DbClient = prisma) {
     const rows = await db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
-      WITH headshot_people AS (
-        SELECT p."id", p."biography"
-        FROM "people" p
-        WHERE p."headshotUrl" IS NOT NULL AND BTRIM(p."headshotUrl") <> ''
-          AND NOT EXISTS (
-            SELECT 1 FROM "seo_pages" s
-            WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap")
-          )
-      ), published_credits AS (
-        SELECT mp."personId", count(DISTINCT mp."movieId") AS credit_count
+      WITH distinct_credits AS (
+        SELECT mp."personId", mp."movieId"
         FROM "movie_people" mp
-        JOIN "movies" m ON m."id" = mp."movieId" AND m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
-        WHERE mp."personId" IN (SELECT "id" FROM headshot_people)
-        GROUP BY mp."personId"
+        JOIN "movies" m ON m."id" = mp."movieId"
+        WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        GROUP BY mp."personId", mp."movieId"
+      ), published_credits AS (
+        SELECT "personId", COUNT(*)::int AS credit_count
+        FROM distinct_credits
+        GROUP BY "personId"
+      ), bio_people AS (
+        SELECT p2."id"
+        FROM "people" p2
+        WHERE p2."headshotUrl" IS NOT NULL AND BTRIM(p2."headshotUrl") <> ''
+          AND LENGTH(BTRIM(COALESCE(p2."biography", ''))) >= 160
       )
-      SELECT count(*)::bigint AS "count"
-      FROM headshot_people hp
-      JOIN published_credits pc ON pc."personId" = hp."id"
-      WHERE pc.credit_count >= 3
-         OR (pc.credit_count >= 1 AND LENGTH(BTRIM(COALESCE(hp."biography", ''))) >= 160)
+      SELECT COUNT(*)::bigint AS "count"
+      FROM "people" p
+      JOIN published_credits pc ON pc."personId" = p."id"
+      LEFT JOIN bio_people bp ON bp."id" = p."id"
+      WHERE p."headshotUrl" IS NOT NULL AND BTRIM(p."headshotUrl") <> ''
+        AND (pc.credit_count >= 3 OR (pc.credit_count >= 1 AND bp."id" IS NOT NULL))
+        AND NOT EXISTS (
+          SELECT 1 FROM "seo_pages" s
+          WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap")
+        )
     `);
     return Number(rows[0]?.count || 0);
   }
@@ -104,27 +115,33 @@ export class PersonRepository {
     const skip = Math.max(0, params.skip || 0);
     const take = Math.min(45_000, Math.max(1, params.take || 45_000));
     return db.$queryRaw<Array<{ slug: string; updatedAt: Date }>>(Prisma.sql`
-      WITH headshot_people AS (
-        SELECT p."id", p."slug", p."updatedAt", p."biography"
-        FROM "people" p
-        WHERE p."headshotUrl" IS NOT NULL AND BTRIM(p."headshotUrl") <> ''
-          AND NOT EXISTS (
-            SELECT 1 FROM "seo_pages" s
-            WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap")
-          )
-      ), published_credits AS (
-        SELECT mp."personId", count(DISTINCT mp."movieId") AS credit_count
+      WITH distinct_credits AS (
+        SELECT mp."personId", mp."movieId"
         FROM "movie_people" mp
-        JOIN "movies" m ON m."id" = mp."movieId" AND m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
-        WHERE mp."personId" IN (SELECT "id" FROM headshot_people)
-        GROUP BY mp."personId"
+        JOIN "movies" m ON m."id" = mp."movieId"
+        WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+        GROUP BY mp."personId", mp."movieId"
+      ), published_credits AS (
+        SELECT "personId", COUNT(*)::int AS credit_count
+        FROM distinct_credits
+        GROUP BY "personId"
+      ), bio_people AS (
+        SELECT p2."id"
+        FROM "people" p2
+        WHERE p2."headshotUrl" IS NOT NULL AND BTRIM(p2."headshotUrl") <> ''
+          AND LENGTH(BTRIM(COALESCE(p2."biography", ''))) >= 160
       )
-      SELECT hp."slug", hp."updatedAt"
-      FROM headshot_people hp
-      JOIN published_credits pc ON pc."personId" = hp."id"
-      WHERE pc.credit_count >= 3
-         OR (pc.credit_count >= 1 AND LENGTH(BTRIM(COALESCE(hp."biography", ''))) >= 160)
-      ORDER BY hp."slug" ASC
+      SELECT p."slug", p."updatedAt"
+      FROM "people" p
+      JOIN published_credits pc ON pc."personId" = p."id"
+      LEFT JOIN bio_people bp ON bp."id" = p."id"
+      WHERE p."headshotUrl" IS NOT NULL AND BTRIM(p."headshotUrl") <> ''
+        AND (pc.credit_count >= 3 OR (pc.credit_count >= 1 AND bp."id" IS NOT NULL))
+        AND NOT EXISTS (
+          SELECT 1 FROM "seo_pages" s
+          WHERE s."seoableType" = 'Person' AND s."seoableId" = p."id" AND (s."isNoindex" OR NOT s."inSitemap")
+        )
+      ORDER BY p."slug" ASC
       OFFSET ${skip}
       LIMIT ${take}
     `);

@@ -47,14 +47,16 @@ export default async function YearPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const { data: movies, total } = await MovieService.getPublicCatalogPage({
-    page: currentPage,
-    itemsPerPage,
-    releaseYear: year,
-    orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
-  });
+  const [{ data: movies, total }, stats] = await Promise.all([
+    MovieService.getPublicCatalogPage({
+      page: currentPage,
+      itemsPerPage,
+      releaseYear: year,
+      orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
+    }),
+    MovieService.getCatalogStats({ releaseYear: year }),
+  ]);
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
-  const stats = await MovieService.getCatalogStats({ releaseYear: year });
 
   return (
     <CatalogPage

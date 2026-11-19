@@ -49,18 +49,20 @@ export default async function OriginPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const { data: movies, total } = await MovieService.getPublicCatalogPage({
-    page: currentPage,
-    itemsPerPage,
-    countryCodes: item.countryCodes,
-    languageCodes: item.languageCodes,
-    orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
-  });
+  const [{ data: movies, total }, stats] = await Promise.all([
+    MovieService.getPublicCatalogPage({
+      page: currentPage,
+      itemsPerPage,
+      countryCodes: item.countryCodes,
+      languageCodes: item.languageCodes,
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+    }),
+    MovieService.getCatalogStats({
+      countryCodes: item.countryCodes,
+      languageCodes: item.languageCodes,
+    }),
+  ]);
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
-  const stats = await MovieService.getCatalogStats({
-    countryCodes: item.countryCodes,
-    languageCodes: item.languageCodes,
-  });
   const description = `Explore MovieFlix titles connected to ${item.label} through their production country or spoken language.`;
 
   return (

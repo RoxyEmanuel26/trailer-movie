@@ -1,10 +1,16 @@
 import { TagRepository } from "../repositories/TagRepository";
 import { NotFoundError, ValidationError } from "../errors";
 import { requireAdmin } from "../auth/utils";
+import { clearAllPublicMemoryCaches, createMemoryCache } from "../memory-cache";
 
 function generateSlug(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 }
+
+const tagBySlugCache = createMemoryCache<Awaited<ReturnType<typeof TagRepository.findBySlug>>>({
+  maxEntries: 200,
+  ttlMs: 15 * 60_000,
+});
 
 export class TagService {
   static async listTags() {
@@ -18,7 +24,7 @@ export class TagService {
   }
 
   static async getBySlug(slug: string) {
-    const tag = await TagRepository.findBySlug(slug);
+    const tag = await tagBySlugCache.getOrLoad(slug, () => TagRepository.findBySlug(slug));
     if (!tag) throw new NotFoundError(`Tag with slug ${slug} not found`);
     return tag;
   }

@@ -48,20 +48,21 @@ export default async function PopularPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const { data: movies, total } =
+  const [{ data: movies, total }, stats] = await Promise.all([
     item.slug === 'top-rated'
-      ? await MovieService.getPublicTopRatedPage(currentPage, itemsPerPage)
-      : await MovieService.getPublicCatalogPage({
+      ? MovieService.getPublicTopRatedPage(currentPage, itemsPerPage)
+      : MovieService.getPublicCatalogPage({
           page: currentPage,
           itemsPerPage,
           orderBy: item.orderBy,
           ...(item.slug === 'latest-releases' ? { latestReleasesOnly: true } : {}),
-        });
+        }),
+    MovieService.getCatalogStats({
+      ...(item.slug === 'latest-releases' ? { releaseDateLte: new Date() } : {}),
+      ...(item.slug === 'top-rated' ? { minimumVotes: 50 } : {}),
+    }),
+  ]);
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
-  const stats = await MovieService.getCatalogStats({
-    ...(item.slug === 'latest-releases' ? { releaseDateLte: new Date() } : {}),
-    ...(item.slug === 'top-rated' ? { minimumVotes: 50 } : {}),
-  });
   const insightFacts = catalogInsightFacts(
     stats,
     item.slug === 'top-rated' ? movies.slice(0, 3).map((movie) => movie.title) : undefined

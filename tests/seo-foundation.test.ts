@@ -15,6 +15,7 @@ import { catalogStatsQuery } from '../src/lib/catalog-stats-query';
 import { buildFaqJsonLd, buildMovieQuickFactsAndFaq, extractUniqueProviders } from '../src/lib/movie-aeo';
 import { getStreamingCatalogItem, STREAMING_CATALOG } from '../src/lib/streaming-catalog';
 import { buildIndexNowPayload } from '../src/lib/indexnow';
+import { extractSearchTerms } from '../src/lib/repositories/MovieRepository';
 import robots from '../src/app/robots';
 
 test('strict pagination accepts only positive integer pages', () => {
@@ -286,4 +287,11 @@ test('IndexNow payload deduplicates same-host canonical URLs and ignores disable
     keyLocation: 'https://www.movieflix.site/indexnow-key.txt',
     urlList: ['https://www.movieflix.site/watch/a-1'],
   });
+});
+
+test('extractSearchTerms strips English stopwords from multi-word queries while preserving single-token queries', () => {
+  assert.deepEqual(extractSearchTerms('The Hunger Games'), ['Hunger', 'Games']);
+  assert.deepEqual(extractSearchTerms('Lord of the Rings'), ['Lord', 'Rings']);
+  assert.deepEqual(extractSearchTerms('The'), ['The']);
+  assert.deepEqual(extractSearchTerms('IT'), ['IT']);
 });

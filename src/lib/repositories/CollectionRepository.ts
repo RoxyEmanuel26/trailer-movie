@@ -4,16 +4,8 @@ import { DbClient } from './base.types';
 
 export class CollectionRepository {
   static async findBySlug(slug: string, publicOnly = false, db: DbClient = prisma) {
-    const movieWhere = publicOnly ? { status: 'PUBLISHED' as const, deletedAt: null } : {};
     return db.collection.findFirst({
       where: publicOnly ? { slug, isActive: true } : { slug },
-      include: {
-        movies: {
-          where: { movie: movieWhere },
-          include: { movie: true },
-          orderBy: { sortOrder: 'asc' },
-        },
-      },
     });
   }
 

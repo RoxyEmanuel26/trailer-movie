@@ -56,14 +56,16 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
   if (!currentPage) notFound();
   const itemsPerPage = 24;
 
-  const { data: movies, total: totalMovies } = await MovieService.getPublicCatalogPage({
-    page: currentPage,
-    itemsPerPage,
-    genreSlug: genre.slug,
-    orderBy: { releaseDate: 'desc' },
-  });
+  const [{ data: movies, total: totalMovies }, stats] = await Promise.all([
+    MovieService.getPublicCatalogPage({
+      page: currentPage,
+      itemsPerPage,
+      genreSlug: genre.slug,
+      orderBy: { releaseDate: 'desc' },
+    }),
+    MovieService.getCatalogStats({ genreSlug: genre.slug }),
+  ]);
   if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();
-  const stats = await MovieService.getCatalogStats({ genreSlug: genre.slug });
 
   const description =
     genre.description ||

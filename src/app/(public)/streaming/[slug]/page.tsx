@@ -50,17 +50,18 @@ export default async function StreamingPlatformPage({ params, searchParams }: Pa
   if (!currentPage) notFound();
 
   const itemsPerPage = 24;
-  const { data: movies, total } = await MovieService.getPublicCatalogPage({
-    page: currentPage,
-    itemsPerPage,
-    providerTmdbIds: item.tmdbIds,
-    orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
-  });
+  const [{ data: movies, total }, stats] = await Promise.all([
+    MovieService.getPublicCatalogPage({
+      page: currentPage,
+      itemsPerPage,
+      providerTmdbIds: item.tmdbIds,
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+    }),
+    MovieService.getCatalogStats({
+      providerTmdbIds: item.tmdbIds,
+    }),
+  ]);
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
-
-  const stats = await MovieService.getCatalogStats({
-    providerTmdbIds: item.tmdbIds,
-  });
 
   return (
     <CatalogPage

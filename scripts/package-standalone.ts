@@ -95,6 +95,10 @@ async function main() {
       /@nano-1\.(nura\.host|nurahost\.com):5112/g,
       '@461b710f-642a-4ea8-af0a-668edcfa5d6a.pterodactyl_nw:5112'
     );
+    rawEnv = rawEnv.replace(/^DB_POOL_MAX="?\d+"?/m, 'DB_POOL_MAX="12"');
+    if (!rawEnv.includes('DB_CONNECTION_TIMEOUT_MS=')) {
+      rawEnv += '\nDB_CONNECTION_TIMEOUT_MS="20000"\n';
+    }
     if (!rawEnv.includes('GOOGLE_SITE_VERIFICATION=')) {
       rawEnv += '\nGOOGLE_SITE_VERIFICATION="v2Cbd4dYoP-RAJi4ThQSTcrnAX6WlN_xEIIF8dhzjV8"\n';
     }

@@ -231,11 +231,6 @@ function installPublicCacheHeaderHook() {
     try {
       const req = this.__movieflixReq;
       const code = typeof statusCode === 'number' ? statusCode : this.statusCode;
-      if (req && code === 200 && req.method === 'POST' && (req.url || '').startsWith('/api/internal/revalidate')) {
-        if (typeof global.__movieflixTriggerSitemapRefresh === 'function') {
-          global.__movieflixTriggerSitemapRefresh();
-        }
-      }
       if (req && code === 200 && (req.method === 'GET' || req.method === 'HEAD')) {
         const rawUrl = req.url || '/';
         const qIndex = rawUrl.indexOf('?');
@@ -348,29 +343,34 @@ function scheduleSitemapWarmup(port) {
   let warmupRunning = false;
   let pendingForceRefresh = false;
   let debounceTimer = null;
+  let lastForceRebuildAt = 0;
 
   const runWarmup = async (forceRefresh = false) => {
     if (warmupRunning) {
       if (forceRefresh) pendingForceRefresh = true;
       return;
     }
+    if (forceRefresh && Date.now() - lastForceRebuildAt < 10 * 60_000) {
+      return;
+    }
     warmupRunning = true;
+    if (forceRefresh) lastForceRebuildAt = Date.now();
     try {
       const secretToUse = forceRefresh ? revalidationSecret : '';
       const indexXml = await fetchLocalText(port, '/sitemap.xml', hostHeader, originToken, secretToUse);
       const locMatches = [...indexXml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
       const movieShards = locMatches.filter((u) => u.includes('/sitemaps/movies-'));
-      const peopleShards = locMatches.filter((u) => u.includes('/sitemaps/people-'));
       const newestMovieShard = movieShards[movieShards.length - 1] || '';
-      const newestPeopleShard = peopleShards[peopleShards.length - 1] || '';
 
       for (const loc of locMatches) {
         try {
           const parsed = new URL(loc);
+          // Only force-refresh /sitemaps/core and the newest movie shard on revalidation.
+          // Older movie shards and people-* shards use their 6-hour disk snapshot so we
+          // never tie up database pool connections scanning 3M movie_people rows repeatedly.
           const isHotShard =
             parsed.pathname === '/sitemaps/core' ||
-            loc === newestMovieShard ||
-            loc === newestPeopleShard;
+            loc === newestMovieShard;
           await fetchLocalText(
             port,
             parsed.pathname,
@@ -378,8 +378,8 @@ function scheduleSitemapWarmup(port) {
             originToken,
             forceRefresh && isHotShard ? revalidationSecret : '',
           );
-          // Pause 1.5s between shards to keep CPU and DB load minimal
-          await new Promise((r) => setTimeout(r, 1500));
+          // Pause 2s between shards to keep CPU and DB load minimal
+          await new Promise((r) => setTimeout(r, 2000));
         } catch {}
       }
       console.log(
@@ -401,7 +401,7 @@ function scheduleSitemapWarmup(port) {
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       void runWarmup(true);
-    }, 3_000).unref();
+    }, 10_000).unref();
   };
 
   setTimeout(() => {

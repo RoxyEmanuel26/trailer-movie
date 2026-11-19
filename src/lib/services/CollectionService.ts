@@ -1,10 +1,16 @@
 import { CollectionRepository } from "../repositories/CollectionRepository";
 import { NotFoundError, ValidationError } from "../errors";
 import { requireAdmin } from "../auth/utils";
+import { clearAllPublicMemoryCaches, createMemoryCache } from "../memory-cache";
 
 function generateSlug(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 }
+
+const collectionBySlugCache = createMemoryCache<Awaited<ReturnType<typeof CollectionRepository.findBySlug>>>({
+  maxEntries: 100,
+  ttlMs: 15 * 60_000,
+});
 
 export interface CollectionData {
   title: string;
@@ -26,7 +32,9 @@ export class CollectionService {
   }
 
   static async getBySlug(slug: string) {
-    const collection = await CollectionRepository.findBySlug(slug, true);
+    const collection = await collectionBySlugCache.getOrLoad(slug, () =>
+      CollectionRepository.findBySlug(slug, true)
+    );
     if (!collection) throw new NotFoundError(`Collection with slug ${slug} not found`);
     return collection;
   }

@@ -178,28 +178,70 @@ const cachedPublicTopRatedPage = unstable_cache(
   { revalidate: 300, tags: [HOMEPAGE_CATALOG_TAG] },
 );
 
-const dedupeCatalogPageInRequest = cache(async (serializedQuery: string) => {
-  const query = JSON.parse(serializedQuery) as PublicCatalogPageQuery;
-  const result = await cachedPublicCatalogPage(query);
-  return {
-    total: result.total,
-    data: result.data.map(hydrateCard),
-  };
+const publicCatalogPageCache = createMemoryCache<{ total: number; data: PublicMovieCardRecord[] }>({
+  maxEntries: 500,
+  ttlMs: 5 * 60_000,
 });
 
-const dedupeTopRatedPageInRequest = cache(async (page: number, itemsPerPage: number) => {
-  const result = await cachedPublicTopRatedPage(page, itemsPerPage);
-  return {
-    total: result.total,
-    data: result.data.map(hydrateCard),
-  };
+const publicTopRatedPageCache = createMemoryCache<{ total: number; data: PublicMovieCardRecord[] }>({
+  maxEntries: 100,
+  ttlMs: 5 * 60_000,
 });
 
-const dedupeRelatedMoviesInRequest = cache(async (movieId: string, genreKey: string) => {
-  const genreIds = genreKey ? genreKey.split(',') : [];
-  const items = await cachedRelatedMovies(movieId, genreIds);
-  return items.map(hydrateCard);
+const publicRelatedMoviesCache = createMemoryCache<PublicMovieCardRecord[]>({
+  maxEntries: 1000,
+  ttlMs: 30 * 60_000,
 });
+
+const publicCatalogStatsCache = createMemoryCache<Awaited<ReturnType<typeof MovieRepository.getCatalogStats>>>({
+  maxEntries: 300,
+  ttlMs: 10 * 60_000,
+});
+
+const publicSearchCache = createMemoryCache<{ data: PublicMovieCardRecord[]; total: number }>({
+  maxEntries: 500,
+  ttlMs: 5 * 60_000,
+});
+
+const dedupeCatalogPageInRequest = cache(async (serializedQuery: string) =>
+  publicCatalogPageCache.getOrLoad(serializedQuery, async () => {
+    const query = JSON.parse(serializedQuery) as PublicCatalogPageQuery;
+    const result = await cachedPublicCatalogPage(query);
+    return {
+      total: result.total,
+      data: result.data.map(hydrateCard),
+    };
+  })
+);
+
+const dedupeTopRatedPageInRequest = cache(async (page: number, itemsPerPage: number) =>
+  publicTopRatedPageCache.getOrLoad(`${page}:${itemsPerPage}`, async () => {
+    const result = await cachedPublicTopRatedPage(page, itemsPerPage);
+    return {
+      total: result.total,
+      data: result.data.map(hydrateCard),
+    };
+  })
+);
+
+const dedupeRelatedMoviesInRequest = cache(async (movieId: string, genreKey: string) =>
+  publicRelatedMoviesCache.getOrLoad(`${movieId}:${genreKey}`, async () => {
+    const genreIds = genreKey ? genreKey.split(',') : [];
+    const items = await cachedRelatedMovies(movieId, genreIds);
+    return items.map(hydrateCard);
+  })
+);
+
+const dedupeSearchInRequest = cache(async (serializedParams: string) =>
+  publicSearchCache.getOrLoad(serializedParams, async () => {
+    const params = JSON.parse(serializedParams);
+    return MovieRepository.search({
+      ...params,
+      ...(params.releaseDateLte ? { releaseDateLte: new Date(params.releaseDateLte) } : {}),
+      status: 'PUBLISHED',
+    });
+  })
+);
 
 type PublicMovieLookupResult = {
   movie: NonNullable<Awaited<ReturnType<typeof MovieRepository.findBySlug>>>;
@@ -447,16 +489,15 @@ export class MovieService {
     releaseYear?: number;
     releaseDateLte?: Date;
   }) {
-    // Public search method that uses full-text search
     const skip = params.skip || 0;
     const take = Math.min(Number(params.take) || 24, 48);
-    const { data, total } = await MovieRepository.search({
-      ...params,
-      skip,
-      take,
-      status: 'PUBLISHED',
-    });
-    return { data, total };
+    return dedupeSearchInRequest(
+      JSON.stringify({
+        ...params,
+        skip,
+        take,
+      }),
+    );
   }
 
   static async searchTopRatedMovies(params: { skip?: number; take?: number }) {
@@ -466,6 +507,7 @@ export class MovieService {
   }
 
   static async getCatalogStats(filters: Parameters<typeof MovieRepository.getCatalogStats>[0]) {
-    return cachedCatalogStats(filters);
+    const key = JSON.stringify(filters);
+    return publicCatalogStatsCache.getOrLoad(key, () => cachedCatalogStats(filters));
   }
 }

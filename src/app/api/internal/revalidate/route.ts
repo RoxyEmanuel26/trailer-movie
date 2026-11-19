@@ -53,8 +53,15 @@ export async function POST(request: NextRequest) {
     invalidate('/streaming', 'layout');
     invalidate('/feed.xml');
     invalidate('/llms.txt');
-    invalidate('/sitemap.xml');
-    invalidate('/sitemaps', 'layout');
+    if (parsed.data.refreshSitemaps) {
+      invalidate('/sitemap.xml');
+      invalidate('/sitemaps', 'layout');
+      const trigger = (globalThis as { __movieflixTriggerSitemapRefresh?: () => void })
+        .__movieflixTriggerSitemapRefresh;
+      if (typeof trigger === 'function') {
+        trigger();
+      }
+    }
     for (const path of requestedPaths) invalidate(path);
     void submitIndexNowUrls([...coreIndexNowPaths(), ...requestedPaths]);
   }

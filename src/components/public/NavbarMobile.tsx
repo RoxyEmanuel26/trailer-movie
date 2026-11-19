@@ -2,8 +2,9 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { Search, Menu, ChevronDown } from 'lucide-react';
+import { Search, Menu, ChevronDown, Film, Loader2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -11,22 +12,70 @@ import { cn } from '@/lib/utils';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '@/lib/public-catalog';
 import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
 import { MovieFlixMark } from '@/components/brand/MovieFlixLogo';
+import { moviePath } from '@/lib/public-routes';
 
 interface NavbarMobileProps {
   genres: Array<{ id: string; name: string; slug: string }>;
   years: number[];
 }
 
+interface QuickSearchMovie {
+  id: string;
+  title: string;
+  slug: string;
+  posterUrl: string | null;
+  releaseDate: string | null;
+  voteAverage: number | null;
+}
+
 export function NavbarMobile({ genres, years }: NavbarMobileProps) {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [isOpen, setIsOpen] = React.useState(false);
+  const [results, setResults] = React.useState<QuickSearchMovie[]>([]);
+  const [totalResults, setTotalResults] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  React.useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!isOpen || trimmed.length < 2) {
+      setResults([]);
+      setTotalResults(0);
+      setIsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/search?query=${encodeURIComponent(trimmed)}&page=1`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const items: QuickSearchMovie[] = Array.isArray(json?.data?.data) ? json.data.data : [];
+        const total = typeof json?.data?.total === 'number' ? json.data.total : items.length;
+        setResults(items.slice(0, 5));
+        setTotalResults(total);
+      } catch {
+        // Ignore aborted requests
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    }, 180);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchQuery, isOpen]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
       setIsOpen(false);
     }
   };
@@ -56,9 +105,61 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
               className="h-11"
             />
             <Button type="submit" size="icon" className="h-11 w-11 shrink-0">
-              <Search className="h-4 w-4" />
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             </Button>
           </form>
+          {searchQuery.trim().length >= 2 && results.length > 0 ? (
+            <div className="mt-2 overflow-hidden rounded-xl border bg-card/95 shadow-lg">
+              <div className="divide-y">
+                {results.map((movie) => {
+                  const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
+                  return (
+                    <Link
+                      key={movie.id}
+                      href={moviePath(movie.slug)}
+                      onClick={closeMenu}
+                      className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-accent"
+                    >
+                      <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-muted">
+                        {movie.posterUrl ? (
+                          <Image
+                            src={movie.posterUrl}
+                            alt={movie.title}
+                            fill
+                            sizes="28px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-muted-foreground">
+                            <Film className="h-3 w-3" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-foreground">{movie.title}</p>
+                        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          {year ? <span>{year}</span> : null}
+                          {movie.voteAverage ? (
+                            <span className="inline-flex items-center gap-0.5 text-amber-400">
+                              <Star className="h-2.5 w-2.5 fill-current" />
+                              {movie.voteAverage.toFixed(1)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+              <Link
+                href={`/search?q=${encodeURIComponent(searchQuery.trim())}`}
+                onClick={closeMenu}
+                className="block border-t bg-muted/40 px-3 py-2 text-center text-xs font-semibold text-primary"
+              >
+                View all {totalResults.toLocaleString()} results
+              </Link>
+            </div>
+          ) : null}
         </div>
         <nav
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 sm:px-6"

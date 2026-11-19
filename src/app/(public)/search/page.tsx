@@ -18,11 +18,6 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
   const resolved = await searchParams;
   const page = parseStrictPage(resolved.page);
   if (!page) notFound();
-  const q = typeof resolved.q === 'string' ? resolved.q : undefined;
-  const genreSlug = typeof resolved.genre === 'string' ? resolved.genre : undefined;
-  const collectionSlug = typeof resolved.collection === 'string' ? resolved.collection : undefined;
-  const { total } = await MovieService.searchMovies({ search: q, genreSlug, collectionSlug, take: 1 });
-  if (isPageOutOfRange(page, total, 24)) notFound();
   return SeoService.generateMetadata('Page', 'search', {
     title: 'Search Movies',
     description: 'Search and filter through our extensive collection of movie trailers.',
@@ -38,7 +33,12 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const genreSlug = typeof resolvedParams.genre === 'string' ? resolvedParams.genre : undefined;
   const collectionSlug =
     typeof resolvedParams.collection === 'string' ? resolvedParams.collection : undefined;
-  const sort = typeof resolvedParams.sort === 'string' ? resolvedParams.sort : 'createdAt_desc';
+  const sort =
+    typeof resolvedParams.sort === 'string'
+      ? resolvedParams.sort
+      : q
+        ? 'popularity_desc'
+        : 'createdAt_desc';
   const page = parseStrictPage(resolvedParams.page);
   if (!page) notFound();
 

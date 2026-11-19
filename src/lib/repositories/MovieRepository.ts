@@ -34,22 +34,46 @@ export type PublicMovieCardRecord = Prisma.MovieGetPayload<{
   select: typeof PUBLIC_MOVIE_CARD_SELECT;
 }>;
 
+const SEARCH_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'of', 'in', 'to', 'for', 'and', 'or', 'on', 'at', 'by', 'with', 'as', 'is',
+]);
+
+export function extractSearchTerms(rawSearch: string): string[] {
+  const allTerms = rawSearch.trim().split(/\s+/).filter(Boolean).slice(0, 8);
+  const significant = allTerms.filter(
+    (term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term.toLowerCase()),
+  );
+  return significant.length > 0 ? significant : allTerms;
+}
+
 function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
   const where: Prisma.MovieWhereInput = { deletedAt: null };
   const andFilters: Prisma.MovieWhereInput[] = [];
 
   if (params.search) {
-    const terms = params.search.trim().split(/\s+/).filter(Boolean).slice(0, 8);
-    if (terms.length) {
-      // The existing pg_trgm indexes support ILIKE, whereas Prisma's search
-      // expression builds an unindexed tsvector and scans every movie row.
-      andFilters.push({
-        OR: terms.flatMap((term) => [
-          { title: { contains: term, mode: 'insensitive' as const } },
-          { originalTitle: { contains: term, mode: 'insensitive' as const } },
-          { synopsis: { contains: term, mode: 'insensitive' as const } },
-        ]),
-      });
+    const terms = extractSearchTerms(params.search);
+    for (const term of terms) {
+      // For 1-2 character terms (e.g. "F1", "IT", "Up", "65"), ILIKE '%IT%' has
+      // zero 3-char trigrams and would scan the entire table. Using startsWith
+      // ('IT%') + word-boundary ('% IT%') provides 3-char padded trigrams ('  i', ' it')
+      // so PostgreSQL uses the pg_trgm GIN index in <5ms.
+      if (term.length < 3) {
+        andFilters.push({
+          OR: [
+            { title: { startsWith: term, mode: 'insensitive' as const } },
+            { title: { contains: ` ${term}`, mode: 'insensitive' as const } },
+            { originalTitle: { startsWith: term, mode: 'insensitive' as const } },
+            { originalTitle: { contains: ` ${term}`, mode: 'insensitive' as const } },
+          ],
+        });
+      } else {
+        andFilters.push({
+          OR: [
+            { title: { contains: term, mode: 'insensitive' as const } },
+            { originalTitle: { contains: term, mode: 'insensitive' as const } },
+          ],
+        });
+      }
     }
   }
   if (params.status) where.status = params.status;
@@ -331,18 +355,19 @@ export class MovieRepository {
       releaseDateLte?: Date;
     },
     db: DbClient = prisma
-  ) {
+  ): Promise<{ data: PublicMovieCardRecord[]; total: number }> {
     const where = buildCatalogWhere(params);
+    const defaultOrder: Prisma.MovieOrderByWithRelationInput[] = params.search
+      ? [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }]
+      : [{ createdAt: 'desc' }, { id: 'asc' }];
 
     const [data, total] = await Promise.all([
       db.movie.findMany({
         skip: params.skip,
         take: params.take,
         where,
-        orderBy: params.orderBy || { createdAt: 'desc' },
-        include: {
-          genres: { include: { genre: true } },
-        },
+        orderBy: params.orderBy || defaultOrder,
+        select: PUBLIC_MOVIE_CARD_SELECT,
       }),
       db.movie.count({ where }),
     ]);
