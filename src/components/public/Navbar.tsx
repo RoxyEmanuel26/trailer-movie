@@ -36,13 +36,17 @@ function warnNavigationFallback(message: string) {
 
 const getBrowseNavigation = unstable_cache(
   () => loadPublicDataWithSnapshot('browse-navigation-v1', async () => {
-    const [genres, years] = await Promise.all([
+    const [genres, yearStats] = await Promise.all([
       GenreService.listGenres(),
-      MovieService.listPublishedReleaseYears(),
+      MovieService.listPublishedReleaseYearStats(),
     ]);
+    const indexableYears = yearStats
+      .filter((item) => Number(item.count) >= 3)
+      .map((item) => item.year);
+    const years = indexableYears.length > 0 ? indexableYears : yearStats.map((item) => item.year);
     return { genres, years };
   }, isBrowseNavigationData),
-  ['public-browse-navigation-v2'],
+  ['public-browse-navigation-v3'],
   { revalidate: 3600 },
 );
 
