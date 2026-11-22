@@ -137,6 +137,20 @@ async function main() {
       process.stdout.write(`Recovered ${recoveredDictionaryRaces.count} dictionary race job(s).\n`);
     }
 
+    const rawRefreshLimit = Number(process.env.IMPORT_RELEASED_DRAFT_REFRESH_LIMIT ?? '400');
+    if (Number.isFinite(rawRefreshLimit) && rawRefreshLimit > 0) {
+      const releasedRefresh = await ImportRepository.enqueueNewlyReleasedDrafts({
+        limit: Math.min(2000, Math.floor(rawRefreshLimit)),
+        staleHours: 72,
+        lookbackDays: 365,
+      });
+      if (releasedRefresh.queued > 0) {
+        process.stdout.write(
+          `Queued ${releasedRefresh.queued} newly released DRAFT movie(s) for TMDB status/asset refresh.\n`,
+        );
+      }
+    }
+
     const result = await drainImportQueue({
       processBatch: async () => {
         while (!stopping) {

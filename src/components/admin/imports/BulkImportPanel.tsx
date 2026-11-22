@@ -69,6 +69,27 @@ export function BulkImportPanel({ initialBatches = [], localMode = false, initia
     }
   };
 
+  const refreshReleasedDrafts = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch('/api/admin/imports/refresh-released', { method: 'POST' });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error?.message || 'Failed to queue newly released drafts');
+      }
+      const queued = Number(payload?.data?.queued || 0);
+      toast.success(
+        queued > 0
+          ? `Queued ${queued} newly released draft movie(s). Run the local worker to publish them.`
+          : 'No newly released draft movies need refreshing right now.',
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to refresh released drafts');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const changeStatus = async (batch: ImportBatch, action: 'pause' | 'resume' | 'cancel') => {
     setBusy(true);
     try {
@@ -157,9 +178,14 @@ export function BulkImportPanel({ initialBatches = [], localMode = false, initia
           </select>
         </div>
       </div>
-      <Button onClick={createBatch} disabled={busy || !startDate || !endDate}>
-        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />} Queue bulk import
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={createBatch} disabled={busy || !startDate || !endDate}>
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />} Queue bulk import
+        </Button>
+        <Button variant="outline" onClick={refreshReleasedDrafts} disabled={busy}>
+          <RefreshCcw className="mr-2 h-4 w-4" /> Refresh released drafts
+        </Button>
+      </div>
 
       <div className="mt-8 space-y-4">
         <div className="flex items-center gap-2"><Play className="h-4 w-4 text-primary" /><h3 className="font-semibold">Active imports</h3></div>

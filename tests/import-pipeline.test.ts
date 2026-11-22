@@ -6,7 +6,7 @@ import { NonRetryableJobError, PartialJobError, RetryableJobError } from '../src
 import { evaluateLegacyMovieQuality, evaluateMovieQuality } from '../src/lib/services/ImportQualityService';
 import { TmdbError } from '../src/lib/tmdb/errors';
 import { getImportThroughput, runBounded } from '../src/lib/jobs/throughput';
-import { ImportRepository } from '../src/lib/repositories/ImportRepository';
+import { ImportRepository, shouldRefreshExistingMovie } from '../src/lib/repositories/ImportRepository';
 import { ImportJobStatus } from '@prisma/client';
 import { safeUpsertCompany, safeUpsertKeyword } from '../src/lib/services/import-service';
 import { ImportBatchService } from '../src/lib/services/ImportBatchService';
@@ -412,4 +412,186 @@ test('drainImportQueue continues through duplicate-only discovery pages and enfo
   // Odd steps (discoveryProcessed: true) pause 250ms; even steps (no progress with discoveryReady > 0) pause 1000ms
   assert.equal(pauses[0], 250);
   assert.equal(pauses[1], 1_000);
+});
+
+test('shouldRefreshExistingMovie re-queues past-release non-Released DRAFTs and skips published, future, deleted, or fresh movies', () => {
+  const now = new Date('2026-11-23T00:00:00.000Z');
+  const staleSync = new Date('2026-09-29T00:00:00.000Z');
+  const freshSync = new Date('2026-11-22T18:00:00.000Z');
+  const pastRelease = new Date('2026-11-18T00:00:00.000Z');
+  const futureRelease = new Date('2026-12-25T00:00:00.000Z');
+
+  // Exact Ebenezer / Sunrise on the Reaping case: imported as Post Production before release, now released
+  assert.equal(
+    shouldRefreshExistingMovie(
+      {
+        tmdbId: 1300968,
+        status: 'DRAFT',
+        deletedAt: null,
+        productionStatus: 'Post Production',
+        releaseDate: pastRelease,
+        importQualityStatus: 'INCOMPLETE',
+        tmdbSyncedAt: staleSync,
+      },
+      now,
+    ),
+    true,
+  );
+
+  // Freshly synced (<24h) Post Production draft should not loop
+  assert.equal(
+    shouldRefreshExistingMovie(
+      {
+        tmdbId: 1300968,
+        status: 'DRAFT',
+        deletedAt: null,
+        productionStatus: 'Post Production',
+        releaseDate: pastRelease,
+        importQualityStatus: 'INCOMPLETE',
+        tmdbSyncedAt: freshSync,
+      },
+      now,
+    ),
+    false,
+  );
+
+  // Future upcoming draft should wait until release date
+  assert.equal(
+    shouldRefreshExistingMovie(
+      {
+        tmdbId: 999999,
+        status: 'DRAFT',
+        deletedAt: null,
+        productionStatus: 'Post Production',
+        releaseDate: futureRelease,
+        importQualityStatus: 'INCOMPLETE',
+        tmdbSyncedAt: staleSync,
+      },
+      now,
+    ),
+    false,
+  );
+
+  // Published, Archived, and soft-deleted movies must be skipped
+  assert.equal(
+    shouldRefreshExistingMovie(
+      {
+        tmdbId: 1,
+        status: 'PUBLISHED',
+        deletedAt: null,
+        productionStatus: 'Released',
+        releaseDate: pastRelease,
+        tmdbSyncedAt: staleSync,
+      },
+      now,
+    ),
+    false,
+  );
+  assert.equal(
+    shouldRefreshExistingMovie(
+      {
+        tmdbId: 2,
+        status: 'DRAFT',
+        deletedAt: new Date('2026-10-01T00:00:00.000Z'),
+        productionStatus: 'Post Production',
+        releaseDate: pastRelease,
+        tmdbSyncedAt: staleSync,
+      },
+      now,
+    ),
+    false,
+  );
+
+  // Recently released INCOMPLETE draft (>7d stale) should refresh to pick up newly added trailers/posters
+  assert.equal(
+    shouldRefreshExistingMovie(
+      {
+        tmdbId: 3,
+        status: 'DRAFT',
+        deletedAt: null,
+        productionStatus: 'Released',
+        releaseDate: pastRelease,
+        importQualityStatus: 'INCOMPLETE',
+        tmdbSyncedAt: staleSync,
+      },
+      now,
+    ),
+    true,
+  );
+});
+
+test('movie bulk discovery re-queues stale past-release DRAFT movies and resets completed import jobs', async () => {
+  const createCalls: unknown[] = [];
+  const updateCalls: unknown[] = [];
+  const db = {
+    movie: {
+      findMany: async () => [
+        {
+          tmdbId: 1300968,
+          status: 'DRAFT',
+          deletedAt: null,
+          productionStatus: 'Post Production',
+          releaseDate: new Date('2026-11-18T00:00:00.000Z'),
+          importQualityStatus: 'INCOMPLETE',
+          tmdbSyncedAt: new Date('2026-09-29T00:00:00.000Z'),
+        },
+        {
+          tmdbId: 20,
+          status: 'PUBLISHED',
+          deletedAt: null,
+          productionStatus: 'Released',
+          releaseDate: new Date('2025-05-01T00:00:00.000Z'),
+          importQualityStatus: 'READY',
+          tmdbSyncedAt: new Date('2025-05-02T00:00:00.000Z'),
+        },
+      ],
+    },
+    importJob: {
+      createMany: async (args: unknown) => {
+        createCalls.push(args);
+        // Suppose 10 is newly inserted, while 1300968 still has a COMPLETED job so createMany skips it
+        return { count: 1 };
+      },
+      updateMany: async (args: unknown) => {
+        updateCalls.push(args);
+        // 1300968 COMPLETED job gets reset to PENDING
+        return { count: 1 };
+      },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.enqueueMoviesForBatch>[2]>;
+
+  const result = await ImportRepository.enqueueMoviesForBatch([10, 20, 1300968], 'batch-nov', db);
+  assert.deepEqual(result, { queued: 2, skipped: 1 });
+  assert.equal(createCalls.length, 1);
+  assert.equal(updateCalls.length, 1);
+  const resetWhere = (updateCalls[0] as { where: { tmdbId: { in: number[] } } }).where;
+  assert.deepEqual(resetWhere.tmdbId.in, [1300968]);
+});
+
+test('enqueueNewlyReleasedDrafts prioritizes tmdb_not_released movies and resets terminal jobs', async () => {
+  let capturedSql = '';
+  const createCalls: unknown[] = [];
+  const updateCalls: unknown[] = [];
+  const db = {
+    $queryRaw: async (query: { sql: string }) => {
+      capturedSql = query.sql;
+      return [{ tmdbId: 1300968 }, { tmdbId: 1567605 }];
+    },
+    importJob: {
+      createMany: async (args: unknown) => {
+        createCalls.push(args);
+        return { count: 1 };
+      },
+      updateMany: async (args: unknown) => {
+        updateCalls.push(args);
+        return { count: 1 };
+      },
+    },
+  } as unknown as NonNullable<Parameters<typeof ImportRepository.enqueueNewlyReleasedDrafts>[1]>;
+
+  const result = await ImportRepository.enqueueNewlyReleasedDrafts({ limit: 100 }, db);
+  assert.deepEqual(result, { candidates: 2, queued: 2 });
+  assert.match(capturedSql, /\["tmdb_not_released"\]/);
+  assert.equal(createCalls.length, 1);
+  assert.equal(updateCalls.length, 1);
 });

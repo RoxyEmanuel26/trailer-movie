@@ -1,5 +1,6 @@
 import { prisma } from '../src/lib/prisma';
 import { tmdbFetch } from '../src/lib/tmdb/client';
+import { ImportRepository, shouldRefreshExistingMovie } from '../src/lib/repositories/ImportRepository';
 import fs from 'fs';
 import path from 'path';
 
@@ -72,17 +73,33 @@ async function main() {
       let skippedDuplicates = 0;
 
       // 3. Process each movie
+      const now = new Date();
       for (const movie of movies) {
         if (!movie.id) continue;
 
-        // Check if movie already exists in our database
+        // Check if movie already exists in our database (refresh stale past-release DRAFTs!)
         const existingMovie = await prisma.movie.findUnique({
           where: { tmdbId: movie.id },
-          select: { id: true }
+          select: {
+            tmdbId: true,
+            status: true,
+            deletedAt: true,
+            productionStatus: true,
+            releaseDate: true,
+            importQualityStatus: true,
+            tmdbSyncedAt: true,
+          },
         });
 
-        if (existingMovie) {
+        if (existingMovie && !shouldRefreshExistingMovie(existingMovie, now)) {
           skippedDuplicates++;
+          continue;
+        }
+
+        if (existingMovie) {
+          await ImportRepository.enqueue(movie.id, 'Movie', true);
+          newQueued++;
+          process.stdout.write('~');
           continue;
         }
 

@@ -7,18 +7,85 @@ const ACTIVE_STATUSES: ImportJobStatus[] = [ImportJobStatus.PENDING, ImportJobSt
 // Next.js dev hot reload a process can briefly retain the previous generated
 // Prisma enum module after a migration, which would otherwise yield undefined.
 const HIDDEN_HISTORY_STATUSES: ImportJobStatus[] = ['COMPLETED', 'SKIPPED', 'CANCELED'];
+const UNRELEASED_DRAFT_REFRESH_MS = 24 * 60 * 60_000;
+const INCOMPLETE_RECENT_DRAFT_REFRESH_MS = 7 * 24 * 60 * 60_000;
+const INCOMPLETE_RECENT_WINDOW_MS = 180 * 24 * 60 * 60_000;
+
+export interface ExistingMovieRefreshCandidate {
+  tmdbId: number | null;
+  status?: string | null;
+  deletedAt?: Date | null;
+  productionStatus?: string | null;
+  releaseDate?: Date | null;
+  importQualityStatus?: string | null;
+  tmdbSyncedAt?: Date | null;
+}
+
+/**
+ * Determines whether an existing Movie row in the database should be re-queued
+ * during bulk discovery instead of skipped. Prevents movies imported before
+ * their theatrical release ("Post Production" / "Planned") from staying stuck
+ * in DRAFT forever once TMDB marks them as "Released" or adds trailers/posters.
+ */
+export function shouldRefreshExistingMovie(
+  movie: ExistingMovieRefreshCandidate,
+  now: Date = new Date(),
+): boolean {
+  if (movie.status !== 'DRAFT' || movie.deletedAt) return false;
+  if (!movie.releaseDate || movie.releaseDate > now) return false;
+
+  const syncedAtMs = movie.tmdbSyncedAt ? movie.tmdbSyncedAt.getTime() : 0;
+  const ageMs = now.getTime() - syncedAtMs;
+
+  if (movie.productionStatus?.toLowerCase() !== 'released') {
+    return !movie.tmdbSyncedAt || ageMs >= UNRELEASED_DRAFT_REFRESH_MS;
+  }
+
+  if (
+    movie.importQualityStatus === 'INCOMPLETE' &&
+    now.getTime() - movie.releaseDate.getTime() <= INCOMPLETE_RECENT_WINDOW_MS
+  ) {
+    return !movie.tmdbSyncedAt || ageMs >= INCOMPLETE_RECENT_DRAFT_REFRESH_MS;
+  }
+
+  return false;
+}
 
 export class ImportRepository {
   static async enqueueMoviesForBatch(tmdbIds: number[], importBatchId: string, db: DbClient = prisma) {
     const uniqueIds = [...new Set(tmdbIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
     if (uniqueIds.length === 0) return { queued: 0, skipped: 0 };
 
+    const now = new Date();
     const existingMovies = await db.movie.findMany({
       where: { tmdbId: { in: uniqueIds } },
-      select: { tmdbId: true },
+      select: {
+        tmdbId: true,
+        status: true,
+        deletedAt: true,
+        productionStatus: true,
+        releaseDate: true,
+        importQualityStatus: true,
+        tmdbSyncedAt: true,
+      },
     });
-    const existingMovieIds = new Set(existingMovies.map((movie) => movie.tmdbId));
-    const candidateIds = uniqueIds.filter((tmdbId) => !existingMovieIds.has(tmdbId));
+    const existingByTmdbId = new Map<number, ExistingMovieRefreshCandidate>();
+    for (const movie of existingMovies) {
+      if (typeof movie.tmdbId === 'number') existingByTmdbId.set(movie.tmdbId, movie);
+    }
+
+    const newIds: number[] = [];
+    const refreshIds: number[] = [];
+    for (const tmdbId of uniqueIds) {
+      const existing = existingByTmdbId.get(tmdbId);
+      if (!existing) {
+        newIds.push(tmdbId);
+      } else if (shouldRefreshExistingMovie(existing, now)) {
+        refreshIds.push(tmdbId);
+      }
+    }
+
+    const candidateIds = [...newIds, ...refreshIds];
     const created = candidateIds.length > 0
       ? await db.importJob.createMany({
           data: candidateIds.map((tmdbId) => ({
@@ -31,11 +98,122 @@ export class ImportRepository {
         })
       : { count: 0 };
 
+    let resetCount = 0;
+    if (refreshIds.length > 0 && typeof (db.importJob as { updateMany?: unknown }).updateMany === 'function') {
+      const reset = await db.importJob.updateMany({
+        where: {
+          entityType: 'Movie',
+          tmdbId: { in: refreshIds },
+          status: { in: [ImportJobStatus.COMPLETED, ImportJobStatus.SKIPPED, ImportJobStatus.CANCELED] },
+          OR: [{ errorCode: null }, { errorCode: { notIn: ['TMDB_404', 'NON_RETRYABLE'] } }],
+        },
+        data: {
+          status: ImportJobStatus.PENDING,
+          stage: 'QUEUED',
+          progress: 0,
+          attemptCount: 0,
+          retryable: true,
+          nextAttemptAt: null,
+          startedAt: null,
+          heartbeatAt: null,
+          lockedUntil: null,
+          completedAt: null,
+          errorCode: null,
+          errorMessage: null,
+          result: Prisma.DbNull,
+          logs: Prisma.DbNull,
+          importBatchId,
+        },
+      });
+      resetCount = reset.count;
+    }
+
+    const totalQueued = created.count + resetCount;
     return {
-      queued: created.count,
-      // Existing movies, existing jobs, concurrent inserts, and duplicate TMDB
-      // IDs are all skipped without creating duplicate queue records.
-      skipped: uniqueIds.length - created.count,
+      queued: totalQueued,
+      // Published/archived/deleted/fresh movies, active jobs, concurrent inserts,
+      // and duplicate TMDB IDs are skipped without creating duplicate queue records.
+      skipped: Math.max(0, uniqueIds.length - totalQueued),
+    };
+  }
+
+  /**
+   * Automatically finds DRAFT movies whose release date has already passed while
+   * still recorded as non-Released (e.g. Post Production / Planned from an early
+   * bulk import) and re-queues them for TMDB sync — prioritizing movies whose
+   * only quality blocker is `tmdb_not_released` and highest popularity first.
+   */
+  static async enqueueNewlyReleasedDrafts(
+    options: { limit?: number; staleHours?: number; lookbackDays?: number } = {},
+    db: DbClient = prisma,
+  ) {
+    const safeLimit = Math.min(Math.max(1, Math.floor(options.limit ?? 400)), 2000);
+    const staleHours = Math.max(1, options.staleHours ?? 72);
+    const lookbackDays = Math.max(1, options.lookbackDays ?? 365);
+    const now = new Date();
+    const staleBefore = new Date(now.getTime() - staleHours * 60 * 60_000);
+    const lookbackStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60_000);
+
+    const rows = await db.$queryRaw<Array<{ tmdbId: number }>>(Prisma.sql`
+      SELECT "tmdbId"
+      FROM "movies"
+      WHERE "status" = 'DRAFT'
+        AND "deletedAt" IS NULL
+        AND "tmdbId" IS NOT NULL
+        AND "releaseDate" IS NOT NULL
+        AND "releaseDate" <= ${now}
+        AND "releaseDate" >= ${lookbackStart}
+        AND ("productionStatus" IS NULL OR LOWER("productionStatus") <> 'released')
+        AND ("tmdbSyncedAt" IS NULL OR "tmdbSyncedAt" < ${staleBefore})
+      ORDER BY
+        CASE WHEN "importQualityIssues"::text = '["tmdb_not_released"]' THEN 0 ELSE 1 END ASC,
+        "popularity" DESC NULLS LAST,
+        "releaseDate" DESC
+      LIMIT ${safeLimit}
+    `);
+
+    const tmdbIds = [...new Set(rows.map((row) => Number(row.tmdbId)).filter((id) => Number.isSafeInteger(id) && id > 0))];
+    if (tmdbIds.length === 0) {
+      return { candidates: 0, queued: 0 };
+    }
+
+    const created = await db.importJob.createMany({
+      data: tmdbIds.map((tmdbId) => ({
+        tmdbId,
+        entityType: 'Movie',
+        status: ImportJobStatus.PENDING,
+      })),
+      skipDuplicates: true,
+    });
+
+    const reset = await db.importJob.updateMany({
+      where: {
+        entityType: 'Movie',
+        tmdbId: { in: tmdbIds },
+        status: { in: [ImportJobStatus.COMPLETED, ImportJobStatus.SKIPPED, ImportJobStatus.CANCELED] },
+        OR: [{ errorCode: null }, { errorCode: { notIn: ['TMDB_404', 'NON_RETRYABLE'] } }],
+      },
+      data: {
+        status: ImportJobStatus.PENDING,
+        stage: 'QUEUED',
+        progress: 0,
+        attemptCount: 0,
+        retryable: true,
+        nextAttemptAt: null,
+        startedAt: null,
+        heartbeatAt: null,
+        lockedUntil: null,
+        completedAt: null,
+        errorCode: null,
+        errorMessage: null,
+        result: Prisma.DbNull,
+        logs: Prisma.DbNull,
+      },
+    });
+
+    return {
+      candidates: tmdbIds.length,
+      queued: created.count + reset.count,
     };
   }
 
