@@ -16,8 +16,15 @@ import { ResponsiveDetails } from '@/components/public/ResponsiveDetails';
 import { badgeVariants } from '@/components/ui/badge';
 import { personPath } from '@/lib/public-routes';
 import { JsonLd } from '@/components/seo/JsonLd';
-import { absoluteUrl, normalizeMetaDescription } from '@/lib/site-config';
+import {
+  absoluteUrl,
+  normalizeMetaDescription,
+  organizationSchemaId,
+  websiteSchemaId,
+} from '@/lib/site-config';
+import { buildWatchMetaTitle } from '@/lib/seo-metadata';
 import { ORIGIN_CATALOG } from '@/lib/public-catalog';
+import { getOriginAdjective } from '@/lib/programmatic-guides';
 import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 import { trailerSchema } from '@/lib/trailer-schema';
 import { ShareMovieButton } from '@/components/public/ShareMovieButton';
@@ -40,7 +47,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { movie, canonicalPath } = result;
   const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
   return SeoService.generateMetadata('Movie', movie.id, {
-    title: `${movie.title}${year ? ` (${year})` : ''} Trailer, Cast & Where to Watch`,
+    title: buildWatchMetaTitle(movie.title, year),
     description: normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title}, explore its cast and crew, and find where it is available.`),
     image: `${canonicalPath}/opengraph-image`,
     path: canonicalPath,
@@ -64,7 +71,10 @@ export default async function MovieDetailPage({ params }: PageProps) {
   const { movie, canonicalPath } = result;
 
   const genreIds = movie.genres.map((g) => g.genreId);
-  const relatedMovies = await MovieService.getRelatedMovies(movie.id, genreIds);
+  const [relatedMovies, facetGuides] = await Promise.all([
+    MovieService.getRelatedMovies(movie.id, genreIds),
+    MovieService.getIndexableFacetGuides().catch(() => null),
+  ]);
 
   // Deduplicate and group crew members by personId to prevent duplicate React keys
   const directorMap = new Map<string, (typeof movie.people)[0]>();
@@ -142,27 +152,128 @@ export default async function MovieDetailPage({ params }: PageProps) {
     providerNames,
   });
   const faqSchema = buildFaqJsonLd(movieUrl, faqs);
+  const primaryGenre = movie.genres[0]?.genre || null;
+  const activeCollections = movie.collections.filter(
+    (c) => c.collection.isActive && Boolean(c.collection.slug?.trim()),
+  );
+  const breadcrumbItems = [
+    { name: 'Home', path: '/' },
+    { name: 'Movies', path: '/movies' },
+    ...(primaryGenre ? [{ name: primaryGenre.name, path: `/genre/${primaryGenre.slug}` }] : []),
+    { name: movie.title, path: canonicalPath },
+  ];
+  const sameAs = [
+    movie.imdbId && /^tt\d+$/.test(movie.imdbId.trim())
+      ? `https://www.imdb.com/title/${movie.imdbId.trim()}/`
+      : null,
+    movie.tmdbId ? `https://www.themoviedb.org/movie/${movie.tmdbId}` : null,
+  ].filter((value): value is string => Boolean(value));
+  const alternateName =
+    movie.originalTitle?.trim() &&
+    movie.originalTitle.trim().toLowerCase() !== movie.title.trim().toLowerCase()
+      ? movie.originalTitle.trim()
+      : undefined;
+  const countryOfOrigin = movie.countries.length
+    ? movie.countries.map(({ country }) => ({ '@type': 'Country', name: country.name }))
+    : undefined;
+  const inLanguage = movie.languages.length
+    ? movie.languages.map(({ language }) => language.name)
+    : movie.originalLanguage || undefined;
+
+  const contextualGuideLinks: Array<{ href: string; label: string }> = [];
+  if (primaryGenre && facetGuides) {
+    if (
+      year &&
+      facetGuides.genreYear.some(
+        (entry) => entry.genreSlug === primaryGenre.slug && entry.year === year,
+      )
+    ) {
+      contextualGuideLinks.push({
+        href: `/genre/${primaryGenre.slug}/${year}`,
+        label: `${year} ${primaryGenre.name} movies`,
+      });
+    }
+    for (const hub of hubLinks.slice(0, 2)) {
+      if (
+        facetGuides.streamingGenre.some(
+          (entry) => entry.streamingSlug === hub.slug && entry.genreSlug === primaryGenre.slug,
+        )
+      ) {
+        contextualGuideLinks.push({
+          href: `/streaming/${hub.slug}/${primaryGenre.slug}`,
+          label: `${primaryGenre.name} on ${hub.name}`,
+        });
+      }
+    }
+    const firstOrigin = matchingOrigins[0];
+    if (
+      firstOrigin &&
+      facetGuides.originGenre.some(
+        (entry) => entry.originSlug === firstOrigin.slug && entry.genreSlug === primaryGenre.slug,
+      )
+    ) {
+      contextualGuideLinks.push({
+        href: `/origin/${firstOrigin.slug}/${primaryGenre.slug}`,
+        label: `${getOriginAdjective(firstOrigin)} ${primaryGenre.name} movies`,
+      });
+    }
+  }
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
-      { '@type': 'WebPage', '@id': `${movieUrl}#webpage`, url: movieUrl, name: movie.title, description, dateModified: movie.updatedAt.toISOString(), isPartOf: { '@id': `${absoluteUrl('/')}#website` }, publisher: { '@id': `${absoluteUrl('/')}#organization` }, mainEntity: { '@id': `${movieUrl}#movie` } },
-      { '@type': 'BreadcrumbList', '@id': `${movieUrl}#breadcrumb`, itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
-        { '@type': 'ListItem', position: 2, name: 'Movies', item: absoluteUrl('/movies') },
-        { '@type': 'ListItem', position: 3, name: movie.title, item: movieUrl },
-      ] },
       {
-        '@type': 'Movie', '@id': `${movieUrl}#movie`, url: movieUrl, name: movie.title, description, dateModified: movie.updatedAt.toISOString(),
+        '@type': 'WebPage',
+        '@id': `${movieUrl}#webpage`,
+        url: movieUrl,
+        name: movie.title,
+        description,
+        dateModified: movie.updatedAt.toISOString(),
+        isPartOf: { '@id': websiteSchemaId() },
+        publisher: { '@id': organizationSchemaId() },
+        mainEntity: { '@id': `${movieUrl}#movie` },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${movieUrl}#breadcrumb`,
+        itemListElement: breadcrumbItems.map((item, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          name: item.name,
+          item: absoluteUrl(item.path),
+        })),
+      },
+      {
+        '@type': 'Movie',
+        '@id': `${movieUrl}#movie`,
+        url: movieUrl,
+        name: movie.title,
+        alternateName,
+        description,
+        dateModified: movie.updatedAt.toISOString(),
         image: movie.posterUrl || movie.backdropUrl || undefined,
         datePublished: movie.releaseDate?.toISOString(),
         duration: movie.runtimeMinutes ? `PT${movie.runtimeMinutes}M` : undefined,
         contentRating: movie.ageRating || movie.mpaaRating || undefined,
+        countryOfOrigin,
+        inLanguage,
+        sameAs: sameAs.length ? sameAs : undefined,
         genre: movie.genres.map(({ genre }) => genre.name),
         director: directors.map(({ person }) => ({ '@type': 'Person', '@id': `${absoluteUrl(personPath(person.slug))}#person`, name: person.name, url: absoluteUrl(personPath(person.slug)) })),
         actor: cast.map(({ person }) => ({ '@type': 'Person', '@id': `${absoluteUrl(personPath(person.slug))}#person`, name: person.name, url: absoluteUrl(personPath(person.slug)) })),
         productionCompany: movie.companies.map(({ company }) => ({ '@type': 'Organization', name: company.name })),
         keywords: movie.keywords.map(({ keyword }) => keyword.name).join(', ') || undefined,
-        trailer: trailerSchema({ videoId: youtubeId, title: primaryTrailer?.title || `${movie.title} trailer`, description, thumbnailUrl: primaryTrailer?.thumbnailUrl, publishedDate: primaryTrailer?.publishedDate }),
+        trailer: trailerSchema({
+          videoId: youtubeId,
+          movieTitle: movie.title,
+          year,
+          title: primaryTrailer?.title || `${movie.title} Official Trailer`,
+          description,
+          thumbnailUrl: primaryTrailer?.thumbnailUrl,
+          publishedDate: primaryTrailer?.publishedDate,
+          isFamilyFriendly: !movie.adult,
+          inLanguage: movie.originalLanguage,
+        }),
       },
       ...(faqSchema ? [faqSchema] : []),
     ],
@@ -177,7 +288,13 @@ export default async function MovieDetailPage({ params }: PageProps) {
       <section className="w-full bg-[#080908]">
         <div className="mx-auto max-w-7xl py-0 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
           {youtubeId ? (
-            <YouTubePlayer videoId={youtubeId} movieId={movie.id} className="rounded-none sm:rounded-xl" />
+            <YouTubePlayer
+              videoId={youtubeId}
+              movieId={movie.id}
+              movieTitle={movie.title}
+              backdropUrl={movie.backdropUrl}
+              className="rounded-none sm:rounded-xl"
+            />
           ) : (
             <div className="flex aspect-video w-full flex-col items-center justify-center border border-white/10 bg-[#151613] sm:rounded-2xl">
               <Film className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
@@ -188,6 +305,26 @@ export default async function MovieDetailPage({ params }: PageProps) {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8 lg:py-14">
+        <nav
+          aria-label="Breadcrumb"
+          className="mb-6 flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground sm:mb-8"
+        >
+          {breadcrumbItems.map((item, index) => (
+            <span key={item.path} className="flex items-center gap-2">
+              {index > 0 ? <span aria-hidden="true">/</span> : null}
+              {index === breadcrumbItems.length - 1 ? (
+                <span aria-current="page" className="truncate text-foreground">
+                  {item.name}
+                </span>
+              ) : (
+                <Link href={item.path} prefetch={false} className="transition-colors hover:text-primary">
+                  {item.name}
+                </Link>
+              )}
+            </span>
+          ))}
+        </nav>
+
         <div className="grid gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] lg:gap-10">
           <div className="order-1 min-w-0 lg:col-start-2 lg:row-start-1">
             {movie.logoUrl ? (
@@ -265,6 +402,11 @@ export default async function MovieDetailPage({ params }: PageProps) {
               {year ? <Link href={`/year/${year}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">More from {year}</Link> : null}
               {matchingOrigins.map((origin) => <Link key={origin.slug} href={`/origin/${origin.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">{origin.label}</Link>)}
               {hubLinks.slice(0, 4).map((hub) => <Link key={hub.slug} href={`/streaming/${hub.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">On {hub.name}</Link>)}
+              {contextualGuideLinks.map((guide) => (
+                <Link key={guide.href} href={guide.href} prefetch={false} className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 font-medium text-foreground transition hover:border-primary hover:text-primary">
+                  {guide.label}
+                </Link>
+              ))}
             </div>
           </div>
 
@@ -345,7 +487,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
               (movie.watchProviderLinks && movie.watchProviderLinks.length > 0)) && (
               <div className="order-4 mt-5">
                 <WatchProviders
-                  providers={movie.watchProviders}
+                  providers={movie.watchProviderLinks?.length ? undefined : movie.watchProviders}
                   links={movie.watchProviderLinks as any}
                   movieSlug={movie.slug}
                   movieTitle={movie.title}
@@ -471,11 +613,11 @@ export default async function MovieDetailPage({ params }: PageProps) {
               </div>
             )}
 
-            {movie.collections.length > 0 && (
+            {activeCollections.length > 0 && (
               <div className="order-9 mt-4 lg:order-none">
                 <h2 className="text-xl font-semibold mb-3">Featured In</h2>
                 <div className="flex flex-wrap gap-2">
-                  {movie.collections.map((c) => (
+                  {activeCollections.map((c) => (
                     <Link
                       key={c.collectionId}
                       href={`/collection/${c.collection.slug}`}

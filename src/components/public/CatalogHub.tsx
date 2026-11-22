@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { JsonLd } from '@/components/seo/JsonLd';
-import { absoluteUrl } from '@/lib/site-config';
+import { absoluteUrl, organizationSchemaId, websiteSchemaId } from '@/lib/site-config';
 
 interface CatalogHubItem {
   href: string;
@@ -23,19 +23,34 @@ export function CatalogHub({
   path: string;
   items: CatalogHubItem[];
 }) {
+  const fullUrl = absoluteUrl(path);
+  const listId = `${fullUrl}#items`;
   const graph = {
     '@context': 'https://schema.org',
     '@graph': [
-      { '@type': 'CollectionPage', '@id': `${absoluteUrl(path)}#page`, url: absoluteUrl(path), name: title, description },
+      {
+        '@type': 'CollectionPage',
+        '@id': `${fullUrl}#page`,
+        url: fullUrl,
+        name: title,
+        description,
+        isPartOf: { '@id': websiteSchemaId() },
+        publisher: { '@id': organizationSchemaId() },
+        mainEntity: { '@id': listId },
+      },
       {
         '@type': 'BreadcrumbList',
+        '@id': `${fullUrl}#breadcrumb`,
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
-          { '@type': 'ListItem', position: 2, name: title, item: absoluteUrl(path) },
+          { '@type': 'ListItem', position: 2, name: title, item: fullUrl },
         ],
       },
       {
         '@type': 'ItemList',
+        '@id': listId,
+        name: title,
+        numberOfItems: items.length,
         itemListElement: items.map((item, index) => ({
           '@type': 'ListItem', position: index + 1, name: item.title, url: absoluteUrl(item.href),
         })),

@@ -65,6 +65,7 @@ async function main() {
   let sitemapNeedsRefresh = false;
   let lastRevalidationAt = 0;
   let revalidationInFlight: Promise<void> | null = null;
+  const pendingIndexPaths = new Set<string>();
   const stop = () => {
     stopping = true;
     process.stdout.write('\nStopping after the current batch. Unclaimed jobs will remain queued.\n');
@@ -76,28 +77,32 @@ async function main() {
 
   const requestRevalidation = async (refreshSitemaps = false) => {
     if (revalidationInFlight) await revalidationInFlight;
-    if (changesSinceRevalidation === 0 && !(refreshSitemaps && sitemapNeedsRefresh)) return;
+    if (changesSinceRevalidation === 0 && pendingIndexPaths.size === 0 && !(refreshSitemaps && sitemapNeedsRefresh)) return;
     const baseUrl = process.env.REVALIDATION_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
     const secret = process.env.REVALIDATION_SECRET;
     if (!baseUrl || !secret) return;
     const submittedChanges = changesSinceRevalidation;
+    const submittedPaths = Array.from(pendingIndexPaths).slice(0, 250);
     const work = (async () => {
       try {
         const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/internal/revalidate`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope: 'catalog', paths: [], refreshSitemaps }),
+          body: JSON.stringify({ scope: 'catalog', paths: submittedPaths, refreshSitemaps }),
           signal: AbortSignal.timeout(refreshSitemaps ? 180_000 : 15_000),
         });
         if (!response.ok) process.stderr.write(`Catalog revalidation returned HTTP ${response.status}.\n`);
         else {
+          for (const p of submittedPaths) pendingIndexPaths.delete(p);
           if (refreshSitemaps) {
             await warmSitemaps(baseUrl, secret);
             sitemapNeedsRefresh = false;
           }
           lastRevalidationAt = Date.now();
           changesSinceRevalidation = Math.max(0, changesSinceRevalidation - submittedChanges);
-          process.stdout.write('Homepage, catalog, feed, and sitemap caches revalidated and warmed.\n');
+          process.stdout.write(
+            `Homepage, catalog, feed, and sitemap caches revalidated and warmed${submittedPaths.length > 0 ? ` (${submittedPaths.length} movie URL(s) pushed to IndexNow)` : ''}.\n`,
+          );
         }
       } catch (error) {
         process.stderr.write(`Catalog revalidation was deferred: ${error instanceof Error ? error.message : 'request failed'}.\n`);
@@ -142,6 +147,11 @@ async function main() {
         const changed = summary.completed + summary.partial + summary.skipped;
         changedJobs += changed;
         changesSinceRevalidation += changed;
+        if (summary.completedMoviePaths?.length) {
+          for (const movieUrlPath of summary.completedMoviePaths) {
+            if (pendingIndexPaths.size < 2000) pendingIndexPaths.add(movieUrlPath);
+          }
+        }
         if (changed > 0) sitemapNeedsRefresh = true;
         if (summary.claimed > 0 || summary.discoveryProcessed || summary.failed > 0 || summary.partial > 0) {
           process.stdout.write(

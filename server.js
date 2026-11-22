@@ -404,12 +404,22 @@ function scheduleSitemapWarmup(port) {
     }, 10_000).unref();
   };
 
+  const warmCoreHubs = async () => {
+    const corePaths = ['/', '/years', '/countries', '/genres', '/streaming', '/popular', '/feed.xml'];
+    for (const p of corePaths) {
+      try {
+        await fetchLocalText(port, p, hostHeader, originToken, '');
+        await new Promise((r) => setTimeout(r, 800));
+      } catch {}
+    }
+  };
+
   setTimeout(() => {
-    void runWarmup(false);
+    void warmCoreHubs().then(() => runWarmup(false));
     setInterval(() => {
       void runWarmup(true);
     }, 4 * 3600 * 1000).unref();
-  }, 25_000).unref();
+  }, 15_000).unref();
 }
 
 const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '5060', 10);

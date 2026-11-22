@@ -7,6 +7,9 @@ import { CatalogPage } from '@/components/public/CatalogPage';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { catalogInsightFacts } from '@/lib/catalog-insights';
 import { NotFoundError } from '@/lib/errors';
+import { ORIGIN_CATALOG } from '@/lib/public-catalog';
+import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
+import { getRelatedGuidesForGenre } from '@/lib/programmatic-guides';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -56,7 +59,7 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
   if (!currentPage) notFound();
   const itemsPerPage = 24;
 
-  const [{ data: movies, total: totalMovies }, stats] = await Promise.all([
+  const [{ data: movies, total: totalMovies }, stats, facetGuides] = await Promise.all([
     MovieService.getPublicCatalogPage({
       page: currentPage,
       itemsPerPage,
@@ -64,12 +67,21 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
       orderBy: { releaseDate: 'desc' },
     }),
     MovieService.getCatalogStats({ genreSlug: genre.slug }),
+    MovieService.getIndexableFacetGuides().catch(() => null),
   ]);
   if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();
 
   const description =
     genre.description ||
     `Browse ${genre.name.toLowerCase()} movies, trailers, and related discoveries on MovieFlix.`;
+  const relatedLinks = facetGuides
+    ? getRelatedGuidesForGenre(
+        genre,
+        facetGuides,
+        new Map(STREAMING_CATALOG.map((item) => [item.slug, item])),
+        new Map(ORIGIN_CATALOG.map((item) => [item.slug, item])),
+      )
+    : [];
 
   return (
     <CatalogPage
@@ -84,6 +96,8 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
       emptyMessage="No movies have been published in this genre yet."
       breadcrumbs={[{ name: 'Genres', path: '/genres' }]}
       facts={catalogInsightFacts(stats)}
+      relatedHeading={`Explore ${genre.name.toLowerCase()} movies by year, platform & origin`}
+      relatedLinks={relatedLinks}
     />
   );
 }

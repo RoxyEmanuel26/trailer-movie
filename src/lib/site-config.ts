@@ -21,6 +21,9 @@ export const siteConfig = {
   get googleVerification() {
     return process.env.GOOGLE_SITE_VERIFICATION?.trim() || '';
   },
+  get bingVerification() {
+    return process.env.BING_SITE_VERIFICATION?.trim() || '';
+  },
   get twitterHandle() {
     return process.env.NEXT_PUBLIC_TWITTER_HANDLE?.trim() || '';
   },
@@ -38,6 +41,14 @@ export const siteConfig = {
 export function absoluteUrl(path = '/') {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${siteConfig.url}${normalizedPath === '/' ? '' : normalizedPath}`;
+}
+
+export function organizationSchemaId() {
+  return `${siteConfig.url}#organization`;
+}
+
+export function websiteSchemaId() {
+  return `${siteConfig.url}#website`;
 }
 
 export function canonicalUrl(candidate: string | null | undefined, fallbackPath = '/') {

@@ -7,7 +7,7 @@ import { SeoService } from '@/lib/services/SeoService';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
 import { Button } from '@/components/ui/button';
 import { JsonLd } from '@/components/seo/JsonLd';
-import { absoluteUrl, siteConfig } from '@/lib/site-config';
+import { absoluteUrl, organizationSchemaId, siteConfig, websiteSchemaId } from '@/lib/site-config';
 import { moviePath } from '@/lib/public-routes';
 import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
 import { isTransientDatabaseError } from '@/lib/database-errors';
@@ -55,7 +55,9 @@ export async function generateMetadata(): Promise<Metadata> {
       description: homepageDescription,
       images: [image],
     },
-    verification: siteConfig.googleVerification ? { google: siteConfig.googleVerification } : undefined,
+    verification:
+      metadata.verification ??
+      (siteConfig.googleVerification ? { google: siteConfig.googleVerification } : undefined),
   };
 }
 
@@ -78,9 +80,9 @@ export default async function HomePage() {
       <JsonLd data={{
         '@context': 'https://schema.org',
         '@graph': [
-          { '@type': 'Organization', '@id': `${siteConfig.url}#organization`, name: siteConfig.name, url: siteConfig.url, logo: { '@type': 'ImageObject', url: absoluteUrl('/brand/movieflix-icon-512.png'), width: 512, height: 512 }, ...(siteConfig.contactEmail ? { email: siteConfig.contactEmail } : {}) },
-          { '@type': 'WebSite', '@id': `${siteConfig.url}#website`, name: siteConfig.name, url: siteConfig.url, publisher: { '@id': `${siteConfig.url}#organization` }, potentialAction: { '@type': 'SearchAction', target: absoluteUrl('/search?q={search_term_string}'), 'query-input': 'required name=search_term_string' } },
-          { '@type': 'WebPage', '@id': `${siteConfig.url}#webpage`, url: siteConfig.url, name: homepageTitle, isPartOf: { '@id': `${siteConfig.url}#website` }, description: homepageDescription, primaryImageOfPage: { '@type': 'ImageObject', url: primaryImage } },
+          { '@type': 'Organization', '@id': organizationSchemaId(), name: siteConfig.name, url: siteConfig.url, logo: { '@type': 'ImageObject', url: absoluteUrl('/brand/movieflix-icon-512.png'), width: 512, height: 512 }, ...(siteConfig.contactEmail ? { email: siteConfig.contactEmail } : {}) },
+          { '@type': 'WebSite', '@id': websiteSchemaId(), name: siteConfig.name, url: siteConfig.url, publisher: { '@id': organizationSchemaId() }, potentialAction: { '@type': 'SearchAction', target: absoluteUrl('/search?q={search_term_string}'), 'query-input': 'required name=search_term_string' } },
+          { '@type': 'WebPage', '@id': `${siteConfig.url}#webpage`, url: siteConfig.url, name: homepageTitle, isPartOf: { '@id': websiteSchemaId() }, publisher: { '@id': organizationSchemaId() }, description: homepageDescription, primaryImageOfPage: { '@type': 'ImageObject', url: primaryImage } },
           { '@type': 'ItemList', '@id': `${siteConfig.url}#trending`, name: 'Trending movies on MovieFlix', numberOfItems: discovery.trending.length, itemListElement: discovery.trending.map((movie, index) => ({ '@type': 'ListItem', position: index + 1, url: absoluteUrl(moviePath(movie.slug)), name: movie.title })) },
         ],
       }} />

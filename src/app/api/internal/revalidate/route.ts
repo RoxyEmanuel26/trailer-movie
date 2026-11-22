@@ -8,7 +8,7 @@ import { clearAllPublicMemoryCaches } from '@/lib/memory-cache';
 
 const payloadSchema = z.object({
   scope: z.enum(['catalog', 'homepage']).default('catalog'),
-  paths: z.array(z.string().min(1).max(300)).max(100).default([]),
+  paths: z.array(z.string().min(1).max(300)).max(250).default([]),
   refreshSitemaps: z.boolean().default(false),
 });
 

@@ -13,6 +13,12 @@ import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { coreIndexNowPaths, submitIndexNowUrls } from '../indexnow';
 import { clearAllPublicMemoryCaches, createMemoryCache } from '../memory-cache';
+import { ORIGIN_CATALOG } from '../public-catalog';
+import { STREAMING_CATALOG } from '../streaming-catalog';
+import {
+  MIN_INDEXABLE_GUIDE_MOVIES,
+  type IndexableFacetGuides,
+} from '../programmatic-guides';
 
 const RELATED_MOVIE_LIMIT = 8;
 
@@ -256,22 +262,27 @@ const publicMovieCache = createMemoryCache<PublicMovieLookupResult>({
 
 const popularHubCountsCache = createMemoryCache<Awaited<ReturnType<typeof MovieRepository.getPopularHubCounts>>>({
   maxEntries: 2,
-  ttlMs: 10 * 60_000,
+  ttlMs: 60 * 60_000,
 });
 
 const originGroupsCache = createMemoryCache<Map<string, number>>({
   maxEntries: 5,
-  ttlMs: 10 * 60_000,
+  ttlMs: 60 * 60_000,
 });
 
 const releaseYearsCache = createMemoryCache<number[]>({
   maxEntries: 2,
-  ttlMs: 10 * 60_000,
+  ttlMs: 60 * 60_000,
 });
 
 const releaseYearStatsCache = createMemoryCache<Awaited<ReturnType<typeof MovieRepository.listPublishedReleaseYearStats>>>({
   maxEntries: 2,
-  ttlMs: 10 * 60_000,
+  ttlMs: 60 * 60_000,
+});
+
+const indexableFacetGuidesCache = createMemoryCache<IndexableFacetGuides>({
+  maxEntries: 2,
+  ttlMs: 60 * 60_000,
 });
 
 function notifyPublicCatalogMutation(slug?: string, submitToIndexNow = false) {
@@ -321,6 +332,20 @@ export class MovieService {
 
   static listPublishedReleaseYearStats = cache(async () =>
     releaseYearStatsCache.getOrLoad('release-year-stats', () => MovieRepository.listPublishedReleaseYearStats())
+  );
+
+  static getIndexableFacetGuides = cache(async () =>
+    indexableFacetGuidesCache.getOrLoad('indexable-facet-guides', () =>
+      MovieRepository.listIndexableFacetGuides({
+        platforms: STREAMING_CATALOG.map(({ slug, tmdbIds }) => ({ slug, tmdbIds })),
+        origins: ORIGIN_CATALOG.map(({ slug, countryCodes, languageCodes }) => ({
+          slug,
+          countryCodes,
+          languageCodes,
+        })),
+        minCount: MIN_INDEXABLE_GUIDE_MOVIES,
+      }),
+    )
   );
 
   static getMovie = cache(async (id: string) => {

@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CatalogPage } from '@/components/public/CatalogPage';
+import { GenreService } from '@/lib/services/GenreService';
 import { MovieService } from '@/lib/services/MovieService';
 import { SeoService } from '@/lib/services/SeoService';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { catalogInsightFacts } from '@/lib/catalog-insights';
+import { getRelatedGuidesForYear } from '@/lib/programmatic-guides';
 
 interface PageProps {
   params: Promise<{ year: string }>;
@@ -47,7 +49,7 @@ export default async function YearPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const [{ data: movies, total }, stats] = await Promise.all([
+  const [{ data: movies, total }, stats, genres, facetGuides] = await Promise.all([
     MovieService.getPublicCatalogPage({
       page: currentPage,
       itemsPerPage,
@@ -55,8 +57,14 @@ export default async function YearPage({ params, searchParams }: PageProps) {
       orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
     }),
     MovieService.getCatalogStats({ releaseYear: year }),
+    GenreService.listGenres(),
+    MovieService.getIndexableFacetGuides().catch(() => null),
   ]);
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
+
+  const relatedLinks = facetGuides
+    ? getRelatedGuidesForYear(year, facetGuides, new Map(genres.map((g) => [g.slug, g])))
+    : [];
 
   return (
     <CatalogPage
@@ -72,6 +80,8 @@ export default async function YearPage({ params, searchParams }: PageProps) {
         { label: 'Release year', value: String(year) },
         ...catalogInsightFacts(stats),
       ]}
+      relatedHeading={`Browse ${year} movies by genre`}
+      relatedLinks={relatedLinks}
     />
   );
 }

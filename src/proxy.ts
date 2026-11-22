@@ -7,7 +7,8 @@ import { moviePath, personPath } from '@/lib/public-routes';
 import { hasValidOriginToken, ORIGIN_GATE_HEADER } from '@/lib/security/origin-gate';
 
 const legacyIdPattern = /^c[a-z0-9]{20,}$/i;
-const paginatedPublicPath = /^\/(?:movies|search|genre\/[^/]+|origin\/[^/]+|year\/[^/]+|popular\/[^/]+|collection\/[^/]+|tag\/[^/]+)$/;
+const paginatedPublicPath =
+  /^\/(?:movies|search|genre\/[^/]+(?:\/\d{4})?|origin\/[^/]+(?:\/[^/]+)?|streaming\/[^/]+(?:\/[^/]+)?|year\/[^/]+|popular\/[^/]+|collection\/[^/]+|tag\/[^/]+)$/;
 
 function invalidPaginationResponse() {
   return new NextResponse(
@@ -42,8 +43,15 @@ export async function proxy(request: NextRequest) {
 
   if (request.nextUrl.searchParams.has('page')) {
     const page = request.nextUrl.searchParams.get('page') || '';
-    if (paginatedPublicPath.test(pathname) && !/^[1-9]\d*$/.test(page)) {
-      return invalidPaginationResponse();
+    if (paginatedPublicPath.test(pathname)) {
+      if (!/^[1-9]\d*$/.test(page)) {
+        return invalidPaginationResponse();
+      }
+      if (page === '1' && pathname !== '/search') {
+        const cleanUrl = new URL(request.url);
+        cleanUrl.searchParams.delete('page');
+        return NextResponse.redirect(cleanUrl, 308);
+      }
     }
   }
 
@@ -99,6 +107,8 @@ export async function proxy(request: NextRequest) {
     pathname === '/person-not-found';
   if (!siteConfig.indexingEnabled || requestHost !== canonicalHost || nonIndexableRoute) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  } else if (pathname.startsWith('/tag/')) {
+    response.headers.set('X-Robots-Tag', 'noindex, follow');
   }
   return response;
 }

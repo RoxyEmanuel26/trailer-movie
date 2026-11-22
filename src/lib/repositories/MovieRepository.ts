@@ -120,45 +120,37 @@ export class MovieRepository {
     if (!origins.length) return new Map<string, number>();
     const payload = JSON.stringify(origins);
     const rows = await db.$queryRaw<Array<{ slug: string; total: number }>>(Prisma.sql`
-      WITH origin_filters AS (
-        SELECT "slug", "countryCodes", "languageCodes"
+      WITH origin_code_map AS (
+        SELECT item."slug", 'country'::text AS "kind", code::text AS "code"
         FROM jsonb_to_recordset(${payload}::jsonb)
           AS item("slug" text, "countryCodes" jsonb, "languageCodes" jsonb)
-      ), eligible_movies AS (
-        SELECT movie."id"
-        FROM "movies" movie
-        WHERE movie."status" = 'PUBLISHED'
-          AND movie."deletedAt" IS NULL
-          AND movie."importQualityStatus" = 'READY'
-          AND movie."posterUrl" IS NOT NULL
-          AND movie."releaseDate" <= CURRENT_TIMESTAMP
-          AND (
-            movie."youtubeTrailerId" IS NOT NULL
-            OR EXISTS (
-              SELECT 1 FROM "trailers" trailer
-              WHERE trailer."movieId" = movie."id"
-                AND trailer."sourceType" = 'YOUTUBE'
-                AND trailer."status" = 'ACTIVE'
-            )
-          )
-      ), movie_codes AS (
-        SELECT eligible."id" AS "movieId", 'country'::text AS "kind", country."isoCode" AS "code"
-        FROM eligible_movies eligible
-        JOIN "movie_countries" movie_country ON movie_country."movieId" = eligible."id"
-        JOIN "countries" country ON country."id" = movie_country."countryId"
+        CROSS JOIN LATERAL jsonb_array_elements_text(item."countryCodes") AS code
         UNION ALL
-        SELECT eligible."id" AS "movieId", 'language'::text AS "kind", language."isoCode" AS "code"
-        FROM eligible_movies eligible
-        JOIN "movie_languages" movie_language ON movie_language."movieId" = eligible."id"
-        JOIN "languages" language ON language."id" = movie_language."languageId"
+        SELECT item."slug", 'language'::text AS "kind", code::text AS "code"
+        FROM jsonb_to_recordset(${payload}::jsonb)
+          AS item("slug" text, "countryCodes" jsonb, "languageCodes" jsonb)
+        CROSS JOIN LATERAL jsonb_array_elements_text(item."languageCodes") AS code
+      ),
+      matched_movies AS (
+        SELECT ocm."slug", mc."movieId"
+        FROM origin_code_map ocm
+        JOIN "countries" c ON ocm."kind" = 'country' AND c."isoCode" = ocm."code"
+        JOIN "movie_countries" mc ON mc."countryId" = c."id"
+        UNION
+        SELECT ocm."slug", ml."movieId"
+        FROM origin_code_map ocm
+        JOIN "languages" l ON ocm."kind" = 'language' AND l."isoCode" = ocm."code"
+        JOIN "movie_languages" ml ON ml."languageId" = l."id"
       )
-      SELECT filters."slug", COUNT(DISTINCT codes."movieId")::int AS "total"
-      FROM origin_filters filters
-      JOIN movie_codes codes ON (
-        (codes."kind" = 'country' AND filters."countryCodes" ? codes."code")
-        OR (codes."kind" = 'language' AND filters."languageCodes" ? codes."code")
-      )
-      GROUP BY filters."slug"
+      SELECT mm."slug", COUNT(*)::int AS "total"
+      FROM matched_movies mm
+      JOIN "movies" movie ON movie."id" = mm."movieId"
+      WHERE movie."status" = 'PUBLISHED'
+        AND movie."deletedAt" IS NULL
+        AND movie."importQualityStatus" = 'READY'
+        AND movie."posterUrl" IS NOT NULL
+        AND movie."releaseDate" <= CURRENT_TIMESTAMP
+      GROUP BY mm."slug"
     `);
     return new Map(rows.map((row) => [row.slug, Number(row.total)]));
   }
@@ -168,23 +160,35 @@ export class MovieRepository {
     db: DbClient = prisma,
   ) {
     if (!platforms.length) return new Map<string, number>();
+    const allTmdbIds = [...new Set(platforms.flatMap((p) => p.tmdbIds))];
+    if (!allTmdbIds.length) return new Map<string, number>();
     const payload = JSON.stringify(platforms);
     const rows = await db.$queryRaw<Array<{ slug: string; total: number }>>(Prisma.sql`
       WITH platform_filters AS (
         SELECT "slug", jsonb_array_elements_text("tmdbIds")::int AS "tmdbId"
         FROM jsonb_to_recordset(${payload}::jsonb)
           AS item("slug" text, "tmdbIds" jsonb)
-      ), matched_providers AS (
-        SELECT pf."slug", wp."id" AS "providerId"
-        FROM platform_filters pf
-        JOIN "watch_providers" wp ON wp."tmdbId" = pf."tmdbId"
+      ),
+      distinct_provider_movies AS MATERIALIZED (
+        SELECT wp."tmdbId", d."movieId"
+        FROM "watch_providers" wp
+        CROSS JOIN LATERAL (
+          SELECT DISTINCT mwpl."movieId"
+          FROM "movie_watch_provider_links" mwpl
+          WHERE mwpl."providerId" = wp."id"
+        ) d
+        WHERE wp."tmdbId" IN (${Prisma.join(allTmdbIds)})
+      ),
+      published_movies AS MATERIALIZED (
+        SELECT m."id"
+        FROM "movies" m
+        WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
       )
-      SELECT mp."slug", COUNT(DISTINCT mwpl."movieId")::int AS "total"
-      FROM matched_providers mp
-      JOIN "movie_watch_provider_links" mwpl ON mwpl."providerId" = mp."providerId"
-      JOIN "movies" m ON m."id" = mwpl."movieId"
-      WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
-      GROUP BY mp."slug"
+      SELECT pf."slug", COUNT(DISTINCT dpm."movieId")::int AS "total"
+      FROM distinct_provider_movies dpm
+      JOIN published_movies pm ON pm."id" = dpm."movieId"
+      JOIN platform_filters pf ON pf."tmdbId" = dpm."tmdbId"
+      GROUP BY pf."slug"
     `);
     return new Map(rows.map((row) => [row.slug, Number(row.total)]));
   }
@@ -245,17 +249,63 @@ export class MovieRepository {
       where: { slug, deletedAt: null },
       include: {
         genres: { include: { genre: true } },
-        people: { include: { person: true }, orderBy: { sortOrder: 'asc' } },
+        people: {
+          include: {
+            person: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                headshotUrl: true,
+              },
+            },
+          },
+          orderBy: { sortOrder: 'asc' },
+        },
         trailers: true,
-        collections: { include: { collection: true } },
+        collections: {
+          where: {
+            collection: {
+              isActive: true,
+              slug: { not: '' },
+            },
+          },
+          include: { collection: true },
+        },
         tags: { include: { tag: true } },
         companies: { include: { company: true } },
         countries: { include: { country: true } },
         languages: { include: { language: true } },
         keywords: { include: { keyword: true } },
-        images: { orderBy: { sortOrder: 'asc' } },
-        alternativeTitles: { take: 15 },
-        watchProviderLinks: { include: { provider: true } },
+        images: {
+          orderBy: { sortOrder: 'asc' },
+          take: 24,
+          select: {
+            id: true,
+            imageUrl: true,
+            imageType: true,
+            aspectRatio: true,
+            width: true,
+            height: true,
+            voteAverage: true,
+          },
+        },
+        alternativeTitles: { take: 15, select: { id: true, title: true } },
+        watchProviderLinks: {
+          select: {
+            countryCode: true,
+            accessType: true,
+            provider: {
+              select: {
+                id: true,
+                tmdbId: true,
+                name: true,
+                logoUrl: true,
+                displayPriority: true,
+              },
+            },
+          },
+        },
         movieReviews: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     });
@@ -484,6 +534,141 @@ export class MovieRepository {
     return {
       data: ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : [])),
       total: Number(rows[0]?.total || 0),
+    };
+  }
+
+  static async listIndexableFacetGuides(
+    params: {
+      platforms: Array<{ slug: string; tmdbIds: number[] }>;
+      origins: Array<{ slug: string; countryCodes: string[]; languageCodes: string[] }>;
+      minCount?: number;
+    },
+    db: DbClient = prisma,
+  ) {
+    const minCount = Math.max(3, params.minCount ?? 10);
+    const platformsJson = JSON.stringify(params.platforms);
+    const originsJson = JSON.stringify(params.origins);
+
+    // Run sequentially so facet-guide aggregation never consumes more than 1 DB pool slot at a time.
+    const allPlatformTmdbIds = [...new Set(params.platforms.flatMap((p) => p.tmdbIds))];
+    const streamingGenre = allPlatformTmdbIds.length
+      ? await db.$queryRaw<Array<{ streamingSlug: string; genreSlug: string; count: number }>>(Prisma.sql`
+          WITH platform_filters AS (
+            SELECT "slug", jsonb_array_elements_text("tmdbIds")::int AS "tmdbId"
+            FROM jsonb_to_recordset(${platformsJson}::jsonb)
+              AS item("slug" text, "tmdbIds" jsonb)
+          ),
+          distinct_provider_movies AS MATERIALIZED (
+            SELECT wp."tmdbId", d."movieId"
+            FROM "watch_providers" wp
+            CROSS JOIN LATERAL (
+              SELECT DISTINCT mwpl."movieId"
+              FROM "movie_watch_provider_links" mwpl
+              WHERE mwpl."providerId" = wp."id"
+            ) d
+            WHERE wp."tmdbId" IN (${Prisma.join(allPlatformTmdbIds)})
+          ),
+          published_movies AS MATERIALIZED (
+            SELECT m."id"
+            FROM "movies" m
+            WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+          ),
+          movie_platform AS (
+            SELECT DISTINCT pf."slug" AS "streamingSlug", dpm."movieId"
+            FROM distinct_provider_movies dpm
+            JOIN published_movies pm ON pm."id" = dpm."movieId"
+            JOIN platform_filters pf ON pf."tmdbId" = dpm."tmdbId"
+          )
+          SELECT mp."streamingSlug", g."slug" AS "genreSlug", COUNT(*)::int AS "count"
+          FROM movie_platform mp
+          JOIN "movie_genres" mg ON mg."movieId" = mp."movieId"
+          JOIN "genres" g ON g."id" = mg."genreId"
+          WHERE g."description" IS NOT NULL AND BTRIM(g."description") <> ''
+          GROUP BY mp."streamingSlug", g."slug"
+          HAVING COUNT(*) >= ${minCount}
+          ORDER BY "count" DESC, mp."streamingSlug" ASC, g."slug" ASC
+        `)
+      : [];
+
+    const genreYear = await db.$queryRaw<Array<{ genreSlug: string; year: number; count: number }>>(Prisma.sql`
+      SELECT
+        g."slug" AS "genreSlug",
+        EXTRACT(YEAR FROM m."releaseDate")::int AS "year",
+        COUNT(DISTINCT m."id")::int AS "count"
+      FROM "movies" m
+      JOIN "movie_genres" mg ON mg."movieId" = m."id"
+      JOIN "genres" g ON g."id" = mg."genreId"
+      WHERE m."status" = 'PUBLISHED'
+        AND m."deletedAt" IS NULL
+        AND m."releaseDate" IS NOT NULL
+        AND g."description" IS NOT NULL
+        AND BTRIM(g."description") <> ''
+      GROUP BY g."slug", EXTRACT(YEAR FROM m."releaseDate")::int
+      HAVING COUNT(DISTINCT m."id") >= ${minCount}
+      ORDER BY "year" DESC, "count" DESC, g."slug" ASC
+    `);
+
+    const originGenre = params.origins.length
+      ? await db.$queryRaw<Array<{ originSlug: string; genreSlug: string; count: number }>>(Prisma.sql`
+          WITH origin_code_map AS (
+            SELECT item."slug" AS "originSlug", 'country'::text AS "kind", code::text AS "code"
+            FROM jsonb_to_recordset(${originsJson}::jsonb)
+              AS item("slug" text, "countryCodes" jsonb, "languageCodes" jsonb)
+            CROSS JOIN LATERAL jsonb_array_elements_text(item."countryCodes") AS code
+            UNION ALL
+            SELECT item."slug" AS "originSlug", 'language'::text AS "kind", code::text AS "code"
+            FROM jsonb_to_recordset(${originsJson}::jsonb)
+              AS item("slug" text, "countryCodes" jsonb, "languageCodes" jsonb)
+            CROSS JOIN LATERAL jsonb_array_elements_text(item."languageCodes") AS code
+          ),
+          matched_countries AS (
+            SELECT ocm."originSlug", mc."movieId"
+            FROM origin_code_map ocm
+            JOIN "countries" c ON ocm."kind" = 'country' AND c."isoCode" = ocm."code"
+            JOIN "movie_countries" mc ON mc."countryId" = c."id"
+          ),
+          matched_languages AS (
+            SELECT ocm."originSlug", ml."movieId"
+            FROM origin_code_map ocm
+            JOIN "languages" l ON ocm."kind" = 'language' AND l."isoCode" = ocm."code"
+            JOIN "movie_languages" ml ON ml."languageId" = l."id"
+          ),
+          origin_movies AS (
+            SELECT "originSlug", "movieId" FROM matched_countries
+            UNION
+            SELECT "originSlug", "movieId" FROM matched_languages
+          )
+          SELECT om."originSlug", g."slug" AS "genreSlug", COUNT(*)::int AS "count"
+          FROM origin_movies om
+          JOIN "movies" m ON m."id" = om."movieId"
+          JOIN "movie_genres" mg ON mg."movieId" = m."id"
+          JOIN "genres" g ON g."id" = mg."genreId"
+          WHERE m."status" = 'PUBLISHED'
+            AND m."deletedAt" IS NULL
+            AND g."description" IS NOT NULL
+            AND BTRIM(g."description") <> ''
+          GROUP BY om."originSlug", g."slug"
+          HAVING COUNT(*) >= ${minCount}
+          ORDER BY "count" DESC, om."originSlug" ASC, g."slug" ASC
+        `)
+      : [];
+
+    return {
+      streamingGenre: streamingGenre.map((row) => ({
+        streamingSlug: row.streamingSlug,
+        genreSlug: row.genreSlug,
+        count: Number(row.count),
+      })),
+      genreYear: genreYear.map((row) => ({
+        genreSlug: row.genreSlug,
+        year: Number(row.year),
+        count: Number(row.count),
+      })),
+      originGenre: originGenre.map((row) => ({
+        originSlug: row.originSlug,
+        genreSlug: row.genreSlug,
+        count: Number(row.count),
+      })),
     };
   }
 }

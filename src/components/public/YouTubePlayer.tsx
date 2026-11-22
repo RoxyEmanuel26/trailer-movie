@@ -10,6 +10,8 @@ import { sendAnalyticsEvent } from '@/lib/analytics/client';
 interface YouTubePlayerProps {
   videoId: string;
   movieId?: string;
+  movieTitle?: string;
+  backdropUrl?: string | null;
   autoplay?: boolean;
   className?: string;
   onReady?: () => void;
@@ -20,10 +22,18 @@ interface YouTubePlayerProps {
 export function YouTubePlayer({
   videoId,
   movieId,
+  movieTitle,
+  backdropUrl,
   className,
 }: YouTubePlayerProps) {
   const [isReady, setIsReady] = React.useState(false);
   const [hasStarted, setHasStarted] = React.useState(false);
+
+  const previewSrc = backdropUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const cleanTitle = movieTitle?.trim();
+  const previewAlt = cleanTitle ? `${cleanTitle} official trailer` : 'Movie trailer preview';
+  const playLabel = cleanTitle ? `Play ${cleanTitle} official trailer` : 'Play movie trailer';
+  const iframeTitle = cleanTitle ? `${cleanTitle} official trailer` : 'Movie trailer';
 
   const startPlayback = () => {
     setHasStarted(true);
@@ -39,8 +49,8 @@ export function YouTubePlayer({
   return (
     <div className={cn("relative w-full aspect-video rounded-xl overflow-hidden bg-muted", className)}>
       {!hasStarted ? (
-        <button type="button" onClick={startPlayback} className="group absolute inset-0 w-full overflow-hidden text-white" aria-label="Play movie trailer">
-          <Image src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`} alt="Movie trailer preview" fill priority sizes="(max-width: 1280px) 100vw, 1280px" className="object-cover" />
+        <button type="button" onClick={startPlayback} className="group absolute inset-0 w-full overflow-hidden text-white" aria-label={playLabel}>
+          <Image src={previewSrc} alt={previewAlt} fill priority sizes="(max-width: 1280px) 100vw, 1280px" className="object-cover" />
           <span className="absolute inset-0 bg-black/25 transition group-hover:bg-black/15" />
           <span className="absolute left-1/2 top-1/2 grid h-16 w-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-primary shadow-2xl transition group-hover:scale-105"><Play className="ml-1 h-7 w-7 fill-current" /></span>
         </button>
@@ -52,7 +62,7 @@ export function YouTubePlayer({
             className={cn('absolute inset-0 h-full w-full border-0 transition-opacity duration-300', isReady ? 'opacity-100' : 'opacity-0')}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
-            title="Movie trailer"
+            title={iframeTitle}
             onLoad={() => setIsReady(true)}
           />
         </>

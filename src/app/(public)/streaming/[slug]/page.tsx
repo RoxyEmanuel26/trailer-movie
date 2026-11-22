@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CatalogPage } from '@/components/public/CatalogPage';
+import { GenreService } from '@/lib/services/GenreService';
 import { MovieService } from '@/lib/services/MovieService';
 import { SeoService } from '@/lib/services/SeoService';
 import { getStreamingCatalogItem, STREAMING_CATALOG } from '@/lib/streaming-catalog';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { catalogInsightFacts } from '@/lib/catalog-insights';
+import { getRelatedGuidesForStreaming } from '@/lib/programmatic-guides';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -34,7 +36,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (isPageOutOfRange(page, total, 24)) notFound();
 
   return SeoService.generateMetadata('StreamingCatalog', slug, {
-    title: `Movies on ${item.label}${page > 1 ? ` — Page ${page}` : ''} | Trailers, Cast & Ratings`,
+    title: `Best Movies on ${item.label} — Trailers & Guide`,
     description: item.description,
     path: pagePath(`/streaming/${item.slug}`, page),
     indexable: total >= 3,
@@ -50,7 +52,7 @@ export default async function StreamingPlatformPage({ params, searchParams }: Pa
   if (!currentPage) notFound();
 
   const itemsPerPage = 24;
-  const [{ data: movies, total }, stats] = await Promise.all([
+  const [{ data: movies, total }, stats, genres, facetGuides] = await Promise.all([
     MovieService.getPublicCatalogPage({
       page: currentPage,
       itemsPerPage,
@@ -60,8 +62,15 @@ export default async function StreamingPlatformPage({ params, searchParams }: Pa
     MovieService.getCatalogStats({
       providerTmdbIds: item.tmdbIds,
     }),
+    GenreService.listGenres(),
+    MovieService.getIndexableFacetGuides().catch(() => null),
   ]);
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
+
+  const genreMap = new Map(genres.map((genre) => [genre.slug, genre]));
+  const relatedLinks = facetGuides
+    ? getRelatedGuidesForStreaming(item, facetGuides, genreMap)
+    : [];
 
   return (
     <CatalogPage
@@ -77,6 +86,8 @@ export default async function StreamingPlatformPage({ params, searchParams }: Pa
         { label: 'Access model', value: item.accessLabel },
         ...catalogInsightFacts(stats),
       ]}
+      relatedHeading={`Browse ${item.label} by genre`}
+      relatedLinks={relatedLinks}
     />
   );
 }

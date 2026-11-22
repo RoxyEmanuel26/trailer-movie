@@ -98,6 +98,9 @@ export function coreIndexNowPaths() {
     absoluteUrl('/movies'),
     absoluteUrl('/popular'),
     absoluteUrl('/streaming'),
+    absoluteUrl('/genres'),
+    absoluteUrl('/years'),
+    absoluteUrl('/countries'),
     absoluteUrl('/sitemap.xml'),
   ];
 }

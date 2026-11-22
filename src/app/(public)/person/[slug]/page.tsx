@@ -10,7 +10,8 @@ import { JsonLd } from '@/components/seo/JsonLd';
 import { PersonRepository } from '@/lib/repositories/PersonRepository';
 import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 import { moviePath } from '@/lib/public-routes';
-import { absoluteUrl } from '@/lib/site-config';
+import { absoluteUrl, organizationSchemaId, websiteSchemaId } from '@/lib/site-config';
+import { stripJsonLdContext } from '@/lib/seo-metadata';
 
 export const revalidate = 3600;
 
@@ -60,7 +61,15 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
   }
   const catalogMovies = Array.from(catalogMovieMap.values());
 
-  const personNode = SeoService.generateStructuredData('Person', {
+  const sameAs = [
+    person.imdbId && /^nm\d+$/.test(person.imdbId.trim())
+      ? `https://www.imdb.com/name/${person.imdbId.trim()}/`
+      : null,
+    person.tmdbId ? `https://www.themoviedb.org/person/${person.tmdbId}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const personNode = stripJsonLdContext(
+    SeoService.generateStructuredData('Person', {
       path: canonicalPath,
       name: person.name,
       description: person.biography,
@@ -70,8 +79,11 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
       deathDate: person.deathday?.toISOString().split('T')[0],
       birthPlace: person.placeOfBirth,
       jobTitle: person.knownForDepartment,
-    });
+      sameAs,
+    }) as Record<string, unknown>,
+  );
   const personUrl = absoluteUrl(canonicalPath);
+  const filmographyItems = catalogMovies.slice(0, 24);
   const jsonLd = [
     {
       // These are catalog subjects, not affiliated creators or user profiles.
@@ -81,18 +93,43 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
       name: person.name,
       description: person.biography || `${person.name} movie credits and biography on MovieFlix.`,
       dateModified: person.updatedAt.toISOString(),
-      isPartOf: { '@id': `${absoluteUrl('/')}#website` },
-      publisher: { '@id': `${absoluteUrl('/')}#organization` },
+      isPartOf: { '@id': websiteSchemaId() },
+      publisher: { '@id': organizationSchemaId() },
       mainEntity: { '@id': `${personUrl}#person` },
     },
-    { ...personNode, '@id': `${personUrl}#person`, mainEntityOfPage: { '@id': `${personUrl}#webpage` } },
-    SeoService.generateStructuredData('BreadcrumbList', {
-      items: [
-        { name: 'Home', path: '/' },
-        { name: person.name, path: canonicalPath },
+    ...(personNode
+      ? [{ ...personNode, '@id': `${personUrl}#person`, mainEntityOfPage: { '@id': `${personUrl}#webpage` } }]
+      : []),
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${personUrl}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
+        { '@type': 'ListItem', position: 2, name: person.name, item: personUrl },
       ],
-    }),
+    },
+    ...(filmographyItems.length > 0
+      ? [
+          {
+            '@type': 'ItemList',
+            '@id': `${personUrl}#filmography`,
+            name: `${person.name} filmography on MovieFlix`,
+            numberOfItems: filmographyItems.length,
+            itemListElement: filmographyItems.map(({ movie }, index) => ({
+              '@type': 'ListItem',
+              position: index + 1,
+              name: movie.title,
+              url: absoluteUrl(moviePath(movie.slug)),
+              ...(movie.posterUrl ? { image: movie.posterUrl } : {}),
+            })),
+          },
+        ]
+      : []),
   ];
+  const notableHighlights = catalogMovies
+    .slice(0, 3)
+    .map(({ movie }) => movie.title)
+    .join(', ');
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-16">
@@ -200,13 +237,20 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
           {/* Movies in Catalog (Clickable to our site's watch page) */}
           {catalogMovies.length > 0 && (
             <div className="order-5 mt-4 md:order-none md:mt-8">
-              <div className="flex items-center gap-2 mb-6">
+              <div className="flex items-center gap-2 mb-3">
                 <Film className="w-5 h-5 text-primary" />
                 <h2 className="text-xl font-semibold tracking-tight">Movies in Catalog</h2>
                 <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
                   {catalogMovies.length}
                 </span>
               </div>
+              <p className="mb-6 max-w-[68ch] text-sm leading-6 text-muted-foreground">
+                {person.name}
+                {person.knownForDepartment ? ` (${person.knownForDepartment})` : ''} appears in{' '}
+                {catalogMovies.length.toLocaleString()}{' '}
+                {catalogMovies.length === 1 ? 'published film' : 'published films'} on MovieFlix
+                {notableHighlights ? `, including ${notableHighlights}` : ''}.
+              </p>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
                 {catalogMovies.map(({ movie, roles }) => {

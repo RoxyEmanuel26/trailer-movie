@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CatalogPage } from '@/components/public/CatalogPage';
+import { GenreService } from '@/lib/services/GenreService';
 import { MovieService } from '@/lib/services/MovieService';
 import { SeoService } from '@/lib/services/SeoService';
 import { getOriginCatalogItem, ORIGIN_CATALOG } from '@/lib/public-catalog';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { catalogInsightFacts } from '@/lib/catalog-insights';
+import { getOriginAdjective, getRelatedGuidesForOrigin } from '@/lib/programmatic-guides';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -34,7 +36,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (isPageOutOfRange(page, total, 24)) notFound();
   const description = `Browse published movies connected to ${item.label} by production country or spoken language, with trailers, cast, genres, ratings, and release details.`;
   return SeoService.generateMetadata('OriginCatalog', slug, {
-    title: `${item.label} movies${page > 1 ? ` — Page ${page}` : ''}`,
+    title: `${item.label} Movies${page > 1 ? ` — Page ${page}` : ''}`,
     description,
     path: pagePath(`/origin/${item.slug}`, page),
     indexable: total >= 3,
@@ -49,7 +51,7 @@ export default async function OriginPage({ params, searchParams }: PageProps) {
   const currentPage = parseStrictPage(query.page);
   if (!currentPage) notFound();
   const itemsPerPage = 24;
-  const [{ data: movies, total }, stats] = await Promise.all([
+  const [{ data: movies, total }, stats, genres, facetGuides] = await Promise.all([
     MovieService.getPublicCatalogPage({
       page: currentPage,
       itemsPerPage,
@@ -61,9 +63,14 @@ export default async function OriginPage({ params, searchParams }: PageProps) {
       countryCodes: item.countryCodes,
       languageCodes: item.languageCodes,
     }),
+    GenreService.listGenres(),
+    MovieService.getIndexableFacetGuides().catch(() => null),
   ]);
   if (isPageOutOfRange(currentPage, total, itemsPerPage)) notFound();
   const description = `Explore MovieFlix titles connected to ${item.label} through their production country or spoken language.`;
+  const relatedLinks = facetGuides
+    ? getRelatedGuidesForOrigin(item, facetGuides, new Map(genres.map((g) => [g.slug, g])))
+    : [];
 
   return (
     <CatalogPage
@@ -79,6 +86,8 @@ export default async function OriginPage({ params, searchParams }: PageProps) {
         { label: 'Matching rule', value: 'Production country or spoken language' },
         ...catalogInsightFacts(stats),
       ]}
+      relatedHeading={`Explore ${getOriginAdjective(item)} movies by genre`}
+      relatedLinks={relatedLinks}
     />
   );
 }

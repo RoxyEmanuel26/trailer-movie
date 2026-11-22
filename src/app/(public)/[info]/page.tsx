@@ -179,9 +179,14 @@ export default async function InfoPage({ params }: { params: Promise<{ info: str
   return (
     <article className="mx-auto max-w-4xl px-4 py-9 sm:px-6 sm:py-14 lg:px-8 lg:py-20">
       <JsonLd data={jsonLd} />
+      <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Link href="/" className="transition-colors hover:text-primary">Home</Link>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page" className="text-foreground">{page.title}</span>
+      </nav>
       <Link
         href="/"
-        className="mb-12 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        className="mb-10 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to home
@@ -232,7 +237,7 @@ export default async function InfoPage({ params }: { params: Promise<{ info: str
           The public contact channel is being configured before launch. This page will remain excluded from search indexing until it is available.
         </p>
       ) : null}
-      <p className="mt-8 text-sm text-muted-foreground">Last updated September 15, 2026.</p>
+      <p className="mt-8 text-sm text-muted-foreground">Last updated November 2026.</p>
     </article>
   );
 }

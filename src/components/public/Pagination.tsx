@@ -74,7 +74,7 @@ export function Pagination({
     </Button>
   ) : (
     <Button variant="ghost" asChild className="h-11 min-w-11 gap-1.5 rounded-xl px-0 sm:px-3">
-      <Link href={createPageUrl(currentPage - 1)} prefetch={false} aria-label="Previous page">
+      <Link href={createPageUrl(currentPage - 1)} rel="prev" prefetch={false} aria-label="Previous page">
         <ChevronLeft className="h-4 w-4" />
         <span className="hidden sm:inline">Previous</span>
       </Link>
@@ -93,7 +93,7 @@ export function Pagination({
     </Button>
   ) : (
     <Button variant="ghost" asChild className="h-11 min-w-11 gap-1.5 rounded-xl px-0 sm:px-3">
-      <Link href={createPageUrl(currentPage + 1)} prefetch={false} aria-label="Next page">
+      <Link href={createPageUrl(currentPage + 1)} rel="next" prefetch={false} aria-label="Next page">
         <span className="hidden sm:inline">Next</span>
         <ChevronRight className="h-4 w-4" />
       </Link>

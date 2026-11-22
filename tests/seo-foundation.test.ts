@@ -5,18 +5,27 @@ import { serializeJsonLd } from '../src/components/seo/JsonLd';
 import { serializeSitemap, serializeSitemapIndex } from '../src/lib/sitemap-xml';
 import { getTmdbImageUrl } from '../src/lib/tmdb-image-loader';
 import { moviePath } from '../src/lib/public-routes';
-import { canonicalUrl, isValidContactEmail, siteConfig, validateProductionSeoConfig } from '../src/lib/site-config';
+import { canonicalUrl, isValidContactEmail, organizationSchemaId, siteConfig, validateProductionSeoConfig, websiteSchemaId } from '../src/lib/site-config';
 import { escapeCdata, SeoService } from '../src/lib/services/SeoService';
-import { catalogMetadataCanonical, paginatedMetadataTitle, socialImage } from '../src/lib/seo-metadata';
-import { trailerSchema } from '../src/lib/trailer-schema';
+import { buildWatchMetaTitle, catalogMetadataCanonical, paginatedMetadataTitle, socialImage, stripJsonLdContext } from '../src/lib/seo-metadata';
+import { formatTrailerTitle, trailerSchema } from '../src/lib/trailer-schema';
 import { PersonRepository } from '../src/lib/repositories/PersonRepository';
 import { providerRegion, providerRegionCodes } from '../src/lib/provider-region';
 import { catalogStatsQuery } from '../src/lib/catalog-stats-query';
 import { buildFaqJsonLd, buildMovieQuickFactsAndFaq, extractUniqueProviders } from '../src/lib/movie-aeo';
 import { getStreamingCatalogItem, STREAMING_CATALOG } from '../src/lib/streaming-catalog';
-import { buildIndexNowPayload } from '../src/lib/indexnow';
+import { getOriginCatalogItem } from '../src/lib/public-catalog';
+import { buildIndexNowPayload, coreIndexNowPaths } from '../src/lib/indexnow';
 import { extractSearchTerms } from '../src/lib/repositories/MovieRepository';
+import {
+  buildGenreYearGuide,
+  buildOriginGenreGuide,
+  buildStreamingGenreGuide,
+  getOriginAdjective,
+} from '../src/lib/programmatic-guides';
 import robots from '../src/app/robots';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 test('strict pagination accepts only positive integer pages', () => {
   assert.equal(parseStrictPage(undefined), 1);
@@ -294,4 +303,103 @@ test('extractSearchTerms strips English stopwords from multi-word queries while 
   assert.deepEqual(extractSearchTerms('Lord of the Rings'), ['Lord', 'Rings']);
   assert.deepEqual(extractSearchTerms('The'), ['The']);
   assert.deepEqual(extractSearchTerms('IT'), ['IT']);
+});
+
+test('formatTrailerTitle prefixes movie title on generic trailer names without duplicating', () => {
+  assert.equal(
+    formatTrailerTitle('Spider-Man: Brand New Day', 'Final Trailer (Peter’s Journey)', 2026),
+    'Spider-Man: Brand New Day (2026) — Final Trailer (Peter’s Journey)',
+  );
+  assert.equal(
+    formatTrailerTitle('Dune: Part Two', 'Dune: Part Two | Official Trailer', 2024),
+    'Dune: Part Two | Official Trailer',
+  );
+  assert.equal(
+    formatTrailerTitle('The Odyssey', null, 2026),
+    'The Odyssey (2026) Official Trailer',
+  );
+  const schema = trailerSchema({
+    videoId: 'abcdefghijk',
+    movieTitle: 'Spider-Man: Brand New Day',
+    year: 2026,
+    title: 'Official Trailer',
+    description: 'Trailer desc',
+    isFamilyFriendly: true,
+    inLanguage: 'en',
+  });
+  assert.equal(schema?.name, 'Spider-Man: Brand New Day (2026) — Official Trailer');
+  assert.equal(schema?.isFamilyFriendly, true);
+  assert.equal(schema?.inLanguage, 'en');
+  assert.equal(schema?.uploadDate, undefined);
+});
+
+test('buildWatchMetaTitle keeps SERP titles crisp across short, medium, and long movie names', () => {
+  assert.equal(
+    buildWatchMetaTitle('Dune: Part Two', 2024),
+    'Dune: Part Two (2024) Trailer, Cast & Where to Watch',
+  );
+  assert.equal(
+    buildWatchMetaTitle('Spider-Man: Brand New Day', 2026),
+    'Spider-Man: Brand New Day (2026) Trailer & Where to Watch',
+  );
+  assert.equal(
+    buildWatchMetaTitle('The Lord of the Rings: The Fellowship of the Ring', 2001),
+    'The Lord of the Rings: The Fellowship of the Ring (2001) — Trailer & Cast',
+  );
+});
+
+test('stripJsonLdContext removes nested @context cleanly and entity @ids stay consistent', () => {
+  const source = { '@context': 'https://schema.org', '@type': 'Person', name: 'Denis Villeneuve' };
+  const stripped = stripJsonLdContext(source);
+  assert.equal('@context' in (stripped || {}), false);
+  assert.equal(stripped?.name, 'Denis Villeneuve');
+  assert.equal(source['@context'], 'https://schema.org');
+  assert.equal(organizationSchemaId(), `${siteConfig.url}#organization`);
+  assert.equal(websiteSchemaId(), `${siteConfig.url}#website`);
+});
+
+test('programmatic 2-facet guides enforce >= 10 movie indexability gate and generate rich FAQs', () => {
+  const netflix = getStreamingCatalogItem('netflix')!;
+  const korea = getOriginCatalogItem('south-korea-korean')!;
+  const stats = {
+    total: 42,
+    earliestYear: 2016,
+    latestYear: 2026,
+    dominantGenres: [{ name: 'Action', count: 42 }],
+    highlights: [
+      { title: 'Extraction', slug: 'extraction-1', voteAverage: 7.4 },
+      { title: 'Rebel Ridge', slug: 'rebel-ridge-2', voteAverage: 7.1 },
+    ],
+  };
+
+  const sg = buildStreamingGenreGuide(netflix, { name: 'Action', slug: 'action' }, stats, 42);
+  assert.equal(sg.indexable, true);
+  assert.equal(sg.metaTitle, 'Best Action Movies on Netflix');
+  assert.match(sg.metaDescription, /Extraction/);
+  assert.equal(sg.faqs.length, 3);
+
+  const thinSg = buildStreamingGenreGuide(netflix, { name: 'Western', slug: 'western' }, stats, 9);
+  assert.equal(thinSg.indexable, false);
+
+  const gy = buildGenreYearGuide({ name: 'Horror', slug: 'horror' }, 2026, stats, 120);
+  assert.equal(gy.indexable, true);
+  assert.match(gy.metaTitle, /Horror Movies of 2026/);
+  assert.equal(gy.faqs.length, 3);
+
+  const og = buildOriginGenreGuide(korea, { name: 'Thriller', slug: 'thriller' }, stats, 85);
+  assert.equal(getOriginAdjective(korea), 'Korean');
+  assert.equal(og.indexable, true);
+  assert.equal(og.metaTitle, 'Best Korean Thriller Movies');
+  assert.equal(og.faqs.length, 2);
+});
+
+test('SeoService emits googleBot rich preview directives, msvalidate.01, and expanded IndexNow hubs', () => {
+  const seoServiceSrc = readFileSync(path.resolve('src/lib/services/SeoService.ts'), 'utf8');
+  assert.match(seoServiceSrc, /'max-image-preview': 'large'/);
+  assert.match(seoServiceSrc, /'msvalidate\.01'/);
+  assert.equal(seoServiceSrc.includes('bing: globalSettings.bingVerification'), false);
+  const paths = coreIndexNowPaths();
+  assert.ok(paths.some((url) => url.endsWith('/genres')));
+  assert.ok(paths.some((url) => url.endsWith('/years')));
+  assert.ok(paths.some((url) => url.endsWith('/countries')));
 });

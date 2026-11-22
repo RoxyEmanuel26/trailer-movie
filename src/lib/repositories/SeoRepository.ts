@@ -113,6 +113,7 @@ export class SeoRepository {
         title: true,
         synopsis: true,
         posterUrl: true,
+        releaseDate: true,
         updatedAt: true,
         youtubeTrailerId: true,
         trailers: {
@@ -177,8 +178,23 @@ export class SeoRepository {
     const excluded = await this.sitemapExcludedIds('Movie', db);
     return db.movie.findMany({
       where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY', ...(excluded.length ? { id: { notIn: excluded } } : {}) },
+      select: {
+        title: true,
+        slug: true,
+        synopsis: true,
+        posterUrl: true,
+        releaseDate: true,
+        createdAt: true,
+        updatedAt: true,
+        genres: {
+          select: {
+            genre: { select: { name: true } },
+          },
+          take: 4,
+        },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 25,
     });
   }
 

@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import Image from 'next/image';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CollectionService } from '@/lib/services/CollectionService';
 import { SeoService } from '@/lib/services/SeoService';
@@ -10,6 +11,8 @@ import { Layers } from 'lucide-react';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { NotFoundError } from '@/lib/errors';
+import { absoluteUrl, organizationSchemaId, websiteSchemaId } from '@/lib/site-config';
+import { moviePath } from '@/lib/public-routes';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -68,15 +71,63 @@ export default async function CollectionPage({ params, searchParams }: PageProps
   });
   if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();
 
-  const jsonLd = SeoService.generateStructuredData('CollectionPage', {
-    title: collection.title,
-    description: collection.description,
-    path: `/collection/${collection.slug}`,
-  });
+  const basePath = `/collection/${collection.slug}`;
+  const canonicalPath = pagePath(basePath, currentPage);
+  const canonicalFullUrl = absoluteUrl(canonicalPath);
+  const breadcrumbItems = [
+    { name: 'Home', path: '/' },
+    { name: 'Movies', path: '/movies' },
+    ...(currentPage > 1
+      ? [
+          { name: collection.title, path: basePath },
+          { name: `Page ${currentPage}`, path: canonicalPath },
+        ]
+      : [{ name: collection.title, path: basePath }]),
+  ];
+  const pageTitle = currentPage > 1 ? `${collection.title} — Page ${currentPage}` : collection.title;
+  const listId = `${canonicalFullUrl}#movies`;
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'CollectionPage',
+        '@id': `${canonicalFullUrl}#webpage`,
+        url: canonicalFullUrl,
+        name: pageTitle,
+        description: collection.description || `Explore the ${collection.title} movie collection on MovieFlix.`,
+        isPartOf: { '@id': websiteSchemaId() },
+        publisher: { '@id': organizationSchemaId() },
+        mainEntity: { '@id': listId },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${canonicalFullUrl}#breadcrumb`,
+        itemListElement: breadcrumbItems.map((item, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          name: item.name,
+          item: absoluteUrl(item.path),
+        })),
+      },
+      {
+        '@type': 'ItemList',
+        '@id': listId,
+        name: pageTitle,
+        numberOfItems: movies.length,
+        itemListElement: movies.map((movie, index) => ({
+          '@type': 'ListItem',
+          position: (currentPage - 1) * itemsPerPage + index + 1,
+          url: absoluteUrl(moviePath(movie.slug)),
+          name: movie.title,
+          ...(movie.posterUrl ? { image: movie.posterUrl } : {}),
+        })),
+      },
+    ],
+  };
 
   return (
     <>
-      {jsonLd ? <JsonLd data={jsonLd} /> : null}
+      <JsonLd data={jsonLd} />
 
       {/* Hero Section */}
       <section className="relative flex min-h-[20rem] w-full flex-col justify-end overflow-hidden bg-[#0d0e0c] sm:min-h-[23rem] lg:min-h-[25rem]">
@@ -97,6 +148,25 @@ export default async function CollectionPage({ params, searchParams }: PageProps
         <div className="absolute inset-0 bg-gradient-to-t from-[#0d0e0c] via-[#0d0e0c]/55 to-transparent" />
 
         <div className="relative z-10 mx-auto w-full max-w-[90rem] px-4 pb-8 sm:px-6 sm:pb-10 lg:px-8">
+          <nav
+            aria-label="Breadcrumb"
+            className="mb-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white/70"
+          >
+            {breadcrumbItems.map((item, index) => (
+              <span key={item.path} className="flex items-center gap-2">
+                {index > 0 ? <span aria-hidden="true">/</span> : null}
+                {index === breadcrumbItems.length - 1 ? (
+                  <span aria-current="page" className="text-white">
+                    {item.name}
+                  </span>
+                ) : (
+                  <Link href={item.path} prefetch={false} className="transition-colors hover:text-white">
+                    {item.name}
+                  </Link>
+                )}
+              </span>
+            ))}
+          </nav>
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#f48a6f]">
             Curated collection
           </p>

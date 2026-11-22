@@ -4,12 +4,13 @@ import { ArrowUpRight } from 'lucide-react';
 import { GenreService } from '@/lib/services/GenreService';
 import { SeoService } from '@/lib/services/SeoService';
 import { JsonLd } from '@/components/seo/JsonLd';
+import { absoluteUrl, organizationSchemaId, websiteSchemaId } from '@/lib/site-config';
 
 export const revalidate = 3600;
 
 export async function generateMetadata(): Promise<Metadata> {
   return SeoService.generateMetadata('Page', 'genres', {
-    title: 'Movie genres',
+    title: 'Movie Genres — Browse All Categories',
     description: 'Browse every movie genre available in MovieFlix and open locally indexed collections with trailers, cast, ratings, and related discovery links.',
     path: '/genres',
   });
@@ -18,16 +19,41 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function GenresPage() {
   const genres = await GenreService.listGenresWithPublishedCounts();
   const path = '/genres';
+  const fullUrl = absoluteUrl(path);
   const title = 'Every movie genre';
   const description = 'Browse every movie genre available in the MovieFlix catalog.';
+  const listId = `${fullUrl}#genres`;
   const jsonLd = [
-    SeoService.generateStructuredData('CollectionPage', { title, description, path }),
-    SeoService.generateStructuredData('BreadcrumbList', {
-      items: [
-        { name: 'Home', path: '/' },
-        { name: 'Genres', path },
+    {
+      '@type': 'CollectionPage',
+      '@id': `${fullUrl}#page`,
+      url: fullUrl,
+      name: title,
+      description,
+      isPartOf: { '@id': websiteSchemaId() },
+      publisher: { '@id': organizationSchemaId() },
+      mainEntity: { '@id': listId },
+    },
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${fullUrl}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
+        { '@type': 'ListItem', position: 2, name: 'Genres', item: fullUrl },
       ],
-    }),
+    },
+    {
+      '@type': 'ItemList',
+      '@id': listId,
+      name: 'Movie genres on MovieFlix',
+      numberOfItems: genres.length,
+      itemListElement: genres.map((genre, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: `${genre.name} Movies`,
+        url: absoluteUrl(`/genre/${genre.slug}`),
+      })),
+    },
   ];
 
   return (

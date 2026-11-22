@@ -4,6 +4,8 @@ import { POPULAR_CATALOG } from '@/lib/public-catalog';
 import { SeoService } from '@/lib/services/SeoService';
 import { MovieService } from '@/lib/services/MovieService';
 
+export const revalidate = 3600;
+
 export async function generateMetadata(): Promise<Metadata> {
   return SeoService.generateMetadata('Page', 'popular', { title: 'Popular Movie Rankings', description: 'Explore MovieFlix rankings for audience favorites, highly rated movies, and the latest releases.', path: '/popular' });
 }

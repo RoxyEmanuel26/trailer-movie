@@ -14,7 +14,7 @@ const genreListCache = createMemoryCache<Awaited<ReturnType<typeof GenreReposito
 
 const genreCountsCache = createMemoryCache<Awaited<ReturnType<typeof GenreRepository.listWithPublishedCounts>>>({
   maxEntries: 2,
-  ttlMs: 10 * 60_000,
+  ttlMs: 60 * 60_000,
 });
 
 const genreBySlugCache = createMemoryCache<Awaited<ReturnType<typeof GenreRepository.findBySlug>>>({

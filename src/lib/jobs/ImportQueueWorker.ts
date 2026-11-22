@@ -5,6 +5,8 @@ import { ImportBatchService } from '@/lib/services/ImportBatchService';
 import { ImportQualityService } from '@/lib/services/ImportQualityService';
 import { logger } from '@/lib/logger';
 import { getImportThroughput, runBounded } from './throughput';
+import { prisma } from '@/lib/prisma';
+import { moviePath } from '@/lib/public-routes';
 
 export type ImportWorkerSummary = {
   claimed: number;
@@ -22,6 +24,7 @@ export type ImportWorkerSummary = {
   nextDiscoveryAt: Date | null;
   qualityProcessed: number;
   qualityUnpublished: number;
+  completedMoviePaths?: string[];
 };
 
 export class ImportQueueWorker {
@@ -100,6 +103,29 @@ export class ImportQueueWorker {
       }
 
       const states = await ImportRepository.findStatuses(jobs.map((job) => job.id));
+      const completedJobIds = new Set(
+        states.filter((job) => job?.status === 'COMPLETED').map((job) => job.id),
+      );
+      const completedMovieTmdbIds = movieJobs
+        .filter((job) => completedJobIds.has(job.id))
+        .map((job) => job.tmdbId);
+      let completedMoviePaths: string[] = [];
+      if (completedMovieTmdbIds.length > 0) {
+        try {
+          const readyMovies = await prisma.movie.findMany({
+            where: {
+              tmdbId: { in: completedMovieTmdbIds },
+              status: 'PUBLISHED',
+              deletedAt: null,
+              importQualityStatus: 'READY',
+            },
+            select: { slug: true },
+          });
+          completedMoviePaths = readyMovies.map((movie) => moviePath(movie.slug));
+        } catch (error) {
+          logger.warn({ err: error }, '[ImportQueueWorker] Failed to resolve completed movie paths for IndexNow');
+        }
+      }
       const quality = process.env.IMPORT_QUALITY_BACKFILL_ENABLED === 'true'
         ? await ImportQualityService.refreshLegacyBatch(250)
         : { processed: 0, unpublished: 0, remaining: false };
@@ -139,6 +165,7 @@ export class ImportQueueWorker {
         nextDiscoveryAt: effectiveNextDiscoveryAt,
         qualityProcessed: quality.processed,
         qualityUnpublished: quality.unpublished,
+        completedMoviePaths,
       };
     } catch (error) {
       logger.error({ err: error }, '[ImportQueueWorker] Critical error during polling');

@@ -33,8 +33,13 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
         ...(item.slug === 'latest-releases' ? { latestReleasesOnly: true } : {}),
       });
   if (isPageOutOfRange(page, total, 24)) notFound();
+  const titleBySlug: Record<string, string> = {
+    'most-popular': 'Most Popular Movies',
+    'top-rated': 'Top Rated Movies',
+    'latest-releases': 'Latest Movie Releases',
+  };
   return SeoService.generateMetadata('PopularCatalog', mode, {
-    title: `${item.label} movies${page > 1 ? ` — Page ${page}` : ''}`,
+    title: `${titleBySlug[item.slug] || `${item.label} Movies`}${page > 1 ? ` — Page ${page}` : ''}`,
     description: item.description,
     path: pagePath(`/popular/${item.slug}`, page),
   });

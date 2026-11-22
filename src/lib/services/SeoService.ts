@@ -12,8 +12,9 @@ import { absoluteUrl, isValidContactEmail, normalizeMetaDescription, siteConfig 
 import type { SitemapEntry } from '../sitemap-xml';
 import { getTmdbImageUrl } from '../tmdb-image-loader';
 import { catalogMetadataCanonical, paginatedMetadataTitle, socialImage } from '../seo-metadata';
-import { trailerSchema } from '../trailer-schema';
+import { formatTrailerTitle, trailerSchema } from '../trailer-schema';
 import { clearAllPublicMemoryCaches, createMemoryCache } from '../memory-cache';
+import { MIN_INDEXABLE_GUIDE_MOVIES } from '../programmatic-guides';
 
 export const PERSON_SITEMAP_PAGE_SIZE = 45_000;
 // Movie entries include image/video metadata; leave headroom below Google's
@@ -45,6 +46,11 @@ const globalSeoSettingsCache = createMemoryCache<{
 const pageSeoCache = createMemoryCache<Awaited<ReturnType<typeof SeoRepository.findPageSEO>>>({
   maxEntries: 3000,
   ttlMs: 10 * 60_000,
+});
+
+const rssFeedCache = createMemoryCache<string>({
+  maxEntries: 2,
+  ttlMs: 15 * 60_000,
 });
 
 export class SeoService {
@@ -96,7 +102,7 @@ export class SeoService {
         ogSiteName: siteConfig.name,
         twitterHandle: siteConfig.twitterHandle,
         googleVerification: siteConfig.googleVerification,
-        bingVerification: map['seo.bingVerification'] || '',
+        bingVerification: siteConfig.bingVerification || map['seo.bingVerification'] || '',
         yandexVerification: map['seo.yandexVerification'] || '',
       };
     })
@@ -140,6 +146,7 @@ export class SeoService {
       path?: string;
       indexable?: boolean;
       openGraphType?: 'website' | 'profile';
+      keywords?: string[];
     } = {}
   ): Promise<Metadata> {
     const [globalSettings, pageSeo] = await Promise.all([
@@ -154,7 +161,6 @@ export class SeoService {
       normalizeLegacyBrand(pageSeo?.metaDescription || fallback.description || ''),
       globalSettings.defaultDescription
     );
-    const keywords = globalSettings.defaultKeywords;
     const ogImage = pageSeo?.ogImageUrl || fallback.image;
 
     // Canonical URL
@@ -164,16 +170,33 @@ export class SeoService {
     const isNoindex =
       !siteConfig.indexingEnabled || pageSeo?.isNoindex === true || fallback.indexable === false;
 
+    const bingCode = globalSettings.bingVerification?.trim() || '';
+    const googleCode = globalSettings.googleVerification?.trim() || '';
+    const yandexCode = globalSettings.yandexVerification?.trim() || '';
+    const hasVerification = Boolean(googleCode || yandexCode || bingCode);
+
     return {
       title,
       description,
-      keywords,
+      ...(fallback.keywords?.length ? { keywords: fallback.keywords } : {}),
       alternates: {
         canonical,
       },
       robots: {
         index: !isNoindex,
         follow: true,
+        googleBot: isNoindex
+          ? {
+              index: false,
+              follow: true,
+            }
+          : {
+              index: true,
+              follow: true,
+              'max-image-preview': 'large',
+              'max-snippet': -1,
+              'max-video-preview': -1,
+            },
       },
       openGraph: {
         title: title,
@@ -190,13 +213,15 @@ export class SeoService {
         images: [image],
         ...(globalSettings.twitterHandle ? { creator: globalSettings.twitterHandle } : {}),
       },
-      verification: {
-        google: globalSettings.googleVerification || undefined,
-        yandex: globalSettings.yandexVerification || undefined,
-        other: {
-          bing: globalSettings.bingVerification ? [globalSettings.bingVerification] : [],
-        },
-      },
+      ...(hasVerification
+        ? {
+            verification: {
+              ...(googleCode ? { google: googleCode } : {}),
+              ...(yandexCode ? { yandex: yandexCode } : {}),
+              ...(bingCode ? { other: { 'msvalidate.01': bingCode } } : {}),
+            },
+          }
+        : {}),
     };
   }
 
@@ -301,25 +326,36 @@ export class SeoService {
    * Generate Sitemap Data
    */
   static async generateSitemapData() {
-    const [{ genres, collections }, years, originCountMap, streamingCountMap, homepageLastModified, overrides] = await Promise.all([
+    // Stage sitemap queries in bounded steps so core sitemap rebuilds never starve
+    // a small PostgreSQL connection pool while public traffic is browsing.
+    const [{ genres, collections }, years, homepageLastModified, overrides] = await Promise.all([
       SeoRepository.getCoreSitemapData(),
       MovieRepository.listPublishedReleaseYearStats(),
-      MovieRepository.countOriginGroups(ORIGIN_CATALOG),
-      MovieRepository.countStreamingGroups(STREAMING_CATALOG),
       SeoRepository.getHomepageLastModified(),
       SeoRepository.listSitemapOverrides(),
     ]);
+    const originCountMap = await MovieRepository.countOriginGroups(ORIGIN_CATALOG);
+    const streamingCountMap = await MovieRepository.countStreamingGroups(STREAMING_CATALOG);
+    const facetGuides = await MovieRepository.listIndexableFacetGuides({
+      platforms: STREAMING_CATALOG.map(({ slug, tmdbIds }) => ({ slug, tmdbIds })),
+      origins: ORIGIN_CATALOG.map(({ slug, countryCodes, languageCodes }) => ({
+        slug,
+        countryCodes,
+        languageCodes,
+      })),
+      minCount: MIN_INDEXABLE_GUIDE_MOVIES,
+    });
     const originCounts = ORIGIN_CATALOG.map((item) => ({ item, total: originCountMap.get(item.slug) || 0 }));
     const streamingCounts = STREAMING_CATALOG.map((item) => ({ item, total: streamingCountMap.get(item.slug) || 0 }));
 
     const sitemap: SitemapEntry[] = [
       { url: siteConfig.url, lastModified: homepageLastModified, changeFrequency: 'daily', priority: 1.0 },
-      { url: absoluteUrl('/movies'), changeFrequency: 'daily', priority: 0.8 },
-      { url: absoluteUrl('/streaming'), changeFrequency: 'weekly', priority: 0.8 },
-      { url: absoluteUrl('/genres'), changeFrequency: 'weekly', priority: 0.7 },
-      { url: absoluteUrl('/countries'), changeFrequency: 'weekly', priority: 0.7 },
-      { url: absoluteUrl('/years'), changeFrequency: 'weekly', priority: 0.7 },
-      { url: absoluteUrl('/popular'), changeFrequency: 'daily', priority: 0.7 },
+      { url: absoluteUrl('/movies'), lastModified: homepageLastModified, changeFrequency: 'daily', priority: 0.8 },
+      { url: absoluteUrl('/streaming'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
+      { url: absoluteUrl('/genres'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
+      { url: absoluteUrl('/countries'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
+      { url: absoluteUrl('/years'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
+      { url: absoluteUrl('/popular'), lastModified: homepageLastModified, changeFrequency: 'daily', priority: 0.7 },
       { url: absoluteUrl('/about'), changeFrequency: 'monthly', priority: 0.4 },
       { url: absoluteUrl('/methodology'), changeFrequency: 'monthly', priority: 0.4 },
       { url: absoluteUrl('/privacy'), changeFrequency: 'monthly', priority: 0.2 },
@@ -337,7 +373,7 @@ export class SeoService {
         url: absoluteUrl(`/genre/${g.slug}`),
         lastModified: g.updatedAt,
         changeFrequency: 'weekly',
-        priority: 0.6,
+        priority: 0.7,
       })
     );
     collections.forEach((c) =>
@@ -351,6 +387,7 @@ export class SeoService {
     POPULAR_CATALOG.forEach((item) =>
       sitemap.push({
         url: absoluteUrl(`/popular/${item.slug}`),
+        lastModified: homepageLastModified,
         changeFrequency: 'daily',
         priority: 0.7,
       })
@@ -358,6 +395,7 @@ export class SeoService {
     streamingCounts.filter(({ total }) => total >= 3).forEach(({ item }) =>
       sitemap.push({
         url: absoluteUrl(`/streaming/${item.slug}`),
+        lastModified: homepageLastModified,
         changeFrequency: 'weekly',
         priority: 0.7,
       })
@@ -365,6 +403,7 @@ export class SeoService {
     originCounts.filter(({ total }) => total >= 3).forEach(({ item }) =>
       sitemap.push({
         url: absoluteUrl(`/origin/${item.slug}`),
+        lastModified: homepageLastModified,
         changeFrequency: 'weekly',
         priority: 0.6,
       })
@@ -373,6 +412,32 @@ export class SeoService {
       sitemap.push({
         url: absoluteUrl(`/year/${item.year}`),
         lastModified: item.updatedAt,
+        changeFrequency: 'weekly',
+        priority: 0.6,
+      })
+    );
+
+    // High-intent 2-facet programmatic SEO guides (strict >= 10 published movies quality gate)
+    facetGuides.streamingGenre.forEach((entry) =>
+      sitemap.push({
+        url: absoluteUrl(`/streaming/${entry.streamingSlug}/${entry.genreSlug}`),
+        lastModified: homepageLastModified,
+        changeFrequency: 'weekly',
+        priority: 0.7,
+      })
+    );
+    facetGuides.genreYear.forEach((entry) =>
+      sitemap.push({
+        url: absoluteUrl(`/genre/${entry.genreSlug}/${entry.year}`),
+        lastModified: homepageLastModified,
+        changeFrequency: 'weekly',
+        priority: 0.7,
+      })
+    );
+    facetGuides.originGenre.forEach((entry) =>
+      sitemap.push({
+        url: absoluteUrl(`/origin/${entry.originSlug}/${entry.genreSlug}`),
+        lastModified: homepageLastModified,
         changeFrequency: 'weekly',
         priority: 0.6,
       })
@@ -389,6 +454,9 @@ export class SeoService {
       if (!path && override.seoableType === 'StreamingCatalog') path = `/streaming/${override.seoableId}`;
       if (!path && override.seoableType === 'YearCatalog') path = `/year/${override.seoableId}`;
       if (!path && override.seoableType === 'PopularCatalog') path = `/popular/${override.seoableId}`;
+      if (!path && override.seoableType === 'StreamingGenreGuide') path = `/streaming/${override.seoableId}`;
+      if (!path && override.seoableType === 'GenreYearGuide') path = `/genre/${override.seoableId}`;
+      if (!path && override.seoableType === 'OriginGenreGuide') path = `/origin/${override.seoableId}`;
       return path ? [absoluteUrl(path)] : [];
     }));
     return sitemap.filter((entry) => !excludedUrls.has(entry.url));
@@ -409,6 +477,7 @@ export class SeoService {
     return movies.map((movie) => {
       const trailer = movie.trailers[0];
       const youtubeId = trailer?.sourceId || movie.youtubeTrailerId;
+      const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
       const description = normalizeMetaDescription(
         movie.synopsis,
         `Watch the official trailer for ${movie.title} on MovieFlix.`
@@ -426,7 +495,7 @@ export class SeoService {
               video: {
                 thumbnailLoc:
                   trailer?.thumbnailUrl || `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`,
-                title: trailer?.title || `${movie.title} trailer`,
+                title: formatTrailerTitle(movie.title, trailer?.title, year),
                 description,
                 playerLoc: `https://www.youtube.com/embed/${youtubeId}`,
                 publicationDate: trailer?.publishedDate || undefined,
@@ -472,30 +541,48 @@ Sitemap: ${absoluteUrl('/sitemap.xml')}`;
    * Generate RSS Feed XML
    */
   static async generateRssFeed() {
-    const movies = await SeoRepository.getRssFeedData();
+    return rssFeedCache.getOrLoad('rss-feed-v2', async () => {
+      const movies = await SeoRepository.getRssFeedData();
+      const feedUrl = absoluteUrl('/feed.xml');
+      const lastBuildDate = (movies[0]?.createdAt || new Date()).toUTCString();
 
-    const items = movies
-      .map(
-        (m) => `
+      const items = movies
+        .map((m) => {
+          const year = m.releaseDate ? new Date(m.releaseDate).getUTCFullYear() : null;
+          const itemTitle = year ? `${m.title} (${year})` : m.title;
+          const itemUrl = absoluteUrl(moviePath(m.slug));
+          const poster = m.posterUrl ? getTmdbImageUrl(m.posterUrl, 500) : null;
+          const categories = (m.genres || [])
+            .map((g) => `<category><![CDATA[${escapeCdata(g.genre.name)}]]></category>`)
+            .join('');
+          const mediaTag = poster
+            ? `<media:thumbnail url="${poster.replace(/&/g, '&amp;')}" width="500" />`
+            : '';
+
+          return `
       <item>
-        <title><![CDATA[${escapeCdata(m.title)}]]></title>
-        <link>${absoluteUrl(moviePath(m.slug))}</link>
-        <guid>${absoluteUrl(moviePath(m.slug))}</guid>
+        <title><![CDATA[${escapeCdata(itemTitle)}]]></title>
+        <link>${itemUrl}</link>
+        <guid isPermaLink="true">${itemUrl}</guid>
         <pubDate>${m.createdAt.toUTCString()}</pubDate>
-        <description><![CDATA[${escapeCdata(m.synopsis || '')}]]></description>
-      </item>
-    `
-      )
-      .join('');
+        <description><![CDATA[${escapeCdata(m.synopsis || `Watch the official trailer for ${itemTitle} on MovieFlix.`)}]]></description>
+        ${categories}
+        ${mediaTag}
+      </item>`;
+        })
+        .join('');
 
-    return `<?xml version="1.0" encoding="UTF-8" ?>
-<rss version="2.0">
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
-    <title>MovieFlix</title>
+    <title>${siteConfig.name} — Latest Movies &amp; Official Trailers</title>
     <link>${siteConfig.url}</link>
-    <description>Latest movies and trailers from MovieFlix</description>
-    ${items}
+    <atom:link href="${feedUrl}" rel="self" type="application/rss+xml" />
+    <description>${siteConfig.description}</description>
+    <language>en</language>
+    <lastBuildDate>${lastBuildDate}</lastBuildDate>${items}
   </channel>
 </rss>`;
+    });
   }
 }

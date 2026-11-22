@@ -24,7 +24,7 @@ function describeReleaseYear(year: number, count: number, currentYear: number): 
 
 export async function generateMetadata(): Promise<Metadata> {
   return SeoService.generateMetadata('Page', 'years', {
-    title: 'Movies by Release Year — Official Trailers & Streaming Guide',
+    title: 'Movies by Release Year — Trailers & Guide',
     description:
       'Browse published movies and official trailers by release year on MovieFlix. Compare cast, genres, ratings, and where to stream or rent titles from every cinema era.',
     path: '/years',
