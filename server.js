@@ -503,6 +503,166 @@ function scheduleSitemapWarmup(port) {
   }, 15_000).unref();
 }
 
+// 5. Periodic Async Disk Housekeeper (prevents cache bloat on small VPS/Pterodactyl disks)
+const ACTIVE_SITEMAP_PREFIX = 'v4-';
+
+async function collectFilesRecursive(rootDir, maxDepth = 4, depth = 0, out = []) {
+  if (depth > maxDepth) return out;
+  let entries;
+  try {
+    entries = await fs.promises.readdir(rootDir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const fullPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      await collectFilesRecursive(fullPath, maxDepth, depth + 1, out);
+    } else if (entry.isFile()) {
+      try {
+        const info = await fs.promises.stat(fullPath);
+        out.push({ path: fullPath, name: entry.name, size: info.size, mtimeMs: info.mtimeMs });
+      } catch {}
+    }
+  }
+  return out;
+}
+
+async function runDiskHousekeeping() {
+  const fsp = fs.promises;
+  let removedFiles = 0;
+  let reclaimedBytes = 0;
+  const now = Date.now();
+
+  const unlinkSafe = async (filePath, knownSize = 0) => {
+    try {
+      let size = knownSize;
+      if (!size) {
+        const info = await fsp.stat(filePath);
+        size = info.size;
+      }
+      await fsp.unlink(filePath);
+      removedFiles += 1;
+      reclaimedBytes += size;
+    } catch {}
+  };
+
+  // 1. Remove build/dev-only Next.js caches that are never needed at production runtime
+  const buildOnlyDirs = [
+    path.join(dir, '.next', 'dev'),
+    path.join(dir, '.next', 'cache', 'turbopack'),
+    path.join(dir, '.next', 'cache', 'webpack'),
+    path.join(dir, '.next', 'cache', 'swc'),
+  ];
+  for (const target of buildOnlyDirs) {
+    try {
+      if (fs.existsSync(target)) {
+        const files = await collectFilesRecursive(target, 6);
+        for (const f of files) reclaimedBytes += f.size;
+        removedFiles += files.length || 1;
+        await fsp.rm(target, { recursive: true, force: true });
+      }
+    } catch {}
+  }
+
+  // 2. Bound .next/cache/fetch-cache (Next.js never GCs expired fetch-cache entries)
+  const fetchCacheDir = path.join(dir, '.next', 'cache', 'fetch-cache');
+  const fetchCacheFiles = (await collectFilesRecursive(fetchCacheDir, 2)).filter(
+    (f) => f.name !== 'tags-manifest.json',
+  );
+  const fetchCutoffMs = now - 2 * 3600 * 1000;
+  const survivors = [];
+  for (const file of fetchCacheFiles) {
+    if (file.mtimeMs < fetchCutoffMs) {
+      await unlinkSafe(file.path, file.size);
+    } else {
+      survivors.push(file);
+    }
+  }
+  const MAX_FETCH_CACHE_FILES = 400;
+  const MAX_FETCH_CACHE_BYTES = 20 * 1024 * 1024;
+  let totalBytes = survivors.reduce((acc, f) => acc + f.size, 0);
+  if (survivors.length > MAX_FETCH_CACHE_FILES || totalBytes > MAX_FETCH_CACHE_BYTES) {
+    survivors.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    let remaining = survivors.length;
+    for (const file of survivors) {
+      if (remaining <= MAX_FETCH_CACHE_FILES && totalBytes <= MAX_FETCH_CACHE_BYTES) break;
+      await unlinkSafe(file.path, file.size);
+      remaining -= 1;
+      totalBytes -= file.size;
+    }
+  }
+
+  // 3. Prune any stale .next/cache/images entries older than 24 hours
+  const imageCacheDir = path.join(dir, '.next', 'cache', 'images');
+  const imageCutoffMs = now - 24 * 3600 * 1000;
+  for (const file of await collectFilesRecursive(imageCacheDir, 3)) {
+    if (file.mtimeMs < imageCutoffMs) {
+      await unlinkSafe(file.path, file.size);
+    }
+  }
+
+  // 4. Prune obsolete sitemap snapshot versions (!= v4-*) and orphaned .tmp files
+  const tmpCutoffMs = now - 30 * 60 * 1000;
+  const sitemapDirs = Array.from(
+    new Set(
+      [
+        process.env.SITEMAP_CACHE_DIR && process.env.SITEMAP_CACHE_DIR.trim(),
+        path.join(dir, '.cache', 'sitemaps'),
+        path.join(dir, 'shared', 'sitemaps'),
+      ].filter(Boolean),
+    ),
+  );
+  for (const smDir of sitemapDirs) {
+    let entries;
+    try {
+      entries = await fsp.readdir(smDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const fullPath = path.join(smDir, entry.name);
+      if (entry.name.endsWith('.xml') && !entry.name.startsWith(ACTIVE_SITEMAP_PREFIX)) {
+        await unlinkSafe(fullPath);
+      } else if (entry.name.endsWith('.tmp')) {
+        try {
+          const info = await fsp.stat(fullPath);
+          if (info.mtimeMs < tmpCutoffMs) await unlinkSafe(fullPath, info.size);
+        } catch {}
+      }
+    }
+    // Prune orphaned .tmp files inside public-data/
+    const publicDataDir = path.join(smDir, 'public-data');
+    try {
+      for (const entry of await fsp.readdir(publicDataDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.tmp')) continue;
+        const fullPath = path.join(publicDataDir, entry.name);
+        try {
+          const info = await fsp.stat(fullPath);
+          if (info.mtimeMs < tmpCutoffMs) await unlinkSafe(fullPath, info.size);
+        } catch {}
+      }
+    } catch {}
+  }
+
+  if (removedFiles > 0) {
+    const reclaimedMb = (reclaimedBytes / (1024 * 1024)).toFixed(2);
+    console.log(
+      `[MovieFlix] Disk housekeeper removed ${removedFiles} stale file(s) (${reclaimedMb} MB reclaimed).`,
+    );
+  }
+}
+
+function scheduleDiskHousekeeping() {
+  setTimeout(() => {
+    void runDiskHousekeeping().catch(() => {});
+    setInterval(() => {
+      void runDiskHousekeeping().catch(() => {});
+    }, 6 * 3600 * 1000).unref();
+  }, 120_000).unref();
+}
+
 const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '5060', 10);
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 
@@ -520,6 +680,7 @@ startServer({
 })
   .then(() => {
     scheduleSitemapWarmup(port);
+    scheduleDiskHousekeeping();
   })
   .catch((err) => {
     console.error('[MovieFlix] Server startup error:', err);

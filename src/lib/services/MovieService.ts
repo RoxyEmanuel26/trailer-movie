@@ -9,7 +9,7 @@ import { requireAdmin } from '../auth/utils';
 import { prisma } from '../prisma';
 import type { Prisma } from '@prisma/client';
 import { moviePath, publicMovieSlug } from '../public-routes';
-import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { coreIndexNowPaths, submitIndexNowUrls } from '../indexnow';
 import { clearAllPublicMemoryCaches, createMemoryCache } from '../memory-cache';
@@ -24,100 +24,66 @@ import {
 
 const RELATED_MOVIE_LIMIT = 8;
 
-type SerializedPublicMovieCard = Omit<PublicMovieCardRecord, 'releaseDate'> & {
-  releaseDate: string | null;
-};
+async function loadRelatedMovies(movieId: string, sortedGenreIds: string[]): Promise<PublicMovieCardRecord[]> {
+  const selected: PublicMovieCardRecord[] = [];
+  const excludeIds = new Set<string>([movieId]);
 
-function serializeCard(movie: PublicMovieCardRecord): SerializedPublicMovieCard {
-  return {
-    id: movie.id,
-    title: movie.title,
-    slug: movie.slug,
-    posterUrl: movie.posterUrl,
-    releaseDate: movie.releaseDate ? movie.releaseDate.toISOString() : null,
-    runtimeMinutes: movie.runtimeMinutes,
-    mpaaRating: movie.mpaaRating,
-    voteAverage: movie.voteAverage,
-  };
-}
-
-function hydrateCard(movie: SerializedPublicMovieCard): PublicMovieCardRecord {
-  return {
-    ...movie,
-    releaseDate: movie.releaseDate ? new Date(movie.releaseDate) : null,
-  };
-}
-
-const cachedCatalogStats = unstable_cache(
-  (filters: Parameters<typeof MovieRepository.getCatalogStats>[0]) => MovieRepository.getCatalogStats(filters),
-  ['public-catalog-statistics-v1'],
-  { revalidate: 300, tags: [HOMEPAGE_CATALOG_TAG] },
-);
-
-const cachedRelatedMovies = unstable_cache(
-  async (movieId: string, sortedGenreIds: string[]): Promise<SerializedPublicMovieCard[]> => {
-    const selected: PublicMovieCardRecord[] = [];
-    const excludeIds = new Set<string>([movieId]);
-
-    try {
-      const recs = await prisma.movieRecommendation.findMany({
-        where: {
-          sourceMovieId: movieId,
-          targetMovie: { status: 'PUBLISHED', deletedAt: null },
+  try {
+    const recs = await prisma.movieRecommendation.findMany({
+      where: {
+        sourceMovieId: movieId,
+        targetMovie: { status: 'PUBLISHED', deletedAt: null },
+      },
+      orderBy: { sortOrder: 'asc' },
+      take: RELATED_MOVIE_LIMIT,
+      select: {
+        targetMovie: {
+          select: PUBLIC_MOVIE_CARD_SELECT,
         },
-        orderBy: { sortOrder: 'asc' },
-        take: RELATED_MOVIE_LIMIT,
-        select: {
-          targetMovie: {
-            select: PUBLIC_MOVIE_CARD_SELECT,
-          },
-        },
-      });
+      },
+    });
 
-      for (const rec of recs) {
-        if (!excludeIds.has(rec.targetMovie.id)) {
-          selected.push(rec.targetMovie);
-          excludeIds.add(rec.targetMovie.id);
-        }
-      }
-    } catch {
-      // Fall through to genre and recent/popular candidates if recommendations fail.
-    }
-
-    if (selected.length < RELATED_MOVIE_LIMIT && sortedGenreIds.length > 0) {
-      const genreMatches = await MovieRepository.findRelatedCandidates({
-        excludeIds: Array.from(excludeIds),
-        genreIds: sortedGenreIds,
-        take: RELATED_MOVIE_LIMIT - selected.length,
-      });
-      for (const movie of genreMatches) {
-        if (!excludeIds.has(movie.id)) {
-          selected.push(movie);
-          excludeIds.add(movie.id);
-          if (selected.length >= RELATED_MOVIE_LIMIT) break;
-        }
+    for (const rec of recs) {
+      if (!excludeIds.has(rec.targetMovie.id)) {
+        selected.push(rec.targetMovie);
+        excludeIds.add(rec.targetMovie.id);
       }
     }
+  } catch {
+    // Fall through to genre and recent/popular candidates if recommendations fail.
+  }
 
-    if (selected.length < RELATED_MOVIE_LIMIT) {
-      const fallbackMatches = await MovieRepository.findRelatedCandidates({
-        excludeIds: Array.from(excludeIds),
-        take: RELATED_MOVIE_LIMIT - selected.length,
-      });
-      for (const movie of fallbackMatches) {
-        if (!excludeIds.has(movie.id)) {
-          selected.push(movie);
-          excludeIds.add(movie.id);
-          if (selected.length >= RELATED_MOVIE_LIMIT) break;
-        }
+  if (selected.length < RELATED_MOVIE_LIMIT && sortedGenreIds.length > 0) {
+    const genreMatches = await MovieRepository.findRelatedCandidates({
+      excludeIds: Array.from(excludeIds),
+      genreIds: sortedGenreIds,
+      take: RELATED_MOVIE_LIMIT - selected.length,
+    });
+    for (const movie of genreMatches) {
+      if (!excludeIds.has(movie.id)) {
+        selected.push(movie);
+        excludeIds.add(movie.id);
+        if (selected.length >= RELATED_MOVIE_LIMIT) break;
       }
     }
+  }
 
-    return selected.map(serializeCard);
-  },
-  ['public-related-movies-v2'],
-  { revalidate: 3600, tags: [HOMEPAGE_CATALOG_TAG] },
-);
+  if (selected.length < RELATED_MOVIE_LIMIT) {
+    const fallbackMatches = await MovieRepository.findRelatedCandidates({
+      excludeIds: Array.from(excludeIds),
+      take: RELATED_MOVIE_LIMIT - selected.length,
+    });
+    for (const movie of fallbackMatches) {
+      if (!excludeIds.has(movie.id)) {
+        selected.push(movie);
+        excludeIds.add(movie.id);
+        if (selected.length >= RELATED_MOVIE_LIMIT) break;
+      }
+    }
+  }
+
+  return selected;
+}
 
 export interface PublicCatalogPageQuery {
   page: number;
@@ -133,58 +99,38 @@ export interface PublicCatalogPageQuery {
   latestReleasesOnly?: boolean;
 }
 
-const cachedPublicCatalogPage = unstable_cache(
-  async (query: PublicCatalogPageQuery): Promise<{ total: number; data: SerializedPublicMovieCard[] }> => {
-    const take = Math.min(Math.max(1, query.itemsPerPage || 24), 48);
-    const skip = Math.max(0, (query.page - 1) * take);
-    const { data, total } = await MovieRepository.searchPublicCards({
-      skip,
-      take,
-      orderBy: query.orderBy,
-      genreSlug: query.genreSlug,
-      collectionSlug: query.collectionSlug,
-      tagSlug: query.tagSlug,
-      providerTmdbIds: query.providerTmdbIds,
-      countryCodes: query.countryCodes,
-      languageCodes: query.languageCodes,
-      releaseYear: query.releaseYear,
-      ...(query.latestReleasesOnly ? { releaseDateLte: new Date() } : {}),
-    });
-    return {
-      total,
-      data: data.map(serializeCard),
-    };
-  },
-  ['public-catalog-pages-v2'],
-  { revalidate: 300, tags: [HOMEPAGE_CATALOG_TAG] },
-);
+async function loadPublicCatalogPage(
+  query: PublicCatalogPageQuery,
+): Promise<{ total: number; data: PublicMovieCardRecord[] }> {
+  const take = Math.min(Math.max(1, query.itemsPerPage || 24), 48);
+  const skip = Math.max(0, (query.page - 1) * take);
+  return MovieRepository.searchPublicCards({
+    skip,
+    take,
+    orderBy: query.orderBy,
+    genreSlug: query.genreSlug,
+    collectionSlug: query.collectionSlug,
+    tagSlug: query.tagSlug,
+    providerTmdbIds: query.providerTmdbIds,
+    countryCodes: query.countryCodes,
+    languageCodes: query.languageCodes,
+    releaseYear: query.releaseYear,
+    ...(query.latestReleasesOnly ? { releaseDateLte: new Date() } : {}),
+  });
+}
 
-const cachedStreamingGroupCounts = unstable_cache(
-  async (platforms: Array<{ slug: string; tmdbIds: number[] }>) => {
-    const map = await MovieRepository.countStreamingGroups(platforms);
-    return Object.fromEntries(map.entries());
-  },
-  ['public-streaming-hub-counts-v1'],
-  { revalidate: 600, tags: [HOMEPAGE_CATALOG_TAG] },
-);
-
-const cachedPublicTopRatedPage = unstable_cache(
-  async (page: number, itemsPerPage: number): Promise<{ total: number; data: SerializedPublicMovieCard[] }> => {
-    const take = Math.min(Math.max(1, itemsPerPage), 48);
-    const skip = Math.max(0, (page - 1) * take);
-    const { data, total } = await MovieRepository.searchTopRated({
-      skip,
-      take,
-      minimumVotes: 50,
-    });
-    return {
-      total,
-      data: data.map(serializeCard),
-    };
-  },
-  ['public-top-rated-pages-v2'],
-  { revalidate: 300, tags: [HOMEPAGE_CATALOG_TAG] },
-);
+async function loadPublicTopRatedPage(
+  page: number,
+  itemsPerPage: number,
+): Promise<{ total: number; data: PublicMovieCardRecord[] }> {
+  const take = Math.min(Math.max(1, itemsPerPage), 48);
+  const skip = Math.max(0, (page - 1) * take);
+  return MovieRepository.searchTopRated({
+    skip,
+    take,
+    minimumVotes: 50,
+  });
+}
 
 const publicCatalogPageCache = createMemoryCache<{ total: number; data: PublicMovieCardRecord[] }>({
   maxEntries: 500,
@@ -206,6 +152,11 @@ const publicCatalogStatsCache = createMemoryCache<Awaited<ReturnType<typeof Movi
   ttlMs: 10 * 60_000,
 });
 
+const streamingGroupCountsCache = createMemoryCache<Map<string, number>>({
+  maxEntries: 10,
+  ttlMs: 10 * 60_000,
+});
+
 const publicSearchCache = createMemoryCache<{ data: PublicMovieCardRecord[]; total: number }>({
   maxEntries: 500,
   ttlMs: 5 * 60_000,
@@ -214,29 +165,20 @@ const publicSearchCache = createMemoryCache<{ data: PublicMovieCardRecord[]; tot
 const dedupeCatalogPageInRequest = cache(async (serializedQuery: string) =>
   publicCatalogPageCache.getOrLoad(serializedQuery, async () => {
     const query = JSON.parse(serializedQuery) as PublicCatalogPageQuery;
-    const result = await cachedPublicCatalogPage(query);
-    return {
-      total: result.total,
-      data: result.data.map(hydrateCard),
-    };
+    return loadPublicCatalogPage(query);
   })
 );
 
 const dedupeTopRatedPageInRequest = cache(async (page: number, itemsPerPage: number) =>
-  publicTopRatedPageCache.getOrLoad(`${page}:${itemsPerPage}`, async () => {
-    const result = await cachedPublicTopRatedPage(page, itemsPerPage);
-    return {
-      total: result.total,
-      data: result.data.map(hydrateCard),
-    };
-  })
+  publicTopRatedPageCache.getOrLoad(`${page}:${itemsPerPage}`, () =>
+    loadPublicTopRatedPage(page, itemsPerPage)
+  )
 );
 
 const dedupeRelatedMoviesInRequest = cache(async (movieId: string, genreKey: string) =>
-  publicRelatedMoviesCache.getOrLoad(`${movieId}:${genreKey}`, async () => {
+  publicRelatedMoviesCache.getOrLoad(`${movieId}:${genreKey}`, () => {
     const genreIds = genreKey ? genreKey.split(',') : [];
-    const items = await cachedRelatedMovies(movieId, genreIds);
-    return items.map(hydrateCard);
+    return loadRelatedMovies(movieId, genreIds);
   })
 );
 
@@ -323,10 +265,12 @@ export class MovieService {
 
   static countStreamingGroups = cache(async (
     platforms: Array<{ slug: string; tmdbIds: number[] }>,
-  ) => {
-    const entries = await cachedStreamingGroupCounts(platforms);
-    return new Map(Object.entries(entries).map(([slug, count]) => [slug, Number(count)]));
-  });
+  ) =>
+    streamingGroupCountsCache.getOrLoad(
+      JSON.stringify(platforms.map((p) => p.slug)),
+      () => MovieRepository.countStreamingGroups(platforms),
+    )
+  );
 
   static listPublishedReleaseYears = cache(async () =>
     releaseYearsCache.getOrLoad('release-years', () => MovieRepository.listPublishedReleaseYears())
@@ -617,6 +561,6 @@ export class MovieService {
 
   static async getCatalogStats(filters: Parameters<typeof MovieRepository.getCatalogStats>[0]) {
     const key = JSON.stringify(filters);
-    return publicCatalogStatsCache.getOrLoad(key, () => cachedCatalogStats(filters));
+    return publicCatalogStatsCache.getOrLoad(key, () => MovieRepository.getCatalogStats(filters));
   }
 }

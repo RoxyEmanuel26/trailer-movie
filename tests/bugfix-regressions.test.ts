@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { MovieStatus } from '@prisma/client';
@@ -14,6 +15,8 @@ import { hasRolePermission } from '../src/lib/auth/permissions';
 import { CollectionInputSchema, MovieAdminUpdateSchema, SeoUpdateSchema } from '../src/lib/api/schemas';
 import { catalogStatsQuery } from '../src/lib/catalog-stats-query';
 import { extractUniqueProviders } from '../src/lib/movie-aeo';
+import { SITEMAP_SNAPSHOT_VERSION } from '../src/lib/sitemap-cache';
+import { pruneStaleSitemapSnapshots } from '../src/lib/sitemap-cache-prune';
 import { sitemapUnavailableResponse } from '../src/lib/sitemap-xml';
 import { mapTmdbMovieToPrisma, mapTmdbStatus } from '../src/lib/tmdb/mapping';
 import { safeUpsertFranchiseCollection } from '../src/lib/services/import-service';
@@ -282,4 +285,53 @@ test('[info] route guards against Object.prototype keys and HomepageRepository a
   assert.equal(getSectionDataSrc.includes('include: { genres:'), false);
   assert.match(getSectionDataSrc, /select:\s*homepageMovieSelect/);
   assert.match(homepageRepoSrc, /update:\s*\{\}/);
+});
+
+test('disk hygiene: pruneStaleSitemapSnapshots removes old versions/stale temps and runtime caches stay bounded', async () => {
+  const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'movieflix-disk-hygiene-'));
+  try {
+    const publicDataDir = path.join(tmpRoot, 'public-data');
+    mkdirSync(publicDataDir, { recursive: true });
+
+    const activeXml = path.join(tmpRoot, `${SITEMAP_SNAPSHOT_VERSION}-movies-0.xml`);
+    const oldUnprefixedXml = path.join(tmpRoot, 'movies-0.xml');
+    const oldVersionXml = path.join(tmpRoot, 'v3-core.xml');
+    const staleTmp = path.join(tmpRoot, `${SITEMAP_SNAPSHOT_VERSION}-movies-1.xml.123.tmp`);
+    const freshTmp = path.join(tmpRoot, `${SITEMAP_SNAPSHOT_VERSION}-movies-2.xml.123.tmp`);
+    const stalePublicTmp = path.join(publicDataDir, 'homepage-v1.json.123.tmp');
+
+    writeFileSync(activeXml, '<urlset />', 'utf8');
+    writeFileSync(oldUnprefixedXml, '<urlset />', 'utf8');
+    writeFileSync(oldVersionXml, '<urlset />', 'utf8');
+    writeFileSync(staleTmp, 'partial', 'utf8');
+    writeFileSync(freshTmp, 'writing', 'utf8');
+    writeFileSync(stalePublicTmp, 'partial', 'utf8');
+
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000);
+    utimesSync(staleTmp, twoHoursAgo, twoHoursAgo);
+    utimesSync(stalePublicTmp, twoHoursAgo, twoHoursAgo);
+
+    const result = await pruneStaleSitemapSnapshots(tmpRoot, 30 * 60_000);
+    assert.equal(result.removedFiles, 4);
+    assert.equal(existsSync(activeXml), true);
+    assert.equal(existsSync(freshTmp), true);
+    assert.equal(existsSync(oldUnprefixedXml), false);
+    assert.equal(existsSync(oldVersionXml), false);
+    assert.equal(existsSync(staleTmp), false);
+    assert.equal(existsSync(stalePublicTmp), false);
+  } finally {
+    rmSync(tmpRoot, { recursive: true, force: true });
+  }
+
+  const movieServiceSrc = readFileSync(path.resolve('src/lib/services/MovieService.ts'), 'utf8');
+  assert.equal(movieServiceSrc.includes('unstable_cache'), false);
+
+  const serverSrc = readFileSync(path.resolve('server.js'), 'utf8');
+  assert.match(serverSrc, /scheduleDiskHousekeeping\(\)/);
+  assert.match(serverSrc, /MAX_FETCH_CACHE_FILES/);
+
+  const packSrc = readFileSync(path.resolve('scripts/package-standalone.ts'), 'utf8');
+  assert.match(packSrc, /install --prod --frozen-lockfile/);
+  assert.match(packSrc, /\.movieflix-file-manifest/);
+  assert.match(packSrc, /store prune/);
 });

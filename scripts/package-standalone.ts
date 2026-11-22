@@ -24,6 +24,19 @@ function copyRecursiveSync(src: string, dest: string) {
   }
 }
 
+function collectRelativeFiles(baseDir: string, currentDir = baseDir, out: string[] = []): string[] {
+  if (!fs.existsSync(currentDir)) return out;
+  for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      collectRelativeFiles(baseDir, fullPath, out);
+    } else if (entry.isFile()) {
+      out.push(path.relative(baseDir, fullPath).split(path.sep).join('/'));
+    }
+  }
+  return out;
+}
+
 async function main() {
   log('Step 1/4: Checking Next.js pre-compiled production build...');
   if (!fs.existsSync(path.join(ROOT, '.next', 'server')) || !fs.existsSync(path.join(ROOT, '.next', 'BUILD_ID'))) {
@@ -44,6 +57,18 @@ async function main() {
   log('Copying .next/server and .next/static...');
   copyRecursiveSync(path.join(ROOT, '.next', 'server'), path.join(stagingNext, 'server'));
   copyRecursiveSync(path.join(ROOT, '.next', 'static'), path.join(stagingNext, 'static'));
+
+  // Record the exact file list of .next/server and .next/static so start.sh can
+  // prune orphaned chunks left behind by previous Unarchive overwrites.
+  const packagedNextFiles = [
+    ...collectRelativeFiles(stagingNext, path.join(stagingNext, 'server')),
+    ...collectRelativeFiles(stagingNext, path.join(stagingNext, 'static')),
+  ].sort();
+  fs.writeFileSync(
+    path.join(stagingNext, '.movieflix-file-manifest'),
+    packagedNextFiles.join('\n') + '\n',
+    'utf8',
+  );
 
   if (fs.existsSync(path.join(ROOT, '.next', 'types'))) {
     copyRecursiveSync(path.join(ROOT, '.next', 'types'), path.join(stagingNext, 'types'));
@@ -166,8 +191,84 @@ else
   PM="npm"
 fi
 
-# 1. Install dependencies if node_modules is missing, pnpm-lock.yaml changed,
-# or core pinned runtime packages (next, better-auth) drifted from package.json
+# 0. Automatic Disk Cleanup (reclaim caches, orphaned chunks, and old deploy artifacts)
+if command -v du >/dev/null 2>&1; then
+  echo "[MovieFlix] Disk usage before cleanup: $(du -sh "$ROOT" 2>/dev/null | awk '{print $1}')"
+fi
+
+# Remove leftover upload archives if not manually deleted after Unarchive
+rm -f "$ROOT/movieflix-deploy.tar.gz" "$ROOT/movieflix-source.tar.gz" 2>/dev/null || true
+
+# Remove build/dev-only Next.js caches and stale fetch/image caches (never needed at runtime)
+rm -rf \\
+  "$ROOT/.next/dev" \\
+  "$ROOT/.next/cache/turbopack" \\
+  "$ROOT/.next/cache/webpack" \\
+  "$ROOT/.next/cache/swc" \\
+  "$ROOT/.next/cache/fetch-cache" \\
+  "$ROOT/.next/cache/images" \\
+  "$ROOT/.next/node_modules" \\
+  2>/dev/null || true
+
+# Remove legacy Pterodactyl multi-release directories if running standalone root server.js
+if [ -f "$ROOT/server.js" ] && [ -d "$ROOT/.next/server" ]; then
+  rm -rf \\
+    "$ROOT/releases" \\
+    "$ROOT/current" \\
+    "$ROOT/previous" \\
+    "$ROOT/shared/.pnpm-store" \\
+    "$ROOT/shared/.cache" \\
+    2>/dev/null || true
+fi
+
+# Prune orphaned .next/server and .next/static chunks left behind by previous Unarchive overwrites
+if [ -s "$ROOT/.next/.movieflix-file-manifest" ] && command -v node >/dev/null 2>&1; then
+  node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const nextDir = path.resolve("./.next");
+    const manifestPath = path.join(nextDir, ".movieflix-file-manifest");
+    const expected = new Set(
+      fs.readFileSync(manifestPath, "utf8").split(/\\r?\\n/).map((l) => l.trim()).filter(Boolean)
+    );
+    if (expected.size === 0) process.exit(0);
+    let removed = 0;
+    const walk = (dir) => {
+      if (!fs.existsSync(dir)) return;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+          try {
+            if (fs.readdirSync(full).length === 0) fs.rmdirSync(full);
+          } catch {}
+        } else if (entry.isFile()) {
+          const rel = path.relative(nextDir, full).split(path.sep).join("/");
+          if (!expected.has(rel)) {
+            try { fs.unlinkSync(full); removed += 1; } catch {}
+          }
+        }
+      }
+    };
+    walk(path.join(nextDir, "server"));
+    walk(path.join(nextDir, "static"));
+    if (removed > 0) console.log("[MovieFlix] Pruned " + removed + " orphaned .next build artifact(s).");
+  ' 2>/dev/null || true
+fi
+
+# Prune obsolete sitemap snapshot versions (!= v4-*) and orphaned .tmp files
+for SM_DIR in "$ROOT/.cache/sitemaps" "$ROOT/shared/sitemaps"; do
+  if [ -d "$SM_DIR" ]; then
+    find "$SM_DIR" -maxdepth 1 -type f -name '*.xml' ! -name 'v4-*' -delete 2>/dev/null || true
+    find "$SM_DIR" -maxdepth 2 -type f -name '*.tmp' -delete 2>/dev/null || true
+  fi
+done
+
+# Clear package manager download/metadata caches
+rm -rf "$HOME/.cache/pnpm" "$HOME/.npm" "$ROOT/.npm" "$ROOT/.cache/pnpm" 2>/dev/null || true
+
+# 1. Install production dependencies if node_modules is missing, pnpm-lock.yaml changed,
+# core pinned runtime packages drifted, or devDependencies bloat is still installed
 LOCK_HASH=""
 if [ -f "$ROOT/pnpm-lock.yaml" ] && command -v sha256sum >/dev/null 2>&1; then
   LOCK_HASH="$(sha256sum "$ROOT/pnpm-lock.yaml" | awk '{print $1}')"
@@ -182,6 +283,9 @@ if [ ! -d "$ROOT/node_modules" ]; then
   NEEDS_INSTALL=1
 elif [ -n "$LOCK_HASH" ] && [ -n "$PREV_LOCK_HASH" ] && [ "$LOCK_HASH" != "$PREV_LOCK_HASH" ]; then
   NEEDS_INSTALL=1
+elif [ -d "$ROOT/node_modules/eslint" ] || [ -d "$ROOT/node_modules/typescript" ] || [ -d "$ROOT/node_modules/openai" ] || [ -d "$ROOT/node_modules/tsx" ]; then
+  echo "[MovieFlix] Pruning devDependencies from production node_modules..."
+  NEEDS_INSTALL=1
 elif ! node -e '
   const fs = require("fs");
   const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"));
@@ -195,11 +299,11 @@ elif ! node -e '
 fi
 
 if [ "$NEEDS_INSTALL" -eq 1 ]; then
-  echo "[MovieFlix] Installing updated dependencies..."
+  echo "[MovieFlix] Installing production dependencies (--prod)..."
   if [[ "$PM" == *"pnpm"* ]]; then
-    $PM install --frozen-lockfile || $PM install --no-frozen-lockfile
+    $PM install --prod --frozen-lockfile || $PM install --prod --no-frozen-lockfile
   else
-    npm install --legacy-peer-deps
+    npm install --omit=dev --legacy-peer-deps
   fi
   if [ -n "$LOCK_HASH" ] && [ -d "$ROOT/node_modules" ]; then
     echo "$LOCK_HASH" > "$ROOT/node_modules/.movieflix-lock-hash" 2>/dev/null || true
@@ -208,22 +312,39 @@ else
   if [ -n "$LOCK_HASH" ] && [ -z "$PREV_LOCK_HASH" ] && [ -d "$ROOT/node_modules" ]; then
     echo "$LOCK_HASH" > "$ROOT/node_modules/.movieflix-lock-hash" 2>/dev/null || true
   fi
-  echo "[MovieFlix] node_modules up to date. Skipping installation."
+  echo "[MovieFlix] Production node_modules up to date. Skipping installation."
 fi
 
-# 2. Check Prisma Client (re-link after fresh install so symlink never goes stale)
-if [ "$NEEDS_INSTALL" -eq 1 ] || [ ! -d "$ROOT/node_modules/.prisma" ]; then
-  echo "[MovieFlix] Linking or generating Prisma Client..."
+# Reclaim pnpm content-addressable store & caches inside container quota.
+# Safe because pnpm links files into node_modules/.pnpm via hardlinks/copies
+# (never symlinks to the store), while Pterodactyl Wings double-counts hardlinks
+# across node_modules and ~/.local/share/pnpm/store against the 3 GiB disk quota.
+if [[ "$PM" == *"pnpm"* ]]; then
+  $PM store prune 2>/dev/null || true
+fi
+rm -rf \\
+  "$HOME/.local/share/pnpm/store" \\
+  "$ROOT/.local/share/pnpm/store" \\
+  "$HOME/.pnpm-store" \\
+  "$ROOT/.pnpm-store" \\
+  "$HOME/.cache/pnpm" \\
+  "$HOME/.npm" \\
+  "$ROOT/.npm" \\
+  2>/dev/null || true
+
+# 2. Check Prisma Client (regenerate & re-link after fresh install so client & symlink match schema)
+if [ "$NEEDS_INSTALL" -eq 1 ] || [ ! -d "$ROOT/node_modules/.prisma/client" ]; then
+  echo "[MovieFlix] Generating & linking Prisma Client..."
   rm -rf "$ROOT/node_modules/.prisma" 2>/dev/null || true
-  PNPM_PRISMA="$(find "$ROOT/node_modules/.pnpm" -type d -name ".prisma" 2>/dev/null | head -n 1 || true)"
-  if [ -n "$PNPM_PRISMA" ] && [ -d "$PNPM_PRISMA" ]; then
-    ln -sfn "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || cp -r "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || true
+  if [[ "$PM" == *"pnpm"* ]]; then
+    $PM exec prisma generate || npx prisma generate || true
+  else
+    npx prisma generate || true
   fi
   if [ ! -d "$ROOT/node_modules/.prisma" ]; then
-    if [[ "$PM" == *"pnpm"* ]]; then
-      $PM exec prisma generate || npx prisma generate || true
-    else
-      npx prisma generate || true
+    PNPM_PRISMA="$(find "$ROOT/node_modules/.pnpm" -type d -name ".prisma" 2>/dev/null | head -n 1 || true)"
+    if [ -n "$PNPM_PRISMA" ] && [ -d "$PNPM_PRISMA" ]; then
+      ln -sfn "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || cp -r "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || true
     fi
   fi
 fi
@@ -238,7 +359,10 @@ if [ ! -d "$ROOT/.next/server" ]; then
   fi
 else
   echo "[MovieFlix] Pre-built .next found. Skipping build!"
-  rm -rf "$ROOT/.next/node_modules/jsdom"* 2>/dev/null || true
+fi
+
+if command -v du >/dev/null 2>&1; then
+  echo "[MovieFlix] Disk usage after cleanup: $(du -sh "$ROOT" 2>/dev/null | awk '{print $1}')"
 fi
 
 echo "============================================================"
