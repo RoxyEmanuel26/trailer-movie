@@ -106,6 +106,34 @@ export class SeoRepository {
     });
   }
 
+  static async listMovieSitemapShardStats(pageSize = 10_000, db: DbClient = prisma) {
+    const safeSize = Math.max(1, Math.floor(pageSize));
+    const excluded = await this.sitemapExcludedIds('Movie', db);
+    const excludeCondition = excluded.length
+      ? Prisma.sql`AND "id" NOT IN (${Prisma.join(excluded)})`
+      : Prisma.empty;
+    const rows = await db.$queryRaw<Array<{ shard: number; count: number; lastModified: Date | null }>>(Prisma.sql`
+      WITH ranked AS (
+        SELECT "updatedAt",
+               ((ROW_NUMBER() OVER (ORDER BY "createdAt" ASC, "id" ASC) - 1) / ${safeSize})::int AS shard
+        FROM "movies"
+        WHERE "status" = 'PUBLISHED'
+          AND "deletedAt" IS NULL
+          AND "importQualityStatus" = 'READY'
+          ${excludeCondition}
+      )
+      SELECT shard, COUNT(*)::int AS count, MAX("updatedAt") AS "lastModified"
+      FROM ranked
+      GROUP BY shard
+      ORDER BY shard ASC
+    `);
+    return rows.map((row) => ({
+      shard: Number(row.shard),
+      count: Number(row.count),
+      lastModified: row.lastModified ? new Date(row.lastModified) : null,
+    }));
+  }
+
   static async listIndexableMoviesForSitemap(
     params: { skip: number; take: number },
     db: DbClient = prisma
@@ -182,7 +210,13 @@ export class SeoRepository {
   static async getRssFeedData(db: DbClient = prisma) {
     const excluded = await this.sitemapExcludedIds('Movie', db);
     return db.movie.findMany({
-      where: { status: 'PUBLISHED', deletedAt: null, importQualityStatus: 'READY', ...(excluded.length ? { id: { notIn: excluded } } : {}) },
+      where: {
+        status: 'PUBLISHED',
+        deletedAt: null,
+        importQualityStatus: 'READY',
+        releaseDate: { not: null, lte: new Date() },
+        ...(excluded.length ? { id: { notIn: excluded } } : {}),
+      },
       select: {
         title: true,
         slug: true,
@@ -198,7 +232,7 @@ export class SeoRepository {
           take: 4,
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }, { createdAt: 'desc' }],
       take: 25,
     });
   }

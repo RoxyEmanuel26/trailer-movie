@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       : await readSitemapSnapshot(snapshotKey);
     if (freshSnapshot) return xmlResponse(freshSnapshot);
     const result = await generateSitemapWithFallback(snapshotKey, async () => {
-      const [moviePageCount, personPageCount, latestModified] = await getSitemapPageCounts(forceRefresh);
+      const [moviePageCount, personPageCount, latestModified, shardLastModified] = await getSitemapPageCounts(forceRefresh);
       const sitemapItems: SitemapIndexItem[] = [
         {
           url: absoluteUrl('/sitemaps/core'),
@@ -25,9 +25,10 @@ export async function GET(request: Request) {
 
       for (let page = 0; page < moviePageCount; page += 1) {
         const isNewestShard = page === moviePageCount - 1;
+        const shardModified = shardLastModified?.[page] || (isNewestShard ? latestModified : null);
         sitemapItems.push({
           url: absoluteUrl(`/sitemaps/movies-${page}`),
-          ...(isNewestShard && latestModified ? { lastModified: latestModified } : {}),
+          ...(shardModified ? { lastModified: shardModified } : {}),
         });
       }
 
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
 
       return serializeSitemapIndex(sitemapItems);
     });
-    return xmlResponse(result.xml, { stale: result.stale });
+    return xmlResponse(result.xml, { stale: result.stale, noStore: forceRefresh });
   } catch (error) {
     console.error('Sitemap index generation failed and no snapshot is available', error);
     return sitemapUnavailableResponse();

@@ -42,7 +42,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       const result = await generateSitemapWithFallback(snapshotKey, async () =>
         serializeSitemap(await SeoService.generateSitemapData()),
       );
-      return xmlResponse(result.xml, { stale: result.stale });
+      return xmlResponse(result.xml, { stale: result.stale, noStore: forceRefresh });
     } catch (error) {
       console.error('Core sitemap generation failed and no snapshot is available', error);
       return sitemapUnavailableResponse();
@@ -74,7 +74,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         },
         isStableMovieShard ? STABLE_SITEMAP_SHARD_MAX_AGE_MS : undefined,
       );
-      return xmlResponse(result.xml, { stale: result.stale });
+      return xmlResponse(result.xml, { stale: result.stale, noStore: forceRefresh });
     } catch (error) {
       rethrowNotFound(error);
       console.error(`Movie sitemap ${id} generation failed and no snapshot is available`, error);
@@ -105,7 +105,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       },
       STABLE_SITEMAP_SHARD_MAX_AGE_MS,
     );
-    return xmlResponse(result.xml, { stale: result.stale });
+    return xmlResponse(result.xml, { stale: result.stale, noStore: forceRefresh });
   } catch (error) {
     rethrowNotFound(error);
     console.error(`Person sitemap ${id} generation failed and no snapshot is available`, error);

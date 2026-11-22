@@ -27,6 +27,8 @@ ENV NEXT_PUBLIC_APP_URL="https://www.movieflix.site"
 ENV SEO_INDEXING_ENABLED="false"
 ENV ORIGIN_GATE_SECRET="docker-build-only-origin-gate-secret-32-characters"
 ENV DATABASE_DRIVER="pg"
+ENV ALLOW_INSECURE_POSTGRES="true"
+ENV NEXT_OUTPUT_STANDALONE="true"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

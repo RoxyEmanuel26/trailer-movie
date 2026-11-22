@@ -1,5 +1,5 @@
 import { unstable_cache } from 'next/cache';
-import { SeoService } from './services/SeoService';
+import { MOVIE_SITEMAP_PAGE_SIZE, SeoService } from './services/SeoService';
 import { SeoRepository } from './repositories/SeoRepository';
 
 let lastKnownPersonPageCount: number | null = null;
@@ -7,11 +7,18 @@ let lastPersonCountAt = 0;
 let inFlightPersonCount: Promise<number> | null = null;
 
 const loadMovieCountAndLastMod = async () => {
-  const [movies, lastModified] = await Promise.all([
-    SeoService.getMovieSitemapPageCount(),
+  const [shardStats, lastModified] = await Promise.all([
+    SeoRepository.listMovieSitemapShardStats(MOVIE_SITEMAP_PAGE_SIZE),
     SeoRepository.getHomepageLastModified(),
   ]);
-  return { movies, lastModified: lastModified ? lastModified.toISOString() : null };
+  const shardLastModified = shardStats.map((entry) =>
+    entry.lastModified ? entry.lastModified.toISOString() : null,
+  );
+  return {
+    movies: shardStats.length,
+    shardLastModified,
+    lastModified: lastModified ? lastModified.toISOString() : null,
+  };
 };
 
 const loadPersonCount = async () => {
@@ -36,7 +43,7 @@ const loadPersonCount = async () => {
   return inFlightPersonCount;
 };
 
-const cachedMovieMeta = unstable_cache(loadMovieCountAndLastMod, ['sitemap-movie-meta-v4'], { revalidate: 300 });
+const cachedMovieMeta = unstable_cache(loadMovieCountAndLastMod, ['sitemap-movie-meta-v5'], { revalidate: 300 });
 const cachedPersonCount = unstable_cache(loadPersonCount, ['sitemap-person-count-v4'], { revalidate: 3600 });
 
 export async function getMovieSitemapPageCountCached(forceRefresh = false) {
@@ -53,5 +60,5 @@ export async function getSitemapPageCounts(forceRefresh = false) {
     forceRefresh ? loadMovieCountAndLastMod() : cachedMovieMeta(),
     forceRefresh ? loadPersonCount() : cachedPersonCount(),
   ]);
-  return [movieMeta.movies, people, movieMeta.lastModified] as const;
+  return [movieMeta.movies, people, movieMeta.lastModified, movieMeta.shardLastModified] as const;
 }

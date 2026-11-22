@@ -66,14 +66,24 @@ export function serializeSitemapIndex(items: SitemapIndexItem[]) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${sitemaps}</sitemapindex>`;
 }
 
-export function xmlResponse(xml: string, options: { status?: number; stale?: boolean } = {}) {
+export function xmlResponse(xml: string, options: { status?: number; stale?: boolean; noStore?: boolean } = {}) {
+  const cacheHeaders = options.noStore
+    ? {
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
+        'Cloudflare-CDN-Cache-Control': 'no-store',
+      }
+    : {
+        'Cache-Control': 'public, max-age=0, s-maxage=900, stale-while-revalidate=86400, stale-if-error=86400',
+        'CDN-Cache-Control': 'public, max-age=900, stale-while-revalidate=86400, stale-if-error=86400',
+        'Cloudflare-CDN-Cache-Control': 'public, max-age=900, stale-while-revalidate=86400, stale-if-error=86400',
+      };
+
   return new Response(xml, {
     status: options.status || 200,
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=0, s-maxage=900, stale-while-revalidate=86400, stale-if-error=86400',
-      'CDN-Cache-Control': 'public, max-age=900, stale-while-revalidate=86400, stale-if-error=86400',
-      'Cloudflare-CDN-Cache-Control': 'public, max-age=900, stale-while-revalidate=86400, stale-if-error=86400',
+      ...cacheHeaders,
       ...(options.stale ? { Warning: '110 - "Response is stale"', 'X-Sitemap-Snapshot': 'stale' } : {}),
     },
   });

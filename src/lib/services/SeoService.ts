@@ -599,7 +599,11 @@ Sitemap: ${absoluteUrl('/sitemap.xml')}`;
     return rssFeedCache.getOrLoad('rss-feed-v2', async () => {
       const movies = await SeoRepository.getRssFeedData();
       const feedUrl = absoluteUrl('/feed.xml');
-      const lastBuildDate = (movies[0]?.createdAt || new Date()).toUTCString();
+      const latestActivity = movies.reduce<Date | null>((latest, movie) => {
+        const candidate = movie.updatedAt || movie.createdAt;
+        return !latest || candidate > latest ? candidate : latest;
+      }, null);
+      const lastBuildDate = (latestActivity || new Date()).toUTCString();
 
       const items = movies
         .map((m) => {
@@ -607,6 +611,7 @@ Sitemap: ${absoluteUrl('/sitemap.xml')}`;
           const itemTitle = year ? `${m.title} (${year})` : m.title;
           const itemUrl = absoluteUrl(moviePath(m.slug));
           const poster = m.posterUrl ? getTmdbImageUrl(m.posterUrl, 500) : null;
+          const pubDate = (m.releaseDate && m.releaseDate > m.createdAt ? m.releaseDate : m.createdAt).toUTCString();
           const categories = (m.genres || [])
             .map((g) => `<category><![CDATA[${escapeCdata(g.genre.name)}]]></category>`)
             .join('');
@@ -619,7 +624,7 @@ Sitemap: ${absoluteUrl('/sitemap.xml')}`;
         <title><![CDATA[${escapeCdata(itemTitle)}]]></title>
         <link>${itemUrl}</link>
         <guid isPermaLink="true">${itemUrl}</guid>
-        <pubDate>${m.createdAt.toUTCString()}</pubDate>
+        <pubDate>${pubDate}</pubDate>
         <description><![CDATA[${escapeCdata(m.synopsis || `Watch the official trailer for ${itemTitle} on MovieFlix.`)}]]></description>
         ${categories}
         ${mediaTag}

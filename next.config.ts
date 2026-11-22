@@ -13,6 +13,8 @@ const sentryConnectOrigin = (() => {
 })();
 
 const nextConfig: NextConfig = {
+  // Enable standalone output only when building the Docker fallback image.
+  ...(process.env.NEXT_OUTPUT_STANDALONE === 'true' ? { output: 'standalone' as const } : {}),
   // Keep build-time database fan-out within a small self-hosted PostgreSQL server.
   experimental: { cpus: 1 },
   // Resolve metadata before sending headers so redirects and not-found responses

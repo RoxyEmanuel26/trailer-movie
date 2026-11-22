@@ -417,23 +417,35 @@ function scheduleSitemapWarmup(port) {
     try {
       const secretToUse = forceRefresh ? revalidationSecret : '';
       const indexXml = await fetchLocalText(port, '/sitemap.xml', hostHeader, originToken, secretToUse, false);
-      const locMatches = [...indexXml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-      const movieShards = locMatches.filter((u) => u.includes('/sitemaps/movies-'));
-      const newestMovieShard = movieShards[movieShards.length - 1] || '';
+      const shardEntries = [
+        ...indexXml.matchAll(/<sitemap><loc>([^<]+)<\/loc>(?:<lastmod>([^<]+)<\/lastmod>)?<\/sitemap>/g),
+      ].map((m) => ({ loc: m[1].replace(/&amp;/g, '&'), lastmod: m[2] || null }));
+      const locMatches = shardEntries.length > 0
+        ? shardEntries
+        : [...indexXml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => ({ loc: m[1].replace(/&amp;/g, '&'), lastmod: null }));
+      const movieShards = locMatches.filter((entry) => entry.loc.includes('/sitemaps/movies-'));
+      const newestMovieShard = movieShards[movieShards.length - 1]?.loc || '';
+      const recentCutoffMs = Date.now() - 6 * 3600 * 1000;
 
       let hotShardsAttempted = 0;
       let hotShardsSucceeded = 0;
 
-      for (const loc of locMatches) {
+      for (const entry of locMatches) {
         let isHotShard = false;
         try {
-          const parsed = new URL(loc);
-          // Only force-refresh /sitemaps/core and the newest movie shard on revalidation.
-          // Older movie shards and people-* shards use their 6-hour disk snapshot so we
-          // never tie up database pool connections scanning 3M movie_people rows repeatedly.
+          const parsed = new URL(entry.loc);
+          const lastModMs = entry.lastmod ? Date.parse(entry.lastmod) : NaN;
+          const modifiedRecently =
+            parsed.pathname.startsWith('/sitemaps/movies-') &&
+            Number.isFinite(lastModMs) &&
+            lastModMs >= recentCutoffMs;
+          // Force-refresh /sitemaps/core, the newest movie shard, and any movie shard
+          // whose <lastmod> shows newly published/updated films within the last 6 hours.
+          // Unchanged movie shards and people-* shards keep their 6-hour disk snapshot.
           isHotShard =
             parsed.pathname === '/sitemaps/core' ||
-            loc === newestMovieShard;
+            entry.loc === newestMovieShard ||
+            modifiedRecently;
           if (isHotShard) hotShardsAttempted += 1;
           await fetchLocalText(
             port,

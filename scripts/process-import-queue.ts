@@ -24,23 +24,39 @@ async function checkWebsiteHealth() {
 
 async function warmSitemaps(baseUrl: string, secret: string) {
   const normalizedBase = baseUrl.replace(/\/+$/, '');
-  const indexUrl = `${normalizedBase}/sitemap.xml`;
+  const bust = Date.now();
+  const indexUrl = `${normalizedBase}/sitemap.xml?refresh=${bust}`;
   const headers = { Authorization: `Bearer ${secret}` };
   const index = await fetch(indexUrl, { headers, signal: AbortSignal.timeout(120_000) });
   if (!index.ok) throw new Error(`sitemap index returned HTTP ${index.status}`);
   const xml = await index.text();
-  const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)]
-    .map((match) => match[1].replace(/&amp;/g, '&'))
-    .filter((url) => url.startsWith(`${normalizedBase}/sitemaps/`));
-  const movieShards = urls.filter((url) => url.includes('/sitemaps/movies-'));
-  const newestMovieShard = movieShards[movieShards.length - 1];
-  // Only force-warm hot shards sequentially over the edge. Older movie shards and
-  // people-* shards stay on their 6-hour disk snapshot (refreshed locally by server.js).
-  const hotUrls = urls.filter(
-    (url) => url.endsWith('/sitemaps/core') || (newestMovieShard && url === newestMovieShard),
-  );
+  const entries = [
+    ...xml.matchAll(/<sitemap><loc>([^<]+)<\/loc>(?:<lastmod>([^<]+)<\/lastmod>)?<\/sitemap>/g),
+  ]
+    .map((match) => ({
+      url: match[1].replace(/&amp;/g, '&'),
+      lastmod: match[2] || null,
+    }))
+    .filter((entry) => entry.url.startsWith(`${normalizedBase}/sitemaps/`));
+  const movieShards = entries.filter((entry) => entry.url.includes('/sitemaps/movies-'));
+  const newestMovieShard = movieShards[movieShards.length - 1]?.url;
+  const recentCutoffMs = Date.now() - 6 * 3600 * 1000;
+  // Force-warm /sitemaps/core, newest movie shard, and any movie shard whose <lastmod>
+  // updated within the last 6 hours (e.g. newly released DRAFT->PUBLISHED films).
+  // Append `?refresh=` so Cloudflare edge cache never masks the authenticated warm call.
+  const hotUrls = entries
+    .filter((entry) => {
+      if (entry.url.endsWith('/sitemaps/core')) return true;
+      if (newestMovieShard && entry.url === newestMovieShard) return true;
+      if (entry.url.includes('/sitemaps/movies-') && entry.lastmod) {
+        const modMs = Date.parse(entry.lastmod);
+        return Number.isFinite(modMs) && modMs >= recentCutoffMs;
+      }
+      return false;
+    })
+    .map((entry) => entry.url);
   for (const url of hotUrls) {
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(120_000) });
+    const response = await fetch(`${url}?refresh=${bust}`, { headers, signal: AbortSignal.timeout(120_000) });
     if (!response.ok) throw new Error(`sitemap shard returned HTTP ${response.status}`);
   }
 }
