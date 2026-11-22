@@ -20,12 +20,8 @@ COPY . .
 # Accept build arguments for database connectivity during SSG
 ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 ENV DATABASE_URL=${DATABASE_URL}
-ENV TMDB_ACCESS_TOKEN="dummy_token"
-ENV BETTER_AUTH_SECRET="dummy_secret_at_least_32_characters_long"
-ENV BETTER_AUTH_URL="https://www.movieflix.site"
 ENV NEXT_PUBLIC_APP_URL="https://www.movieflix.site"
 ENV SEO_INDEXING_ENABLED="false"
-ENV ORIGIN_GATE_SECRET="docker-build-only-origin-gate-secret-32-characters"
 ENV DATABASE_DRIVER="pg"
 ENV ALLOW_INSECURE_POSTGRES="true"
 ENV NEXT_OUTPUT_STANDALONE="true"
@@ -34,7 +30,13 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN pnpm prisma generate
-RUN pnpm build
+# Pass dummy build-time values inline so BuildKit does not warn about
+# SecretsUsedInArgOrEnv and no placeholder values persist in image metadata.
+RUN TMDB_ACCESS_TOKEN="dummy_token" \
+    BETTER_AUTH_SECRET="dummy_secret_at_least_32_characters_long" \
+    BETTER_AUTH_URL="https://www.movieflix.site" \
+    ORIGIN_GATE_SECRET="docker-build-only-origin-gate-secret-32-characters" \
+    pnpm build
 
 # Production image, copy all the files and run next
 FROM base AS runner

@@ -166,7 +166,8 @@ else
   PM="npm"
 fi
 
-# 1. Install dependencies if node_modules is missing or pnpm-lock.yaml changed
+# 1. Install dependencies if node_modules is missing, pnpm-lock.yaml changed,
+# or core pinned runtime packages (next, better-auth) drifted from package.json
 LOCK_HASH=""
 if [ -f "$ROOT/pnpm-lock.yaml" ] && command -v sha256sum >/dev/null 2>&1; then
   LOCK_HASH="$(sha256sum "$ROOT/pnpm-lock.yaml" | awk '{print $1}')"
@@ -176,8 +177,25 @@ if [ -f "$ROOT/node_modules/.movieflix-lock-hash" ]; then
   PREV_LOCK_HASH="$(cat "$ROOT/node_modules/.movieflix-lock-hash" 2>/dev/null || true)"
 fi
 
-if [ ! -d "$ROOT/node_modules" ] || { [ -n "$LOCK_HASH" ] && [ -n "$PREV_LOCK_HASH" ] && [ "$LOCK_HASH" != "$PREV_LOCK_HASH" ]; }; then
-  echo "[MovieFlix] Installing dependencies..."
+NEEDS_INSTALL=0
+if [ ! -d "$ROOT/node_modules" ]; then
+  NEEDS_INSTALL=1
+elif [ -n "$LOCK_HASH" ] && [ -n "$PREV_LOCK_HASH" ] && [ "$LOCK_HASH" != "$PREV_LOCK_HASH" ]; then
+  NEEDS_INSTALL=1
+elif ! node -e '
+  const fs = require("fs");
+  const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"));
+  for (const name of ["next", "better-auth"]) {
+    const expected = String(pkg.dependencies?.[name] || "").replace(/^[^0-9]*/, "");
+    const installed = JSON.parse(fs.readFileSync("./node_modules/" + name + "/package.json", "utf8")).version;
+    if (expected && installed !== expected) process.exit(1);
+  }
+' >/dev/null 2>&1; then
+  NEEDS_INSTALL=1
+fi
+
+if [ "$NEEDS_INSTALL" -eq 1 ]; then
+  echo "[MovieFlix] Installing updated dependencies..."
   if [[ "$PM" == *"pnpm"* ]]; then
     $PM install --frozen-lockfile || $PM install --no-frozen-lockfile
   else
@@ -193,9 +211,10 @@ else
   echo "[MovieFlix] node_modules up to date. Skipping installation."
 fi
 
-# 2. Check Prisma Client
-if [ ! -d "$ROOT/node_modules/.prisma" ]; then
+# 2. Check Prisma Client (re-link after fresh install so symlink never goes stale)
+if [ "$NEEDS_INSTALL" -eq 1 ] || [ ! -d "$ROOT/node_modules/.prisma" ]; then
   echo "[MovieFlix] Linking or generating Prisma Client..."
+  rm -rf "$ROOT/node_modules/.prisma" 2>/dev/null || true
   PNPM_PRISMA="$(find "$ROOT/node_modules/.pnpm" -type d -name ".prisma" 2>/dev/null | head -n 1 || true)"
   if [ -n "$PNPM_PRISMA" ] && [ -d "$PNPM_PRISMA" ]; then
     ln -sfn "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || cp -r "$PNPM_PRISMA" "$ROOT/node_modules/.prisma" 2>/dev/null || true
