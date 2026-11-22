@@ -146,9 +146,16 @@ export class SeoRepository {
         title: true,
         synopsis: true,
         posterUrl: true,
+        backdropUrl: true,
         releaseDate: true,
         updatedAt: true,
         youtubeTrailerId: true,
+        images: {
+          where: { imageType: 'BACKDROP' },
+          orderBy: [{ voteAverage: 'desc' }, { sortOrder: 'asc' }],
+          take: 3,
+          select: { imageUrl: true },
+        },
         trailers: {
           where: { status: 'ACTIVE', sourceType: 'YOUTUBE' },
           orderBy: [{ isPrimary: 'desc' }, { publishedDate: 'desc' }],
@@ -184,7 +191,7 @@ export class SeoRepository {
       db.collection.findMany({
         where: {
           isActive: true,
-          description: { not: null },
+          slug: { not: '' },
           movies: { some: { movie: { status: 'PUBLISHED', deletedAt: null } } },
         },
         select: {
@@ -203,7 +210,7 @@ export class SeoRepository {
 
     return {
       genres: genres.filter((genre) => genre._count.movies >= 3 && Boolean(genre.description?.trim())),
-      collections: collections.filter((collection) => collection._count.movies >= 3 && Boolean(collection.description?.trim())),
+      collections: collections.filter((collection) => collection._count.movies >= 2 && Boolean(collection.slug?.trim())),
     };
   }
 

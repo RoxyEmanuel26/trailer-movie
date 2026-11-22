@@ -1,9 +1,15 @@
+export interface SitemapImage {
+  loc: string;
+  title?: string;
+}
+
 export interface SitemapEntry {
   url: string;
   lastModified?: Date | string;
   changeFrequency?: string;
   priority?: number;
-  image?: { loc: string; title?: string };
+  image?: SitemapImage;
+  images?: SitemapImage[];
   video?: {
     thumbnailLoc: string;
     title: string;
@@ -13,6 +19,8 @@ export interface SitemapEntry {
   };
 }
 
+const MAX_IMAGES_PER_URL = 6;
+
 function escapeXml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -20,6 +28,34 @@ function escapeXml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+function serializeEntryImages(entry: SitemapEntry): string {
+  const candidates: SitemapImage[] = [];
+  if (entry.image?.loc) candidates.push(entry.image);
+  if (Array.isArray(entry.images)) {
+    for (const img of entry.images) {
+      if (img?.loc) candidates.push(img);
+    }
+  }
+  if (candidates.length === 0) return '';
+
+  const seen = new Set<string>();
+  const unique: SitemapImage[] = [];
+  for (const img of candidates) {
+    const loc = img.loc.trim();
+    if (!loc || seen.has(loc)) continue;
+    seen.add(loc);
+    unique.push({ loc, title: img.title?.trim() || undefined });
+    if (unique.length >= MAX_IMAGES_PER_URL) break;
+  }
+
+  return unique
+    .map(
+      (img) =>
+        `<image:image><image:loc>${escapeXml(img.loc)}</image:loc>${img.title ? `<image:title>${escapeXml(img.title)}</image:title>` : ''}</image:image>`,
+    )
+    .join('');
 }
 
 export function serializeSitemap(entries: SitemapEntry[]) {
@@ -35,14 +71,12 @@ export function serializeSitemap(entries: SitemapEntry[]) {
         : '';
       const priority =
         typeof entry.priority === 'number' ? `<priority>${entry.priority.toFixed(1)}</priority>` : '';
-      const image = entry.image
-        ? `<image:image><image:loc>${escapeXml(entry.image.loc)}</image:loc>${entry.image.title ? `<image:title>${escapeXml(entry.image.title)}</image:title>` : ''}</image:image>`
-        : '';
+      const imageXml = serializeEntryImages(entry);
       const video = entry.video
         ? `<video:video><video:thumbnail_loc>${escapeXml(entry.video.thumbnailLoc)}</video:thumbnail_loc><video:title>${escapeXml(entry.video.title)}</video:title><video:description>${escapeXml(entry.video.description)}</video:description><video:player_loc>${escapeXml(entry.video.playerLoc)}</video:player_loc>${entry.video.publicationDate ? `<video:publication_date>${escapeXml(new Date(entry.video.publicationDate).toISOString())}</video:publication_date>` : ''}</video:video>`
         : '';
 
-      return `<url><loc>${escapeXml(entry.url)}</loc>${lastModified}${changeFrequency}${priority}${image}${video}</url>`;
+      return `<url><loc>${escapeXml(entry.url)}</loc>${lastModified}${changeFrequency}${priority}${imageXml}${video}</url>`;
     })
     .join('');
 

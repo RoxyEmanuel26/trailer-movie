@@ -8,7 +8,7 @@ import { cache } from 'react';
 import { requireAdmin } from '../auth/utils';
 import { prisma } from '../prisma';
 import type { Prisma } from '@prisma/client';
-import { moviePath, publicMovieSlug } from '../public-routes';
+import { moviePath, moviesLikePath, publicMovieSlug } from '../public-routes';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { coreIndexNowPaths, submitIndexNowUrls } from '../indexnow';
@@ -97,6 +97,8 @@ export interface PublicCatalogPageQuery {
   languageCodes?: string[];
   releaseYear?: number;
   latestReleasesOnly?: boolean;
+  minRuntimeMinutes?: number;
+  maxRuntimeMinutes?: number;
 }
 
 async function loadPublicCatalogPage(
@@ -115,6 +117,8 @@ async function loadPublicCatalogPage(
     countryCodes: query.countryCodes,
     languageCodes: query.languageCodes,
     releaseYear: query.releaseYear,
+    minRuntimeMinutes: query.minRuntimeMinutes,
+    maxRuntimeMinutes: query.maxRuntimeMinutes,
     ...(query.latestReleasesOnly ? { releaseDateLte: new Date() } : {}),
   });
 }
@@ -200,6 +204,22 @@ type PublicMovieLookupResult = {
 } | null;
 
 const publicMovieCache = createMemoryCache<PublicMovieLookupResult>({
+  maxEntries: 1500,
+  ttlMs: 30 * 60_000,
+});
+
+type SimilarMoviesGuideLookupResult = {
+  guide: NonNullable<Awaited<ReturnType<typeof MovieRepository.findSimilarMoviesGuideBySlug>>>;
+  canonicalPath: string;
+  shouldRedirect: boolean;
+} | null;
+
+const similarMoviesGuideCache = createMemoryCache<SimilarMoviesGuideLookupResult>({
+  maxEntries: 500,
+  ttlMs: 30 * 60_000,
+});
+
+const directRecCountCache = createMemoryCache<number>({
   maxEntries: 1500,
   ttlMs: 30 * 60_000,
 });
@@ -563,4 +583,34 @@ export class MovieService {
     const key = JSON.stringify(filters);
     return publicCatalogStatsCache.getOrLoad(key, () => MovieRepository.getCatalogStats(filters));
   }
+
+  static countPublishedDirectRecommendations = cache(async (movieId: string) =>
+    directRecCountCache.getOrLoad(movieId, () =>
+      MovieRepository.countPublishedDirectRecommendations(movieId),
+    )
+  );
+
+  static getSimilarMoviesGuide = cache(async (routeParam: string) =>
+    similarMoviesGuideCache.getOrLoad(routeParam, async () => {
+      const direct = await MovieRepository.findSimilarMoviesGuideBySlug(routeParam);
+      if (direct) {
+        const canonicalPath = moviesLikePath(direct.movie.slug);
+        return {
+          guide: direct,
+          canonicalPath,
+          shouldRedirect: publicMovieSlug(direct.movie.slug) !== routeParam,
+        };
+      }
+      const canonicalSlug = await MovieRepository.resolveCanonicalSlug(routeParam);
+      if (!canonicalSlug) return null;
+      const resolved = await MovieRepository.findSimilarMoviesGuideBySlug(canonicalSlug);
+      if (!resolved) return null;
+      const canonicalPath = moviesLikePath(resolved.movie.slug);
+      return {
+        guide: resolved,
+        canonicalPath,
+        shouldRedirect: publicMovieSlug(resolved.movie.slug) !== routeParam,
+      };
+    })
+  );
 }

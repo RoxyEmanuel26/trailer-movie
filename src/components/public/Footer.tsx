@@ -49,6 +49,24 @@ export async function Footer() {
             </li>
             <li>
               <Link
+                href="/collections"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Franchises in Order
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/movies/under-90-minutes"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Movies Under 90 Min
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/streaming"
                 prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"

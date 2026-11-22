@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { serializeSitemap, serializeSitemapIndex, type SitemapEntry, type SitemapIndexItem } from './sitemap-xml';
 
 const DEFAULT_CACHE_DIR = path.join(process.cwd(), '.cache', 'sitemaps');
-export const SITEMAP_SNAPSHOT_VERSION = 'v4';
+export const SITEMAP_SNAPSHOT_VERSION = 'v5';
 export const STABLE_SITEMAP_SHARD_MAX_AGE_MS = 6 * 3_600_000;
 const inFlightSitemapGenerators = new Map<string, Promise<{ xml: string; stale: boolean }>>();
 
@@ -101,12 +101,15 @@ export interface WarmSitemapSnapshotsInput {
   getCoreEntries: () => Promise<SitemapEntry[]>;
   getMovieEntries: (page: number) => Promise<SitemapEntry[]>;
   getPersonEntries: (page: number) => Promise<SitemapEntry[]>;
+  getMoviesLikePageCount?: () => Promise<number>;
+  getMoviesLikeEntries?: (page: number) => Promise<SitemapEntry[]>;
 }
 
 export async function warmSitemapSnapshots(input: WarmSitemapSnapshotsInput) {
   const baseUrl = input.siteUrl.replace(/\/+$/, '');
   const moviePageCount = await input.getMoviePageCount();
   const personPageCount = await input.getPersonPageCount();
+  const moviesLikePageCount = input.getMoviesLikePageCount ? await input.getMoviesLikePageCount() : 0;
   const coreEntries = await input.getCoreEntries();
   const coreLastMod = coreEntries[0]?.lastModified;
   const items: SitemapIndexItem[] = [
@@ -117,6 +120,12 @@ export async function warmSitemapSnapshots(input: WarmSitemapSnapshotsInput) {
     items.push({
       url: `${baseUrl}/sitemaps/movies-${page}`,
       ...(isNewestMovieShard && coreLastMod ? { lastModified: coreLastMod } : {}),
+    });
+  }
+  for (let page = 0; page < moviesLikePageCount; page += 1) {
+    items.push({
+      url: `${baseUrl}/sitemaps/movies-like-${page}`,
+      ...(coreLastMod ? { lastModified: coreLastMod } : {}),
     });
   }
   for (let page = 0; page < personPageCount; page += 1) {
@@ -132,11 +141,21 @@ export async function warmSitemapSnapshots(input: WarmSitemapSnapshotsInput) {
       serializeSitemap(await input.getMovieEntries(page)),
     );
   }
+  if (input.getMoviesLikeEntries) {
+    for (let page = 0; page < moviesLikePageCount; page += 1) {
+      await writeSitemapSnapshot(
+        sitemapSnapshotKey(`movies-like-${page}`),
+        serializeSitemap(await input.getMoviesLikeEntries(page)),
+      );
+    }
+  }
   for (let page = 0; page < personPageCount; page += 1) {
     await writeSitemapSnapshot(
       sitemapSnapshotKey(`people-${page}`),
       serializeSitemap(await input.getPersonEntries(page)),
     );
   }
-  return { moviePageCount, personPageCount };
+  return input.getMoviesLikePageCount
+    ? { moviePageCount, personPageCount, moviesLikePageCount }
+    : { moviePageCount, personPageCount };
 }

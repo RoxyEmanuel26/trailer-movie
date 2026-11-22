@@ -27,6 +27,11 @@ const collectionBySlugCache = createMemoryCache<Awaited<ReturnType<typeof Collec
   ttlMs: 15 * 60_000,
 });
 
+const activeFranchisesCache = createMemoryCache<Awaited<ReturnType<typeof CollectionRepository.listActiveFranchiseSummaries>>>({
+  maxEntries: 30,
+  ttlMs: 15 * 60_000,
+});
+
 export interface CollectionData {
   title: string;
   description?: string | null;
@@ -38,6 +43,15 @@ export interface CollectionData {
 export class CollectionService {
   static async listCollections() {
     return CollectionRepository.listAll();
+  }
+
+  static async listActiveFranchiseGuides(page = 1, itemsPerPage = 24) {
+    const safePage = Math.max(1, page);
+    const take = Math.min(48, Math.max(1, itemsPerPage));
+    const skip = (safePage - 1) * take;
+    return activeFranchisesCache.getOrLoad(`${safePage}:${take}`, () =>
+      CollectionRepository.listActiveFranchiseSummaries({ skip, take })
+    );
   }
 
   static async getCollection(id: string) {

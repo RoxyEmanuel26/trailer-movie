@@ -14,7 +14,7 @@ import { MovieExtraInfo } from '@/components/movie/dynamic/MovieExtraInfo';
 import { MovieGallery } from '@/components/movie/dynamic/MovieGallery';
 import { ResponsiveDetails } from '@/components/public/ResponsiveDetails';
 import { badgeVariants } from '@/components/ui/badge';
-import { personPath } from '@/lib/public-routes';
+import { moviesLikePath, personPath } from '@/lib/public-routes';
 import { JsonLd } from '@/components/seo/JsonLd';
 import {
   absoluteUrl,
@@ -25,6 +25,9 @@ import {
 import { buildWatchMetaTitle } from '@/lib/seo-metadata';
 import { ORIGIN_CATALOG } from '@/lib/public-catalog';
 import { getOriginAdjective } from '@/lib/programmatic-guides';
+import { cleanFranchiseName } from '@/lib/franchise-guides';
+import { isEligibleForMoviesLikeIndex, MOVIES_LIKE_MIN_VOTES } from '@/lib/movies-like';
+import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
 import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 import { trailerSchema } from '@/lib/trailer-schema';
 import { ShareMovieButton } from '@/components/public/ShareMovieButton';
@@ -72,10 +75,20 @@ export default async function MovieDetailPage({ params }: PageProps) {
   const { movie, canonicalPath } = result;
 
   const genreIds = movie.genres.map((g) => g.genreId);
-  const [relatedMovies, facetGuides] = await Promise.all([
+  const canCheckMoviesLike =
+    movie.importQualityStatus === 'READY' && (movie.voteCount ?? 0) >= MOVIES_LIKE_MIN_VOTES;
+  const [relatedMovies, facetGuides, directRecCount] = await Promise.all([
     MovieService.getRelatedMovies(movie.id, genreIds),
     MovieService.getIndexableFacetGuides().catch(() => null),
+    canCheckMoviesLike
+      ? MovieService.countPublishedDirectRecommendations(movie.id).catch(() => 0)
+      : Promise.resolve(0),
   ]);
+  const hasMoviesLikeGuide = isEligibleForMoviesLikeIndex({
+    importQualityStatus: movie.importQualityStatus,
+    voteCount: movie.voteCount,
+    recommendationCount: directRecCount,
+  });
 
   // Deduplicate and group crew members by personId to prevent duplicate React keys
   const directorMap = new Map<string, (typeof movie.people)[0]>();
@@ -227,6 +240,67 @@ export default async function MovieDetailPage({ params }: PageProps) {
     }
   }
 
+  const titleWithYear = year ? `${movie.title} (${year})` : movie.title;
+  const seenImageUrls = new Set<string>();
+  const movieImageObjects: Array<Record<string, unknown>> = [];
+  const pushImageObject = (
+    rawUrl: string | null | undefined,
+    widthTier: number,
+    caption: string,
+    dims?: { width?: number | null; height?: number | null },
+  ) => {
+    if (!rawUrl?.trim()) return;
+    const resolved = getTmdbImageUrl(rawUrl.trim(), widthTier);
+    if (!resolved || seenImageUrls.has(resolved)) return;
+    seenImageUrls.add(resolved);
+    movieImageObjects.push({
+      '@type': 'ImageObject',
+      url: resolved,
+      contentUrl: resolved,
+      caption,
+      ...(dims?.width && dims.width > 0 ? { width: dims.width } : {}),
+      ...(dims?.height && dims.height > 0 ? { height: dims.height } : {}),
+    });
+  };
+
+  pushImageObject(movie.posterUrl, 780, `${titleWithYear} Official Movie Poster`);
+  pushImageObject(movie.backdropUrl, 1280, `${titleWithYear} Official HD Wallpaper`);
+  const gallerySchemaImages = (movie.images || [])
+    .filter((img) => img.imageType === 'BACKDROP' || img.imageType === 'POSTER')
+    .slice(0, 6);
+  gallerySchemaImages.forEach((img, idx) => {
+    const isPoster = img.imageType === 'POSTER';
+    pushImageObject(
+      img.imageUrl,
+      isPoster ? 780 : 1280,
+      isPoster
+        ? `${titleWithYear} Official Movie Poster ${idx + 1}`
+        : `${titleWithYear} Official HD Wallpaper & Still ${idx + 1}`,
+      { width: img.width, height: img.height },
+    );
+  });
+
+  const watchAction =
+    hubLinks.length > 0
+      ? {
+          '@type': 'WatchAction',
+          target: {
+            '@type': 'EntryPoint',
+            urlTemplate: `${movieUrl}#watch-providers`,
+            inLanguage: 'en',
+            actionPlatform: [
+              'http://schema.org/DesktopWebPlatform',
+              'http://schema.org/MobileWebPlatform',
+            ],
+          },
+          expectsAcceptanceOf: {
+            '@type': 'Offer',
+            category: 'subscription',
+            availabilityStarts: movie.releaseDate?.toISOString(),
+          },
+        }
+      : undefined;
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -259,7 +333,10 @@ export default async function MovieDetailPage({ params }: PageProps) {
         alternateName,
         description,
         dateModified: movie.updatedAt.toISOString(),
-        image: movie.posterUrl || movie.backdropUrl || undefined,
+        image:
+          movieImageObjects.length > 1
+            ? movieImageObjects
+            : movieImageObjects[0] || movie.posterUrl || movie.backdropUrl || undefined,
         datePublished: movie.releaseDate?.toISOString(),
         duration: movie.runtimeMinutes ? `PT${movie.runtimeMinutes}M` : undefined,
         contentRating: movie.ageRating || movie.mpaaRating || undefined,
@@ -271,6 +348,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
         actor: cast.map(({ person }) => ({ '@type': 'Person', '@id': `${absoluteUrl(personPath(person.slug))}#person`, name: person.name, url: absoluteUrl(personPath(person.slug)) })),
         productionCompany: movie.companies.map(({ company }) => ({ '@type': 'Organization', name: company.name })),
         keywords: movie.keywords.map(({ keyword }) => keyword.name).join(', ') || undefined,
+        ...(watchAction ? { potentialAction: watchAction } : {}),
         trailer: trailerSchema({
           videoId: youtubeId,
           movieTitle: movie.title,
@@ -500,7 +578,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
 
             {(movie.watchProviders ||
               (movie.watchProviderLinks && movie.watchProviderLinks.length > 0)) && (
-              <div className="order-4 mt-5">
+              <div id="watch-providers" className="order-4 mt-5 scroll-mt-24">
                 <WatchProviders
                   providers={movie.watchProviderLinks?.length ? undefined : movie.watchProviders}
                   links={movie.watchProviderLinks as any}
@@ -624,22 +702,23 @@ export default async function MovieDetailPage({ params }: PageProps) {
 
             {movie.images && movie.images.length > 0 && (
               <div className="order-8 lg:order-none">
-                <MovieGallery images={movie.images as any} movieTitle={movie.title} />
+                <MovieGallery images={movie.images as any} movieTitle={movie.title} releaseYear={year} />
               </div>
             )}
 
             {activeCollections.length > 0 && (
               <div className="order-9 mt-4 lg:order-none">
-                <h2 className="text-xl font-semibold mb-3">Featured In</h2>
+                <h2 className="text-xl font-semibold mb-3">Franchise Watch Order</h2>
                 <div className="flex flex-wrap gap-2">
                   {activeCollections.map((c) => (
                     <Link
                       key={c.collectionId}
                       href={`/collection/${c.collection.slug}`}
                       prefetch={false}
-                      className="text-primary hover:underline font-medium"
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3.5 py-2 text-sm font-semibold text-primary transition hover:border-primary hover:bg-primary/10"
                     >
-                      {c.collection.title}
+                      <span>{cleanFranchiseName(c.collection.title)} — Watch Order</span>
+                      <span aria-hidden="true">→</span>
                     </Link>
                   ))}
                 </div>
@@ -671,8 +750,22 @@ export default async function MovieDetailPage({ params }: PageProps) {
       {relatedMovies.length > 0 && (
         <section className="border-t bg-muted/30 py-10 sm:py-14">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <p className="eyebrow mb-2">Keep exploring</p>
-            <h2 className="mb-7 text-3xl font-semibold tracking-[-0.04em]">You may also like</h2>
+            <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="eyebrow mb-2">Keep exploring</p>
+                <h2 className="text-3xl font-semibold tracking-[-0.04em]">You may also like</h2>
+              </div>
+              {hasMoviesLikeGuide ? (
+                <Link
+                  href={moviesLikePath(movie.slug)}
+                  prefetch={false}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary/35 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:border-primary hover:bg-primary/10"
+                >
+                  <span>Full comparison: Movies like {movie.title}</span>
+                  <span aria-hidden="true">→</span>
+                </Link>
+              ) : null}
+            </div>
             <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 md:grid-cols-4 lg:grid-cols-5">
               {relatedMovies.map((rm) => (
                 <MovieCard key={rm.id} movie={rm} />

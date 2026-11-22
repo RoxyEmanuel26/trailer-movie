@@ -18,9 +18,10 @@ interface MovieImageItem {
 interface MovieGalleryProps {
   images: MovieImageItem[];
   movieTitle?: string;
+  releaseYear?: number | null;
 }
 
-export function MovieGallery({ images, movieTitle = 'Movie' }: MovieGalleryProps) {
+export function MovieGallery({ images, movieTitle = 'Movie', releaseYear = null }: MovieGalleryProps) {
   const galleryImages = React.useMemo(
     () => images.filter((image) => image.imageType === 'BACKDROP' || image.imageType === 'POSTER'),
     [images]
@@ -28,6 +29,7 @@ export function MovieGallery({ images, movieTitle = 'Movie' }: MovieGalleryProps
   const [isOpen, setIsOpen] = React.useState(false);
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const touchStartX = React.useRef<number | null>(null);
+  const titleWithYear = releaseYear ? `${movieTitle} (${releaseYear})` : movieTitle;
 
   const displayImages = galleryImages.slice(0, 6);
   const selectedImage = galleryImages[selectedIndex];
@@ -77,43 +79,54 @@ export function MovieGallery({ images, movieTitle = 'Movie' }: MovieGalleryProps
           {displayImages.map((image, index) => {
             const isPoster = image.imageType === 'POSTER';
             const hiddenCount = galleryImages.length - displayImages.length;
+            const descriptiveLabel = isPoster
+              ? `${titleWithYear} Official Movie Poster ${index + 1}`
+              : `${titleWithYear} Official HD Wallpaper & Still ${index + 1}`;
 
             return (
-              <button
-                type="button"
+              <figure
                 key={image.id}
-                onClick={() => openImage(index)}
-                aria-label={`Open ${movieTitle} ${image.imageType.toLowerCase()} ${index + 1} of ${galleryImages.length}`}
-                className={`group relative aspect-[16/10] w-[82vw] max-w-[20rem] shrink-0 snap-center overflow-hidden rounded-xl border bg-muted text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto sm:max-w-none ${isPoster ? 'sm:aspect-[2/3]' : 'sm:aspect-video'}`}
+                className={`relative aspect-[16/10] w-[82vw] max-w-[20rem] shrink-0 snap-center overflow-hidden rounded-xl border bg-muted shadow-sm sm:w-auto sm:max-w-none ${isPoster ? 'sm:aspect-[2/3]' : 'sm:aspect-video'}`}
               >
-                <Image
-                  src={image.imageUrl}
-                  alt={`${movieTitle} ${image.imageType.toLowerCase()} ${index + 1}`}
-                  fill
-                  sizes="(max-width: 639px) 82vw, (max-width: 1023px) 50vw, 33vw"
-                  className="object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none"
-                />
-                <span
-                  className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                  aria-hidden="true"
-                />
-                <span
-                  className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/65 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                  aria-hidden="true"
+                <button
+                  type="button"
+                  onClick={() => openImage(index)}
+                  aria-label={`Open ${descriptiveLabel} (${index + 1} of ${galleryImages.length})`}
+                  className="group relative h-full w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <Expand className="h-4 w-4" />
-                </span>
-                {index === displayImages.length - 1 && hiddenCount > 0 ? (
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm font-semibold text-white backdrop-blur-[1px]">
-                    +{hiddenCount} more
+                  <Image
+                    src={image.imageUrl}
+                    alt={descriptiveLabel}
+                    fill
+                    sizes="(max-width: 639px) 82vw, (max-width: 1023px) 50vw, 33vw"
+                    className="object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none"
+                  />
+                  <span
+                    className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/65 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                    aria-hidden="true"
+                  >
+                    <Expand className="h-4 w-4" />
                   </span>
-                ) : null}
-                {image.width && image.height ? (
-                  <span className="absolute bottom-2 left-2 hidden rounded-md bg-black/70 px-2 py-1 text-[10px] font-medium text-white opacity-0 backdrop-blur-sm transition-opacity sm:block group-hover:opacity-100 group-focus-visible:opacity-100">
-                    {image.width}×{image.height}
-                  </span>
-                ) : null}
-              </button>
+                  {index === displayImages.length - 1 && hiddenCount > 0 ? (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm font-semibold text-white backdrop-blur-[1px]">
+                      +{hiddenCount} more
+                    </span>
+                  ) : null}
+                  {image.width && image.height ? (
+                    <span className="absolute bottom-2 left-2 hidden rounded-md bg-black/70 px-2 py-1 text-[10px] font-medium text-white opacity-0 backdrop-blur-sm transition-opacity sm:block group-hover:opacity-100 group-focus-visible:opacity-100">
+                      {image.width}×{image.height}
+                    </span>
+                  ) : null}
+                </button>
+                <figcaption className="sr-only">
+                  {descriptiveLabel}
+                  {image.width && image.height ? ` (${image.width}×${image.height})` : ''}
+                </figcaption>
+              </figure>
             );
           })}
         </div>
@@ -179,7 +192,11 @@ export function MovieGallery({ images, movieTitle = 'Movie' }: MovieGalleryProps
               <Image
                 key={selectedImage.id}
                 src={selectedImage.imageUrl}
-                alt={`${movieTitle} ${selectedImage.imageType === 'BACKDROP' ? 'wallpaper' : 'poster'} ${selectedIndex + 1}`}
+                alt={
+                  selectedImage.imageType === 'BACKDROP'
+                    ? `${titleWithYear} Official HD Wallpaper & Still ${selectedIndex + 1}`
+                    : `${titleWithYear} Official Movie Poster ${selectedIndex + 1}`
+                }
                 fill
                 sizes="100vw"
                 className="select-none object-contain"

@@ -114,7 +114,7 @@ export class PersonRepository {
   ) {
     const skip = Math.max(0, params.skip || 0);
     const take = Math.min(45_000, Math.max(1, params.take || 45_000));
-    return db.$queryRaw<Array<{ slug: string; updatedAt: Date }>>(Prisma.sql`
+    return db.$queryRaw<Array<{ slug: string; name: string; headshotUrl: string | null; updatedAt: Date }>>(Prisma.sql`
       WITH distinct_credits AS (
         SELECT mp."personId", mp."movieId"
         FROM "movie_people" mp
@@ -131,7 +131,7 @@ export class PersonRepository {
         WHERE p2."headshotUrl" IS NOT NULL AND BTRIM(p2."headshotUrl") <> ''
           AND LENGTH(BTRIM(COALESCE(p2."biography", ''))) >= 160
       )
-      SELECT p."slug", p."updatedAt"
+      SELECT p."slug", p."name", p."headshotUrl", p."updatedAt"
       FROM "people" p
       JOIN published_credits pc ON pc."personId" = p."id"
       LEFT JOIN bio_people bp ON bp."id" = p."id"

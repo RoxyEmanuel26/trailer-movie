@@ -4,17 +4,20 @@ import { warmSitemapSnapshots } from '../src/lib/sitemap-cache';
 import { pruneStaleSitemapSnapshots } from '../src/lib/sitemap-cache-prune';
 
 async function main() {
-  const { moviePageCount, personPageCount } = await warmSitemapSnapshots({
+  const result = await warmSitemapSnapshots({
     siteUrl: siteConfig.url,
     getMoviePageCount: () => SeoService.getMovieSitemapPageCount(),
     getPersonPageCount: () => SeoService.getPersonSitemapPageCount(),
+    getMoviesLikePageCount: () => SeoService.getMoviesLikeSitemapPageCount(),
     getCoreEntries: () => SeoService.generateSitemapData(),
     getMovieEntries: (page) => SeoService.generateMovieSitemapData(page),
+    getMoviesLikeEntries: (page) => SeoService.generateMoviesLikeSitemapData(page),
     getPersonEntries: (page) => SeoService.generatePersonSitemapData(page),
   });
   const pruned = await pruneStaleSitemapSnapshots().catch(() => ({ removedFiles: 0, reclaimedBytes: 0 }));
+  const likeCount = 'moviesLikePageCount' in result ? result.moviesLikePageCount : 0;
   process.stdout.write(
-    `Warmed sitemap index, core, ${moviePageCount} movie shard(s), and ${personPageCount} person shard(s)` +
+    `Warmed sitemap index, core, ${result.moviePageCount} movie shard(s), ${likeCount} movies-like shard(s), and ${result.personPageCount} person shard(s)` +
       (pruned.removedFiles > 0 ? ` (pruned ${pruned.removedFiles} stale snapshot file(s)).\n` : '.\n'),
   );
 }

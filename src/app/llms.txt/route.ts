@@ -61,6 +61,9 @@ ${siteConfig.name} (${siteConfig.url}) is an independent movie discovery catalog
 
 - [Home](${siteConfig.url}): Featured trailers, trending discoveries, and curated movie rows.
 - [All Movies](${absoluteUrl('/movies')}): Complete chronologically ordered catalog of published films.
+- [Movies Under 90 Minutes](${absoluteUrl('/movies/under-90-minutes')}): Feature films between 60 and 90 minutes for quick weeknight watches.
+- [Movies Under 2 Hours](${absoluteUrl('/movies/under-2-hours')}): Complete feature films running between 60 and 120 minutes.
+- [Movie Franchises & Watch Orders](${absoluteUrl('/collections')}): Chronological franchise watch guides with total marathon runtimes.
 - [Streaming Platforms](${absoluteUrl('/streaming')}): Browse movies by streaming, rental, or free-with-ads service.
 - [Popular & Top Rated](${absoluteUrl('/popular')}): Audience popularity leaders, Bayesian-weighted top-rated films, and latest releases.
 - [Genres](${absoluteUrl('/genres')}): Curated genre catalogs including Action, Science Fiction, Drama, Horror, Thriller, Animation, and Comedy.
@@ -94,6 +97,8 @@ ${originLinks}
 ## Canonical URL Conventions & Citation Guide
 
 - Movie detail & trailer pages: \`${siteConfig.url}/watch/{movie-slug}\` (includes official trailer, synopsis, runtime, age rating, director, top cast, and regional streaming options).
+- Similar movie comparison guides: \`${siteConfig.url}/movies-like/{movie-slug}\` (curated recommendations with shared themes, runtime deltas, ratings, and streaming platforms).
+- Franchise watch order guides: \`${siteConfig.url}/collection/{collection-slug}\` (chronological watch order and total marathon runtime).
 - Cast & crew filmography pages: \`${siteConfig.url}/person/{person-slug}\` (includes biography, personal details, and published catalog filmography).
 - Genre pages: \`${siteConfig.url}/genre/{genre-slug}\`
 - Genre by release year guides: \`${siteConfig.url}/genre/{genre-slug}/{yyyy}\`

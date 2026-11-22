@@ -11,14 +11,15 @@ import { MovieRepository } from '../repositories/MovieRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '../public-catalog';
 import { STREAMING_CATALOG } from '../streaming-catalog';
-import { moviePath, personPath } from '../public-routes';
+import { moviePath, moviesLikePath, personPath } from '../public-routes';
 import { absoluteUrl, isValidContactEmail, normalizeMetaDescription, siteConfig } from '../site-config';
-import type { SitemapEntry } from '../sitemap-xml';
+import type { SitemapEntry, SitemapImage } from '../sitemap-xml';
 import { getTmdbImageUrl } from '../tmdb-image-loader';
 import { catalogMetadataCanonical, paginatedMetadataTitle, socialImage } from '../seo-metadata';
 import { formatTrailerTitle, trailerSchema } from '../trailer-schema';
 import { clearAllPublicMemoryCaches, createMemoryCache } from '../memory-cache';
 import { MIN_INDEXABLE_GUIDE_MOVIES } from '../programmatic-guides';
+import { MOVIES_LIKE_SITEMAP_PAGE_SIZE } from '../movies-like';
 
 export const PERSON_SITEMAP_PAGE_SIZE = 45_000;
 // Movie entries include image/video metadata; leave headroom below Google's
@@ -404,6 +405,9 @@ export class SeoService {
     const sitemap: SitemapEntry[] = [
       { url: siteConfig.url, lastModified: homepageLastModified, changeFrequency: 'daily', priority: 1.0 },
       { url: absoluteUrl('/movies'), lastModified: homepageLastModified, changeFrequency: 'daily', priority: 0.8 },
+      { url: absoluteUrl('/movies/under-90-minutes'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
+      { url: absoluteUrl('/movies/under-2-hours'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
+      { url: absoluteUrl('/collections'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
       { url: absoluteUrl('/streaming'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
       { url: absoluteUrl('/genres'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
       { url: absoluteUrl('/countries'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
@@ -533,18 +537,40 @@ export class SeoService {
         extractYouTubeId(trailer?.sourceId || '') ||
         extractYouTubeId(movie.youtubeTrailerId || '');
       const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
+      const titleWithYear = year ? `${movie.title} (${year})` : movie.title;
       const description = normalizeMetaDescription(
         movie.synopsis,
         `Watch the official trailer for ${movie.title} on MovieFlix.`
       );
+
+      const images: SitemapImage[] = [];
+      if (movie.posterUrl) {
+        images.push({
+          loc: getTmdbImageUrl(movie.posterUrl, 780),
+          title: `${titleWithYear} Official Movie Poster`,
+        });
+      }
+      if (movie.backdropUrl) {
+        images.push({
+          loc: getTmdbImageUrl(movie.backdropUrl, 1280),
+          title: `${titleWithYear} Official HD Wallpaper`,
+        });
+      }
+      const galleryBackdrops = Array.isArray(movie.images) ? movie.images : [];
+      galleryBackdrops.forEach((img, idx) => {
+        if (!img?.imageUrl) return;
+        images.push({
+          loc: getTmdbImageUrl(img.imageUrl, 1280),
+          title: `${titleWithYear} HD Wallpaper & Still ${idx + 1}`,
+        });
+      });
+
       return {
         url: absoluteUrl(moviePath(movie.slug)),
         lastModified: movie.updatedAt,
         changeFrequency: 'weekly',
         priority: 0.8,
-        ...(movie.posterUrl
-          ? { image: { loc: getTmdbImageUrl(movie.posterUrl, 500), title: `${movie.title} poster` } }
-          : {}),
+        ...(images.length > 0 ? { images } : {}),
         ...(youtubeId
           ? {
               video: {
@@ -561,12 +587,35 @@ export class SeoService {
     });
   }
 
+  static async getMoviesLikeSitemapPageCount() {
+    const total = await MovieRepository.countIndexableMoviesLike();
+    return Math.ceil(total / MOVIES_LIKE_SITEMAP_PAGE_SIZE);
+  }
+
+  static async generateMoviesLikeSitemapData(page: number): Promise<SitemapEntry[]> {
+    if (!Number.isSafeInteger(page) || page < 0) return [];
+    const movies = await MovieRepository.listIndexableMoviesLikeForSitemap({
+      skip: page * MOVIES_LIKE_SITEMAP_PAGE_SIZE,
+      take: MOVIES_LIKE_SITEMAP_PAGE_SIZE,
+    });
+
+    return movies.map((movie) => ({
+      url: absoluteUrl(moviesLikePath(movie.slug)),
+      lastModified: movie.updatedAt,
+      changeFrequency: 'weekly',
+      priority: 0.7,
+      ...(movie.posterUrl
+        ? { image: { loc: getTmdbImageUrl(movie.posterUrl, 500), title: `Movies like ${movie.title}` } }
+        : {}),
+    }));
+  }
+
   static async getPersonSitemapPageCount() {
     const total = await PersonRepository.countIndexableForSitemap();
     return Math.ceil(total / PERSON_SITEMAP_PAGE_SIZE);
   }
 
-  static async generatePersonSitemapData(page: number) {
+  static async generatePersonSitemapData(page: number): Promise<SitemapEntry[]> {
     if (!Number.isSafeInteger(page) || page < 0) return [];
 
     const people = await PersonRepository.listIndexableForSitemap({
@@ -579,6 +628,14 @@ export class SeoService {
       lastModified: person.updatedAt,
       changeFrequency: 'monthly' as const,
       priority: 0.6,
+      ...(person.headshotUrl
+        ? {
+            image: {
+              loc: getTmdbImageUrl(person.headshotUrl, 500),
+              title: `${person.name} portrait`,
+            },
+          }
+        : {}),
     }));
   }
 

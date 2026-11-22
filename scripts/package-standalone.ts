@@ -256,10 +256,10 @@ if [ -s "$ROOT/.next/.movieflix-file-manifest" ] && command -v node >/dev/null 2
   ' 2>/dev/null || true
 fi
 
-# Prune obsolete sitemap snapshot versions (!= v4-*) and orphaned .tmp files
+# Prune obsolete sitemap snapshot versions (!= v5-*) and orphaned .tmp files
 for SM_DIR in "$ROOT/.cache/sitemaps" "$ROOT/shared/sitemaps"; do
   if [ -d "$SM_DIR" ]; then
-    find "$SM_DIR" -maxdepth 1 -type f -name '*.xml' ! -name 'v4-*' -delete 2>/dev/null || true
+    find "$SM_DIR" -maxdepth 1 -type f -name '*.xml' ! -name 'v5-*' -delete 2>/dev/null || true
     find "$SM_DIR" -maxdepth 2 -type f -name '*.tmp' -delete 2>/dev/null || true
   fi
 done

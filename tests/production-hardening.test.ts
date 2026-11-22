@@ -114,10 +114,10 @@ test('sitemap cache warmer writes versioned v4 snapshot keys read by sitemap rou
   const previous = process.env.SITEMAP_CACHE_DIR;
   process.env.SITEMAP_CACHE_DIR = directory;
   try {
-    assert.equal(sitemapSnapshotKey('sitemap-index'), 'v4-sitemap-index');
-    assert.equal(sitemapSnapshotKey('core'), 'v4-core');
-    assert.equal(sitemapSnapshotKey('movies-0'), 'v4-movies-0');
-    assert.equal(sitemapSnapshotKey('people-0'), 'v4-people-0');
+    assert.equal(sitemapSnapshotKey('sitemap-index'), 'v5-sitemap-index');
+    assert.equal(sitemapSnapshotKey('core'), 'v5-core');
+    assert.equal(sitemapSnapshotKey('movies-0'), 'v5-movies-0');
+    assert.equal(sitemapSnapshotKey('people-0'), 'v5-people-0');
 
     const summary = await warmSitemapSnapshots({
       siteUrl: 'https://www.movieflix.site',

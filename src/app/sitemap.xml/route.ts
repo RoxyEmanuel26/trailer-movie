@@ -15,7 +15,8 @@ export async function GET(request: Request) {
       : await readSitemapSnapshot(snapshotKey);
     if (freshSnapshot) return xmlResponse(freshSnapshot);
     const result = await generateSitemapWithFallback(snapshotKey, async () => {
-      const [moviePageCount, personPageCount, latestModified, shardLastModified] = await getSitemapPageCounts(forceRefresh);
+      const [moviePageCount, personPageCount, latestModified, shardLastModified, moviesLikePageCount] =
+        await getSitemapPageCounts(forceRefresh);
       const sitemapItems: SitemapIndexItem[] = [
         {
           url: absoluteUrl('/sitemaps/core'),
@@ -29,6 +30,13 @@ export async function GET(request: Request) {
         sitemapItems.push({
           url: absoluteUrl(`/sitemaps/movies-${page}`),
           ...(shardModified ? { lastModified: shardModified } : {}),
+        });
+      }
+
+      for (let page = 0; page < moviesLikePageCount; page += 1) {
+        sitemapItems.push({
+          url: absoluteUrl(`/sitemaps/movies-like-${page}`),
+          ...(latestModified ? { lastModified: latestModified } : {}),
         });
       }
 

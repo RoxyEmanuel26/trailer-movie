@@ -10,6 +10,7 @@ import {
 import { hasValidRevalidationSecret } from '@/lib/revalidation';
 import {
   getMovieSitemapPageCountCached,
+  getMoviesLikeSitemapPageCountCached,
   getPersonSitemapPageCountCached,
 } from '@/lib/sitemap-data';
 
@@ -29,7 +30,7 @@ function rethrowNotFound(error: unknown) {
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^(?:core|(?:movies|people)-(?:0|[1-9]\d*))$/.test(id)) notFound();
+  if (!/^(?:core|(?:movies|movies-like|people)-(?:0|[1-9]\d*))$/.test(id)) notFound();
   // Version snapshots when eligibility or shard boundaries change, without
   // changing the public sitemap URLs or serving old overlapping shards.
   const snapshotKey = sitemapSnapshotKey(id);
@@ -78,6 +79,32 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     } catch (error) {
       rethrowNotFound(error);
       console.error(`Movie sitemap ${id} generation failed and no snapshot is available`, error);
+      return sitemapUnavailableResponse();
+    }
+  }
+
+  const moviesLikeMatch = id.match(/^movies-like-(0|[1-9]\d*)$/);
+  if (moviesLikeMatch) {
+    const page = Number(moviesLikeMatch[1]);
+    if (!Number.isSafeInteger(page) || page < 0) notFound();
+    try {
+      const quickSnapshot = forceRefresh
+        ? null
+        : await readSitemapSnapshot(snapshotKey, STABLE_SITEMAP_SHARD_MAX_AGE_MS);
+      if (quickSnapshot) return xmlResponse(quickSnapshot);
+      const result = await generateSitemapWithFallback(
+        snapshotKey,
+        async () => {
+          const pageCount = await getMoviesLikeSitemapPageCountCached(forceRefresh);
+          if (page >= pageCount) notFound();
+          return serializeSitemap(await SeoService.generateMoviesLikeSitemapData(page));
+        },
+        STABLE_SITEMAP_SHARD_MAX_AGE_MS,
+      );
+      return xmlResponse(result.xml, { stale: result.stale, noStore: forceRefresh });
+    } catch (error) {
+      rethrowNotFound(error);
+      console.error(`Movies-like sitemap ${id} generation failed and no snapshot is available`, error);
       return sitemapUnavailableResponse();
     }
   }

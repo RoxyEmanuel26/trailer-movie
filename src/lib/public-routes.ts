@@ -10,3 +10,7 @@ export function publicMovieSlug(slug: string) {
 export function moviePath(slug: string) {
   return `/watch/${encodeURIComponent(publicMovieSlug(slug))}`;
 }
+
+export function moviesLikePath(slug: string) {
+  return `/movies-like/${encodeURIComponent(publicMovieSlug(slug))}`;
+}

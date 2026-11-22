@@ -2,6 +2,11 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { DbClient } from './base.types';
 import { catalogStatsQuery } from '../catalog-stats-query';
+import {
+  MOVIES_LIKE_DISPLAY_LIMIT,
+  MOVIES_LIKE_MIN_RECOMMENDATIONS,
+  MOVIES_LIKE_MIN_VOTES,
+} from '../movies-like';
 
 export interface CatalogFilters {
   search?: string;
@@ -18,6 +23,8 @@ export interface CatalogFilters {
   releaseDateLte?: Date;
   latestReleasesOnly?: boolean;
   minimumVotes?: number;
+  minRuntimeMinutes?: number;
+  maxRuntimeMinutes?: number;
 }
 
 export const PUBLIC_MOVIE_CARD_SELECT = {
@@ -97,6 +104,14 @@ function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
   if (params.latestReleasesOnly) andFilters.push({ releaseDate: { not: null, lte: new Date() } });
   else if (params.releaseDateLte) andFilters.push({ releaseDate: { lte: params.releaseDateLte } });
   if (params.minimumVotes) andFilters.push({ voteCount: { gte: params.minimumVotes } });
+  if (params.minRuntimeMinutes !== undefined || params.maxRuntimeMinutes !== undefined) {
+    andFilters.push({
+      runtimeMinutes: {
+        ...(params.minRuntimeMinutes !== undefined ? { gte: params.minRuntimeMinutes } : {}),
+        ...(params.maxRuntimeMinutes !== undefined ? { lte: params.maxRuntimeMinutes } : {}),
+      },
+    });
+  }
   if (andFilters.length) where.AND = andFilters;
   return where;
 }
@@ -468,6 +483,8 @@ export class MovieRepository {
       languageCodes?: string[];
       releaseYear?: number;
       releaseDateLte?: Date;
+      minRuntimeMinutes?: number;
+      maxRuntimeMinutes?: number;
     },
     db: DbClient = prisma
   ): Promise<{ data: PublicMovieCardRecord[]; total: number }> {
@@ -669,5 +686,164 @@ export class MovieRepository {
         count: Number(row.count),
       })),
     };
+  }
+
+  static async countPublishedDirectRecommendations(movieId: string, db: DbClient = prisma) {
+    return db.movieRecommendation.count({
+      where: {
+        sourceMovieId: movieId,
+        targetMovie: { status: 'PUBLISHED', deletedAt: null },
+      },
+    });
+  }
+
+  static async findSimilarMoviesGuideBySlug(slug: string, db: DbClient = prisma) {
+    const movie = await db.movie.findFirst({
+      where: { slug, status: 'PUBLISHED', deletedAt: null },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        synopsis: true,
+        posterUrl: true,
+        backdropUrl: true,
+        releaseDate: true,
+        runtimeMinutes: true,
+        mpaaRating: true,
+        voteAverage: true,
+        voteCount: true,
+        updatedAt: true,
+        importQualityStatus: true,
+        genres: {
+          select: {
+            genre: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        keywords: {
+          take: 20,
+          select: {
+            keyword: { select: { name: true } },
+          },
+        },
+        people: {
+          where: { roleType: 'DIRECTOR' },
+          take: 3,
+          select: {
+            person: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!movie) return null;
+
+    const recs = await db.movieRecommendation.findMany({
+      where: {
+        sourceMovieId: movie.id,
+        targetMovie: { status: 'PUBLISHED', deletedAt: null },
+      },
+      orderBy: [{ sortOrder: 'asc' }, { score: 'desc' }],
+      take: MOVIES_LIKE_DISPLAY_LIMIT,
+      select: {
+        targetMovie: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            posterUrl: true,
+            backdropUrl: true,
+            synopsis: true,
+            releaseDate: true,
+            runtimeMinutes: true,
+            mpaaRating: true,
+            voteAverage: true,
+            voteCount: true,
+            watchProviders: true,
+            genres: {
+              select: {
+                genre: { select: { name: true, slug: true } },
+              },
+            },
+            keywords: {
+              take: 15,
+              select: {
+                keyword: { select: { name: true } },
+              },
+            },
+            people: {
+              where: { roleType: 'DIRECTOR' },
+              take: 2,
+              select: {
+                person: { select: { name: true } },
+              },
+            },
+            watchProviderLinks: {
+              take: 12,
+              select: {
+                provider: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      movie,
+      recommendations: recs.map((r) => r.targetMovie),
+    };
+  }
+
+  static async countIndexableMoviesLike(db: DbClient = prisma) {
+    const rows = await db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS "count"
+      FROM (
+        SELECT mr."sourceMovieId"
+        FROM "movie_recommendations" mr
+        JOIN "movies" src ON src."id" = mr."sourceMovieId"
+        JOIN "movies" tgt ON tgt."id" = mr."targetMovieId"
+        WHERE src."status" = 'PUBLISHED'
+          AND src."deletedAt" IS NULL
+          AND src."importQualityStatus" = 'READY'
+          AND COALESCE(src."voteCount", 0) >= ${MOVIES_LIKE_MIN_VOTES}
+          AND tgt."status" = 'PUBLISHED'
+          AND tgt."deletedAt" IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM "seo_pages" s
+            WHERE s."seoableType" = 'Movie' AND s."seoableId" = src."id" AND (s."isNoindex" OR NOT s."inSitemap")
+          )
+        GROUP BY mr."sourceMovieId"
+        HAVING COUNT(DISTINCT mr."targetMovieId") >= ${MOVIES_LIKE_MIN_RECOMMENDATIONS}
+      ) eligible
+    `);
+    return Number(rows[0]?.count || 0);
+  }
+
+  static async listIndexableMoviesLikeForSitemap(
+    params: { skip?: number; take?: number } = {},
+    db: DbClient = prisma,
+  ) {
+    const skip = Math.max(0, params.skip || 0);
+    const take = Math.min(10_000, Math.max(1, params.take || 10_000));
+    return db.$queryRaw<Array<{ slug: string; title: string; posterUrl: string | null; updatedAt: Date }>>(Prisma.sql`
+      SELECT src."slug", src."title", src."posterUrl", src."updatedAt"
+      FROM "movie_recommendations" mr
+      JOIN "movies" src ON src."id" = mr."sourceMovieId"
+      JOIN "movies" tgt ON tgt."id" = mr."targetMovieId"
+      WHERE src."status" = 'PUBLISHED'
+        AND src."deletedAt" IS NULL
+        AND src."importQualityStatus" = 'READY'
+        AND COALESCE(src."voteCount", 0) >= ${MOVIES_LIKE_MIN_VOTES}
+        AND tgt."status" = 'PUBLISHED'
+        AND tgt."deletedAt" IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "seo_pages" s
+          WHERE s."seoableType" = 'Movie' AND s."seoableId" = src."id" AND (s."isNoindex" OR NOT s."inSitemap")
+        )
+      GROUP BY src."id", src."slug", src."title", src."posterUrl", src."updatedAt", src."popularity"
+      HAVING COUNT(DISTINCT mr."targetMovieId") >= ${MOVIES_LIKE_MIN_RECOMMENDATIONS}
+      ORDER BY COALESCE(src."popularity", 0) DESC, src."id" ASC
+      OFFSET ${skip}
+      LIMIT ${take}
+    `);
   }
 }

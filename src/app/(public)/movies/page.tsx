@@ -39,5 +39,24 @@ export default async function MoviesPage({ searchParams }: Props) {
   if (!page) notFound();
   const { data, total } = await getMoviesPage(page);
   if (isPageOutOfRange(page, total, itemsPerPage)) notFound();
-  return <CatalogPage eyebrow="Movie archive" title="All movies" description="Browse the newest movie releases first, followed by the rest of the published MovieFlix catalog. Open a title for its trailer, story, cast, crew, ratings, and available viewing providers." path="/movies" movies={data} totalMovies={total} currentPage={page} />;
+  return (
+    <CatalogPage
+      eyebrow="Movie archive"
+      title="All movies"
+      description="Browse the newest movie releases first, followed by the rest of the published MovieFlix catalog. Open a title for its trailer, story, cast, crew, ratings, and available viewing providers."
+      path="/movies"
+      movies={data}
+      totalMovies={total}
+      currentPage={page}
+      relatedHeading="Quick movie guides"
+      relatedLinks={[
+        { href: '/movies/under-90-minutes', label: 'Movies under 90 minutes' },
+        { href: '/movies/under-2-hours', label: 'Movies under 2 hours' },
+        { href: '/collections', label: 'Franchise watch orders' },
+        { href: '/popular/most-popular', label: 'Most popular movies' },
+        { href: '/popular/top-rated', label: 'Top rated movies' },
+        { href: '/streaming', label: 'Browse by streaming platform' },
+      ]}
+    />
+  );
 }

@@ -17,7 +17,14 @@ import { catalogStatsQuery } from '../src/lib/catalog-stats-query';
 import { extractUniqueProviders } from '../src/lib/movie-aeo';
 import { SITEMAP_SNAPSHOT_VERSION } from '../src/lib/sitemap-cache';
 import { pruneStaleSitemapSnapshots } from '../src/lib/sitemap-cache-prune';
-import { sitemapUnavailableResponse } from '../src/lib/sitemap-xml';
+import { serializeSitemap, sitemapUnavailableResponse } from '../src/lib/sitemap-xml';
+import { buildFranchiseWatchGuide, cleanFranchiseName, formatMarathonRuntime } from '../src/lib/franchise-guides';
+import {
+  analyzeMovieSimilarity,
+  buildMoviesLikeGuideContent,
+  isEligibleForMoviesLikeIndex,
+} from '../src/lib/movies-like';
+import { RUNTIME_GUIDES } from '../src/lib/runtime-guides';
 import { mapTmdbMovieToPrisma, mapTmdbStatus } from '../src/lib/tmdb/mapping';
 import { safeUpsertFranchiseCollection } from '../src/lib/services/import-service';
 
@@ -334,4 +341,128 @@ test('disk hygiene: pruneStaleSitemapSnapshots removes old versions/stale temps 
   assert.match(packSrc, /install --prod --frozen-lockfile/);
   assert.match(packSrc, /\.movieflix-file-manifest/);
   assert.match(packSrc, /store prune/);
+});
+
+test('Phase 1 SEO: multi-image sitemap deduplicates and caps at 6 images per URL', () => {
+  const xml = serializeSitemap([
+    {
+      url: 'https://www.movieflix.site/watch/inception-27205',
+      images: [
+        { loc: 'https://image.tmdb.org/t/p/w780/poster.jpg', title: 'Inception (2010) Official Movie Poster' },
+        { loc: 'https://image.tmdb.org/t/p/w780/poster.jpg', title: 'Duplicate poster should be dropped' },
+        { loc: 'https://image.tmdb.org/t/p/w1280/bg1.jpg', title: 'Inception (2010) Official HD Wallpaper' },
+        { loc: 'https://image.tmdb.org/t/p/w1280/bg2.jpg', title: 'Inception (2010) HD Wallpaper & Still 1' },
+        { loc: 'https://image.tmdb.org/t/p/w1280/bg3.jpg', title: 'Inception (2010) HD Wallpaper & Still 2' },
+        { loc: 'https://image.tmdb.org/t/p/w1280/bg4.jpg', title: 'Inception (2010) HD Wallpaper & Still 3' },
+        { loc: 'https://image.tmdb.org/t/p/w1280/bg5.jpg', title: 'Inception (2010) HD Wallpaper & Still 4' },
+        { loc: 'https://image.tmdb.org/t/p/w1280/bg6.jpg', title: 'Overflow image beyond cap' },
+      ],
+    },
+  ]);
+
+  const matches = xml.match(/<image:image>/g) || [];
+  assert.equal(matches.length, 6);
+  assert.equal(xml.includes('Duplicate poster should be dropped'), false);
+  assert.equal(xml.includes('Overflow image beyond cap'), false);
+  assert.match(xml, /Inception \(2010\) Official HD Wallpaper/);
+});
+
+test('Phase 1 SEO: franchise watch guide strips duplicate Collection suffix and computes marathon runtime', () => {
+  assert.equal(cleanFranchiseName('The Hunger Games Collection'), 'The Hunger Games');
+  assert.equal(cleanFranchiseName('Spider-Man (MCU) Movie Collection'), 'Spider-Man (MCU)');
+  assert.equal(formatMarathonRuntime(642), '10h 42m');
+
+  const guide = buildFranchiseWatchGuide({
+    title: 'Dune Collection',
+    description: null,
+    totalMovies: 2,
+    movies: [
+      {
+        id: 'm2',
+        title: 'Dune: Part Two',
+        slug: 'dune-part-two-693134',
+        posterUrl: 'https://image.tmdb.org/t/p/w500/p2.jpg',
+        releaseDate: new Date('2024-02-27T00:00:00Z'),
+        runtimeMinutes: 166,
+        voteAverage: 8.3,
+        mpaaRating: 'PG-13',
+      },
+      {
+        id: 'm1',
+        title: 'Dune',
+        slug: 'dune-438631',
+        posterUrl: 'https://image.tmdb.org/t/p/w500/p1.jpg',
+        releaseDate: new Date('2021-09-15T00:00:00Z'),
+        runtimeMinutes: 155,
+        voteAverage: 7.8,
+        mpaaRating: 'PG-13',
+      },
+    ],
+  });
+
+  assert.equal(guide.franchiseName, 'Dune');
+  assert.equal(guide.heading, 'Dune Movies in Order');
+  assert.equal(guide.indexable, true);
+  assert.equal(guide.marathonLabel, '5h 21m');
+  assert.equal(guide.yearRange, '2021–2024');
+  assert.equal(guide.firstMovie?.title, 'Dune');
+  assert.equal(guide.highestRatedMovie?.title, 'Dune: Part Two');
+  assert.ok(guide.faqs.length >= 3);
+  assert.match(guide.faqs[0].answer, /1\. Dune \(2021\), 2\. Dune: Part Two \(2024\)/);
+});
+
+test('Phase 1 SEO: movies-like analyzer computes shared themes, runtime deltas, and quality gates', () => {
+  assert.equal(
+    isEligibleForMoviesLikeIndex({ importQualityStatus: 'READY', voteCount: 150, recommendationCount: 6 }),
+    true,
+  );
+  assert.equal(
+    isEligibleForMoviesLikeIndex({ importQualityStatus: 'READY', voteCount: 40, recommendationCount: 10 }),
+    false,
+  );
+  assert.equal(
+    isEligibleForMoviesLikeIndex({ importQualityStatus: 'READY', voteCount: 500, recommendationCount: 3 }),
+    false,
+  );
+
+  const source = {
+    id: 'src',
+    title: 'Inception',
+    slug: 'inception-27205',
+    releaseDate: new Date('2010-07-15T00:00:00Z'),
+    runtimeMinutes: 148,
+    voteAverage: 8.4,
+    voteCount: 35000,
+    importQualityStatus: 'READY',
+    genres: [{ genre: { name: 'Science Fiction', slug: 'science-fiction' } }, { genre: { name: 'Action', slug: 'action' } }],
+    keywords: [{ keyword: { name: 'dream' } }, { keyword: { name: 'heist' } }],
+    directors: ['Christopher Nolan'],
+  };
+  const candidate = {
+    id: 'cand',
+    title: 'Tenet',
+    slug: 'tenet-577922',
+    posterUrl: 'https://image.tmdb.org/t/p/w500/tenet.jpg',
+    releaseDate: new Date('2020-08-22T00:00:00Z'),
+    runtimeMinutes: 150,
+    mpaaRating: 'PG-13',
+    voteAverage: 7.2,
+    genres: [{ genre: { name: 'Science Fiction', slug: 'science-fiction' } }, { genre: { name: 'Action', slug: 'action' } }],
+    keywords: [{ keyword: { name: 'heist' } }, { keyword: { name: 'time manipulation' } }],
+    directors: ['Christopher Nolan'],
+    watchProviderLinks: [{ provider: { name: 'Netflix' } }],
+  };
+
+  const analyzed = analyzeMovieSimilarity(source, candidate);
+  assert.deepEqual(analyzed.sharedDirectors, ['Christopher Nolan']);
+  assert.deepEqual(analyzed.sharedKeywords, ['heist']);
+  assert.equal(analyzed.runtimeComparison, 'Similar runtime');
+  assert.match(analyzed.reasonText, /Same director \(Christopher Nolan\)/);
+  assert.match(analyzed.reasonText, /Shared themes: heist/);
+
+  const content = buildMoviesLikeGuideContent(source, [analyzed]);
+  assert.match(content.metaTitle, /Movies Like Inception \(2010\)/);
+  assert.ok(content.faqs.length >= 3);
+  assert.equal(RUNTIME_GUIDES['under-90-minutes'].minRuntimeMinutes, 60);
+  assert.equal(RUNTIME_GUIDES['under-90-minutes'].maxRuntimeMinutes, 90);
 });

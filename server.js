@@ -188,6 +188,8 @@ const NON_CACHEABLE_PREFIXES = [
 
 const LONG_TTL_PREFIXES = [
   '/watch/',
+  '/movies-like/',
+  '/collection/',
   '/person/',
   '/about',
   '/methodology',
@@ -486,7 +488,17 @@ function scheduleSitemapWarmup(port) {
   };
 
   const warmCoreHubs = async () => {
-    const corePaths = ['/', '/years', '/countries', '/genres', '/streaming', '/popular', '/feed.xml'];
+    const corePaths = [
+      '/',
+      '/collections',
+      '/movies/under-90-minutes',
+      '/years',
+      '/countries',
+      '/genres',
+      '/streaming',
+      '/popular',
+      '/feed.xml',
+    ];
     for (const p of corePaths) {
       try {
         await fetchLocalText(port, p, hostHeader, originToken, '', true);
@@ -504,7 +516,7 @@ function scheduleSitemapWarmup(port) {
 }
 
 // 5. Periodic Async Disk Housekeeper (prevents cache bloat on small VPS/Pterodactyl disks)
-const ACTIVE_SITEMAP_PREFIX = 'v4-';
+const ACTIVE_SITEMAP_PREFIX = 'v5-';
 
 async function collectFilesRecursive(rootDir, maxDepth = 4, depth = 0, out = []) {
   if (depth > maxDepth) return out;
