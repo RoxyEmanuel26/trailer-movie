@@ -1,6 +1,17 @@
 import { prisma } from '@/lib/prisma';
-import { ImageType, ProviderAccessType, DataSource, PersonRoleType, Prisma } from '@prisma/client';
-import { logger } from '@/lib/logger';
+import { ImageType, ProviderAccessType, DataSource, Prisma } from '@prisma/client';
+
+function normalizeTmdbReviewAvatar(avatarPath: unknown): string | null {
+  if (typeof avatarPath !== 'string') return null;
+  const trimmed = avatarPath.trim();
+  if (!trimmed) return null;
+  // TMDB sometimes prepends "/" to external Gravatar URLs ("/https://www.gravatar.com/...").
+  // Reject any external or protocol-bearing URL so we never store malformed URLs or violate CSP.
+  if (/^\/?https?:\/\//i.test(trimmed) || !trimmed.startsWith('/')) {
+    return null;
+  }
+  return `https://image.tmdb.org/t/p/w200${trimmed}`;
+}
 
 export interface EnrichmentResult {
   movieId: string;
@@ -84,8 +95,11 @@ export class EnrichmentService {
       }
     }
 
+    const isWatchProvidersLocked =
+      lockedFields.includes('watchProviders') || lockedFields.includes('watch_providers');
+
     // Watch providers JSON fallback
-    if (tmdbData['watch/providers']?.results) {
+    if (!isWatchProvidersLocked && tmdbData['watch/providers']?.results) {
       const usOrId = tmdbData['watch/providers'].results.US || tmdbData['watch/providers'].results.ID || null;
       if (usOrId) {
         movieUpdateData.watchProviders = usOrId;
@@ -93,7 +107,7 @@ export class EnrichmentService {
     }
 
     // Reviews JSON fallback
-    if (tmdbData.reviews?.results) {
+    if (!lockedFields.includes('reviews') && tmdbData.reviews?.results) {
       movieUpdateData.reviews = tmdbData.reviews.results;
     }
 
@@ -105,6 +119,14 @@ export class EnrichmentService {
       where: { id: movieId },
       data: movieUpdateData,
     });
+
+    // Helper to execute child deleteMany+createMany atomically when using root PrismaClient
+    const runAtomic = async <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> => {
+      if (client === prisma) {
+        return prisma.$transaction(fn, { maxWait: 10_000, timeout: 30_000 });
+      }
+      return fn(client as Prisma.TransactionClient);
+    };
 
     // 3. Populate MovieImage (Posters, Backdrops, Logos)
     if (!lockedFields.includes('images') && tmdbData.images) {
@@ -182,40 +204,43 @@ export class EnrichmentService {
         });
       }
 
-      await client.movieImage.deleteMany({ where: { movieId } });
-      if (imagesToInsert.length > 0) {
-        await client.movieImage.createMany({
-          data: imagesToInsert,
-          skipDuplicates: true,
-        });
-        result.imagesCount = imagesToInsert.length;
-      }
+      await runAtomic(async (tx) => {
+        await tx.movieImage.deleteMany({ where: { movieId } });
+        if (imagesToInsert.length > 0) {
+          await tx.movieImage.createMany({
+            data: imagesToInsert,
+            skipDuplicates: true,
+          });
+          result.imagesCount = imagesToInsert.length;
+        }
+      });
     } else if (!lockedFields.includes('images')) result.issues.push('images_unavailable');
 
     // 4. Populate MovieAlternativeTitle
     if (!lockedFields.includes('alternative_titles') && tmdbData.alternative_titles?.titles && Array.isArray(tmdbData.alternative_titles.titles)) {
       const titles = tmdbData.alternative_titles.titles.slice(0, 30);
-      await client.movieAlternativeTitle.deleteMany({ where: { movieId } });
-      if (titles.length > 0) {
-        const altTitlesToInsert: Prisma.MovieAlternativeTitleCreateManyInput[] = titles.map((t: any) => ({
-          movieId,
-          title: String(t.title).slice(0, 500),
-          countryCode: t.iso_3166_1 || null,
-          type: t.type || null,
-        }));
+      await runAtomic(async (tx) => {
+        await tx.movieAlternativeTitle.deleteMany({ where: { movieId } });
+        if (titles.length > 0) {
+          const altTitlesToInsert: Prisma.MovieAlternativeTitleCreateManyInput[] = titles.map((t: any) => ({
+            movieId,
+            title: String(t.title).slice(0, 500),
+            countryCode: t.iso_3166_1 || null,
+            type: t.type || null,
+          }));
 
-        await client.movieAlternativeTitle.createMany({
-          data: altTitlesToInsert,
-          skipDuplicates: true,
-        });
-        result.altTitlesCount = altTitlesToInsert.length;
-      }
+          await tx.movieAlternativeTitle.createMany({
+            data: altTitlesToInsert,
+            skipDuplicates: true,
+          });
+          result.altTitlesCount = altTitlesToInsert.length;
+        }
+      });
     } else if (!lockedFields.includes('alternative_titles')) result.issues.push('alternative_titles_unavailable');
 
     // 5. Populate Watch Providers & Links
-    if (!lockedFields.includes('watch_providers') && tmdbData['watch/providers']?.results) {
+    if (!isWatchProvidersLocked && tmdbData['watch/providers']?.results) {
       const providerResults = tmdbData['watch/providers'].results;
-      await client.movieWatchProviderLink.deleteMany({ where: { movieId } });
       // Extract target countries: US, ID, and others if available
       const countriesToCheck = Object.keys(providerResults);
       const linksToInsert: {
@@ -259,8 +284,9 @@ export class EnrichmentService {
         }
       }
 
+      const formattedLinks: Prisma.MovieWatchProviderLinkCreateManyInput[] = [];
       if (linksToInsert.length > 0) {
-        // Upsert unique watch providers first
+        // Upsert shared watch provider dictionary outside the movie transaction to avoid lock contention
         const uniqueProvidersMap = new Map<number, { name: string; logoUrl: string | null; priority: number }>();
         for (const item of linksToInsert) {
           if (!uniqueProvidersMap.has(item.providerTmdbId)) {
@@ -308,9 +334,7 @@ export class EnrichmentService {
           providerDbIdMap.set(wp.tmdbId, wp.id);
         }
 
-        const formattedLinks: Prisma.MovieWatchProviderLinkCreateManyInput[] = [];
         const seenKeys = new Set<string>();
-
         for (const item of linksToInsert) {
           const providerId = providerDbIdMap.get(item.providerTmdbId);
           if (!providerId) continue;
@@ -326,89 +350,87 @@ export class EnrichmentService {
             linkUrl: item.linkUrl,
           });
         }
+      }
 
+      await runAtomic(async (tx) => {
+        await tx.movieWatchProviderLink.deleteMany({ where: { movieId } });
         if (formattedLinks.length > 0) {
-          await client.movieWatchProviderLink.createMany({
+          await tx.movieWatchProviderLink.createMany({
             data: formattedLinks,
             skipDuplicates: true,
           });
           result.watchProvidersCount = formattedLinks.length;
         }
-      }
-    } else if (!lockedFields.includes('watch_providers')) result.issues.push('watch_providers_unavailable');
+      });
+    } else if (!isWatchProvidersLocked) result.issues.push('watch_providers_unavailable');
 
-    // 6. Populate MovieReview
+    // 6. Populate MovieReview (preserve MANUAL admin/editor reviews!)
     if (!lockedFields.includes('reviews') && tmdbData.reviews?.results && Array.isArray(tmdbData.reviews.results)) {
       const reviews = tmdbData.reviews.results.slice(0, 10);
-      await client.movieReview.deleteMany({ where: { movieId } });
-      if (reviews.length > 0) {
-        const reviewsToInsert: Prisma.MovieReviewCreateManyInput[] = reviews.map((r: any) => {
-          let avatar = r.author_details?.avatar_path || null;
-          if (avatar && !avatar.startsWith('http')) {
-            avatar = `https://image.tmdb.org/t/p/w200${avatar}`;
-          }
-          return {
+      await runAtomic(async (tx) => {
+        await tx.movieReview.deleteMany({ where: { movieId, source: DataSource.TMDB } });
+        if (reviews.length > 0) {
+          const reviewsToInsert: Prisma.MovieReviewCreateManyInput[] = reviews.map((r: any) => ({
             movieId,
             tmdbId: r.id ? String(r.id) : null,
             author: String(r.author || 'Anonymous').slice(0, 255),
             authorUsername: r.author_details?.username ? String(r.author_details.username).slice(0, 255) : null,
-            authorAvatar: avatar,
+            authorAvatar: normalizeTmdbReviewAvatar(r.author_details?.avatar_path),
             content: r.content || '',
             rating: typeof r.author_details?.rating === 'number' ? r.author_details.rating : null,
             url: r.url || null,
             source: DataSource.TMDB,
-          };
-        });
+          }));
 
-        await client.movieReview.createMany({
-          data: reviewsToInsert,
-          skipDuplicates: true,
-        });
-        result.reviewsCount = reviewsToInsert.length;
-      }
+          await tx.movieReview.createMany({
+            data: reviewsToInsert,
+            skipDuplicates: true,
+          });
+          result.reviewsCount = reviewsToInsert.length;
+        }
+      });
     } else if (!lockedFields.includes('reviews')) result.issues.push('reviews_unavailable');
 
     // 7. Populate MovieRecommendation
     if (!lockedFields.includes('recommendations') && tmdbData.recommendations?.results && Array.isArray(tmdbData.recommendations.results)) {
       const recs = tmdbData.recommendations.results.slice(0, 20);
-      await client.movieRecommendation.deleteMany({ where: { sourceMovieId: movieId } });
       const recTmdbIds = recs.map((r: any) => r.id).filter((id: any) => typeof id === 'number');
+      const recsToInsert: Prisma.MovieRecommendationCreateManyInput[] = [];
 
       if (recTmdbIds.length > 0) {
-        // Find which recommended movies already exist in our local database
         const matchingTargetMovies = await client.movie.findMany({
-          where: { tmdbId: { in: recTmdbIds } },
+          where: { tmdbId: { in: recTmdbIds }, deletedAt: null },
           select: { id: true, tmdbId: true },
         });
 
-        if (matchingTargetMovies.length > 0) {
-          const tmdbToTargetId = new Map<number, string>();
-          for (const m of matchingTargetMovies) {
-            if (m.tmdbId) tmdbToTargetId.set(m.tmdbId, m.id);
-          }
-
-          const recsToInsert: Prisma.MovieRecommendationCreateManyInput[] = [];
-          recs.forEach((r: any, idx: number) => {
-            const targetId = tmdbToTargetId.get(r.id);
-            if (targetId && targetId !== movieId) {
-              recsToInsert.push({
-                sourceMovieId: movieId,
-                targetMovieId: targetId,
-                score: typeof r.vote_average === 'number' ? r.vote_average : null,
-                sortOrder: idx,
-              });
-            }
-          });
-
-          if (recsToInsert.length > 0) {
-            await client.movieRecommendation.createMany({
-              data: recsToInsert,
-              skipDuplicates: true,
-            });
-            result.recommendationsCount = recsToInsert.length;
-          }
+        const tmdbToTargetId = new Map<number, string>();
+        for (const m of matchingTargetMovies) {
+          if (m.tmdbId) tmdbToTargetId.set(m.tmdbId, m.id);
         }
+
+        recs.forEach((r: any, idx: number) => {
+          const targetId = tmdbToTargetId.get(r.id);
+          if (targetId && targetId !== movieId) {
+            recsToInsert.push({
+              sourceMovieId: movieId,
+              targetMovieId: targetId,
+              score: typeof r.vote_average === 'number' ? r.vote_average : null,
+              sortOrder: idx,
+            });
+          }
+        });
       }
+
+      await runAtomic(async (tx) => {
+        await tx.movieRecommendation.deleteMany({ where: { sourceMovieId: movieId } });
+        if (recsToInsert.length > 0) {
+          await tx.movieRecommendation.createMany({
+            data: recsToInsert,
+            skipDuplicates: true,
+          });
+          result.recommendationsCount = recsToInsert.length;
+        }
+      });
     } else if (!lockedFields.includes('recommendations')) result.issues.push('recommendations_unavailable');
 
     // 8. Update Popularity & IMDB ID for People if credits are attached

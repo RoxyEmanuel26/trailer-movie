@@ -13,13 +13,16 @@ export default async function ActivityAnalyticsPage({
   searchParams: Promise<{ page?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const page = parseInt(resolvedSearchParams.page || '1', 10);
+  const rawPage = Number.parseInt(resolvedSearchParams.page || '1', 10);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.min(rawPage, 10_000) : 1;
   const limit = 20;
   const skip = (page - 1) * limit;
 
   const { total, data: activities } = await AnalyticsService.listAdminActivity(skip, limit);
 
   const totalPages = Math.ceil(total / limit);
+  const rangeStart = total === 0 || skip >= total ? 0 : skip + 1;
+  const rangeEnd = rangeStart === 0 ? 0 : Math.min(skip + limit, total);
 
   return (
     <div className="space-y-6">
@@ -80,7 +83,7 @@ export default async function ActivityAnalyticsPage({
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {skip + 1} to Math.min(skip + limit, total) of {total} entries
+                Showing {rangeStart} to {rangeEnd} of {total} entries
               </div>
               <div className="flex space-x-2">
                 <Link

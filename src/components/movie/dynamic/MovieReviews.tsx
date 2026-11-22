@@ -4,8 +4,27 @@ import * as React from 'react';
 import Image from 'next/image';
 import { Star, User } from 'lucide-react';
 
+function resolveSafeReviewAvatar(review: any): string | null {
+  const direct = typeof review?.authorAvatar === 'string' ? review.authorAvatar.trim() : '';
+  if (direct.startsWith('https://image.tmdb.org/') && !direct.includes('/http')) {
+    return direct;
+  }
+  const rawPath =
+    typeof review?.author_details?.avatar_path === 'string'
+      ? review.author_details.avatar_path.trim()
+      : '';
+  if (rawPath.startsWith('/') && !/^\/https?:\/\//i.test(rawPath)) {
+    return `https://image.tmdb.org/t/p/w200${rawPath}`;
+  }
+  return null;
+}
+
 export function MovieReviews({ reviews }: { reviews: any[]; movieSlug?: string }) {
-  if (!reviews || reviews.length === 0) {
+  const validReviews = Array.isArray(reviews)
+    ? reviews.filter((review) => Boolean(review && typeof review === 'object'))
+    : [];
+
+  if (validReviews.length === 0) {
     return (
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">User Reviews</h2>
@@ -22,17 +41,17 @@ export function MovieReviews({ reviews }: { reviews: any[]; movieSlug?: string }
     <div className="mt-8">
       <h2 className="text-xl font-semibold mb-4">User Reviews</h2>
       <div className="flex flex-col gap-4">
-        {reviews.slice(0, 5).map((review: any, idx: number) => {
+        {validReviews.slice(0, 5).map((review: any, idx: number) => {
           const rating =
-            typeof review.rating === 'number' ? review.rating : review.author_details?.rating;
-          const avatar =
-            review.authorAvatar ||
-            (review.author_details?.avatar_path
-              ? review.author_details.avatar_path.startsWith('http')
-                ? review.author_details.avatar_path
-                : `https://image.tmdb.org/t/p/w200${review.author_details.avatar_path}`
-              : null);
+            typeof review.rating === 'number'
+              ? review.rating
+              : typeof review.author_details?.rating === 'number'
+                ? review.author_details.rating
+                : null;
+          const avatar = resolveSafeReviewAvatar(review);
           const date = review.createdAt || review.created_at;
+          const formattedDate = date ? formatReviewDate(date) : null;
+          const authorName = typeof review.author === 'string' && review.author.trim() ? review.author : 'Anonymous';
 
           return (
             <div
@@ -44,21 +63,21 @@ export function MovieReviews({ reviews }: { reviews: any[]; movieSlug?: string }
               <div className="flex items-center gap-3 mb-3">
                 <div className="relative w-10 h-10 rounded-full bg-muted overflow-hidden flex items-center justify-center shrink-0 border">
                   {avatar ? (
-                    <Image src={avatar} alt={review.author} fill sizes="40px" className="object-cover" />
+                    <Image src={avatar} alt={authorName} fill sizes="40px" className="object-cover" />
                   ) : (
                     <User className="w-5 h-5 text-muted-foreground" />
                   )}
                 </div>
                 <div>
-                  <p className="font-medium text-sm">{review.author}</p>
+                  <p className="font-medium text-sm">{authorName}</p>
                   <div className="flex items-center text-xs text-muted-foreground gap-2">
-                    {rating && (
+                    {rating !== null && rating > 0 ? (
                       <span className="flex items-center text-yellow-500 font-medium">
                         <Star className="w-3 h-3 mr-1 fill-yellow-500" />
                         {rating.toFixed(1)}
                       </span>
-                    )}
-                    {date && <span>{formatReviewDate(date)}</span>}
+                    ) : null}
+                    {formattedDate ? <span>{formattedDate}</span> : null}
                   </div>
                 </div>
               </div>
@@ -71,25 +90,28 @@ export function MovieReviews({ reviews }: { reviews: any[]; movieSlug?: string }
   );
 }
 
-function formatReviewDate(value: string | Date) {
+function formatReviewDate(value: string | Date): string | null {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     timeZone: 'UTC',
-  }).format(new Date(value));
+  }).format(parsed);
 }
 
-function ReviewBody({ content }: { content: string }) {
+function ReviewBody({ content }: { content?: string | null }) {
   const [isExpanded, setIsExpanded] = React.useState(false);
-  const canExpand = content.trim().length > 280;
+  const safeContent = typeof content === 'string' ? content : '';
+  const canExpand = safeContent.trim().length > 280;
 
   return (
     <div>
       <p
         className={`break-words text-sm leading-6 text-muted-foreground ${isExpanded ? '' : 'line-clamp-5 lg:line-clamp-none'}`}
       >
-        {content}
+        {safeContent}
       </p>
       {canExpand ? (
         <button

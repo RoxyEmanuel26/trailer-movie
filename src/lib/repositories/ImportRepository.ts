@@ -192,7 +192,8 @@ export class ImportRepository {
     const rows = await db.$queryRaw<Array<{ remaining: bigint | number; ready: bigint | number }>>(Prisma.sql`
       SELECT
         COUNT(*) FILTER (
-          WHERE status IN ('PENDING', 'PARTIAL', 'IN_PROGRESS')
+          WHERE status IN ('PENDING', 'IN_PROGRESS')
+            OR (status = 'PARTIAL' AND retryable = true)
         ) AS remaining,
         COUNT(*) FILTER (
           WHERE status IN ('PENDING', 'PARTIAL')
@@ -331,10 +332,15 @@ export class ImportRepository {
   }
 
   static async fail(id: string, input: { code: string; message: string; retryable: boolean; nextAttemptAt?: Date; partial?: boolean; logs?: Prisma.InputJsonValue }, db: DbClient = prisma) {
+    const nextStatus = input.retryable
+      ? input.partial
+        ? ImportJobStatus.PARTIAL
+        : ImportJobStatus.PENDING
+      : ImportJobStatus.FAILED;
     return db.importJob.update({
       where: { id },
       data: {
-        status: input.partial ? ImportJobStatus.PARTIAL : input.retryable ? ImportJobStatus.PENDING : ImportJobStatus.FAILED,
+        status: nextStatus,
         retryable: input.retryable, nextAttemptAt: input.nextAttemptAt || null, lockedUntil: null,
         heartbeatAt: new Date(), errorCode: input.code, errorMessage: input.message.slice(0, 10_000),
         ...(input.logs !== undefined && { logs: input.logs }),
@@ -344,18 +350,35 @@ export class ImportRepository {
 
   static async retryAllFailed(db: DbClient = prisma) {
     return db.importJob.updateMany({
-      where: { status: { in: [ImportJobStatus.FAILED, ImportJobStatus.PARTIAL] }, retryable: true },
-      data: { status: ImportJobStatus.PENDING, stage: 'QUEUED', attemptCount: 0, nextAttemptAt: new Date(), lockedUntil: null, errorCode: null, errorMessage: null },
+      where: {
+        status: { in: [ImportJobStatus.FAILED, ImportJobStatus.PARTIAL] },
+        OR: [
+          { retryable: true },
+          { errorCode: null },
+          { errorCode: { notIn: ['TMDB_404', 'NON_RETRYABLE'] } },
+        ],
+      },
+      data: {
+        status: ImportJobStatus.PENDING,
+        stage: 'QUEUED',
+        attemptCount: 0,
+        retryable: true,
+        nextAttemptAt: new Date(),
+        lockedUntil: null,
+        errorCode: null,
+        errorMessage: null,
+      },
     });
   }
 
   static async retry(id: string, db: DbClient = prisma) {
     return db.importJob.update({
-      where: { id, status: { in: [ImportJobStatus.FAILED, ImportJobStatus.PARTIAL] }, retryable: true },
+      where: { id, status: { in: [ImportJobStatus.FAILED, ImportJobStatus.PARTIAL] } },
       data: {
         status: ImportJobStatus.PENDING,
         stage: 'QUEUED',
         attemptCount: 0,
+        retryable: true,
         nextAttemptAt: new Date(),
         lockedUntil: null,
         errorCode: null,

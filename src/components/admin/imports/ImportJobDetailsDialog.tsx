@@ -35,13 +35,15 @@ export function ImportJobDetailsDialog({
   const currentStep = job.stage || state?.stage || 'Initializing'
   const retryCount = job.attemptCount ?? state?.retryCount ?? 0
   const durationMs = state?.durationMs
+  const isPermanentError = ['TMDB_404', 'NON_RETRYABLE'].includes(job.errorCode ?? '')
+  const canRetry = ['FAILED', 'PARTIAL'].includes(job.status) && (Boolean(job.retryable) || !isPermanentError)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-6">
           <DialogTitle>Import Job Details</DialogTitle>
-          {["FAILED", "PARTIAL"].includes(job.status) && job.retryable && onRetry && (
+          {canRetry && onRetry && (
             <Button
               size="sm"
               variant="outline"
@@ -85,7 +87,13 @@ export function ImportJobDetailsDialog({
             <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
               <p className="font-medium text-destructive">{job.errorCode || 'Import error'}</p>
               <p className="mt-1 break-words text-muted-foreground">{job.errorMessage}</p>
-              <p className="mt-2 text-xs">{job.retryable ? 'This error can be retried.' : 'Permanent failure; manual review required.'}</p>
+              <p className="mt-2 text-xs">
+                {job.retryable
+                  ? 'Scheduled for automatic retry or can be retried now.'
+                  : isPermanentError
+                    ? 'Permanent failure; manual review required.'
+                    : 'Automatic retries exhausted; you can retry this job manually.'}
+              </p>
             </div>
           )}
 

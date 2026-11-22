@@ -11,6 +11,21 @@ function formatCurrency(amount: any) {
   }).format(Number(amount));
 }
 
+function toSafeExternalUrl(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export function MovieExtraInfo({
   budget,
   revenue,
@@ -31,6 +46,9 @@ export function MovieExtraInfo({
   homepage?: string | null;
 }) {
   const certification = ageRating || 'NR';
+  const safeHomepage = toSafeExternalUrl(homepage);
+  const safeCompanies = Array.isArray(companies) ? companies : [];
+  const safeKeywords = Array.isArray(keywords) ? keywords : [];
 
   return (
     <div className="flex flex-col gap-6 mt-6">
@@ -73,10 +91,10 @@ export function MovieExtraInfo({
               <dd className="font-medium text-base">{formatCurrency(revenue)}</dd>
             </div>
           ) : null}
-          {homepage ? (
+          {safeHomepage ? (
             <div className="flex flex-wrap gap-3 pt-1">
               <a
-                href={homepage}
+                href={safeHomepage}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
@@ -98,13 +116,13 @@ export function MovieExtraInfo({
         </dl>
       </div>
 
-      {companies.length > 0 && (
+      {safeCompanies.length > 0 && (
         <div className="cinema-panel rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
             Studios
           </h3>
           <div className="flex flex-col gap-4">
-            {companies.map((mc: any, idx: number) => {
+            {safeCompanies.map((mc: any, idx: number) => {
               const company = mc.company || mc;
               return (
                 <div
@@ -142,13 +160,13 @@ export function MovieExtraInfo({
         </div>
       )}
 
-      {keywords.length > 0 && (
+      {safeKeywords.length > 0 && (
         <div className="cinema-panel rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
             Keywords
           </h3>
           <div className="flex flex-wrap gap-2">
-            {keywords.map((mk: any, idx: number) => {
+            {safeKeywords.map((mk: any, idx: number) => {
               const k = mk.keyword || mk;
               return (
                 <Badge

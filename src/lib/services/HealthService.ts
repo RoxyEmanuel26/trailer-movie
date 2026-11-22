@@ -1,7 +1,7 @@
-import { TransactionManager } from '../repositories/TransactionManager';
+import { prisma } from '../prisma';
 
 export class HealthService {
   static async checkDatabase() {
-    return TransactionManager.run(async (tx) => tx.$queryRaw`SELECT 1`);
+    return prisma.$queryRaw`SELECT 1`;
   }
 }

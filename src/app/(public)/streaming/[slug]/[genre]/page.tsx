@@ -47,7 +47,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       itemsPerPage: 24,
       providerTmdbIds: streaming.tmdbIds,
       genreSlug: genre.slug,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       providerTmdbIds: streaming.tmdbIds,
@@ -88,7 +88,7 @@ export default async function StreamingGenrePage({ params, searchParams }: PageP
       itemsPerPage,
       providerTmdbIds: streaming.tmdbIds,
       genreSlug: genre.slug,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       providerTmdbIds: streaming.tmdbIds,

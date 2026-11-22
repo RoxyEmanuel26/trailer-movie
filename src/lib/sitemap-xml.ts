@@ -80,8 +80,17 @@ export function xmlResponse(xml: string, options: { status?: number; stale?: boo
 }
 
 export function sitemapUnavailableResponse() {
-  return xmlResponse(
+  return new Response(
     '<?xml version="1.0" encoding="UTF-8"?>\n<error><message>Sitemap temporarily unavailable</message></error>',
-    { status: 503 },
+    {
+      status: 503,
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
+        'Cloudflare-CDN-Cache-Control': 'no-store',
+        'Retry-After': '60',
+      },
+    },
   );
 }

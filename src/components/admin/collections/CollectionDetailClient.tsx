@@ -40,12 +40,13 @@ export function CollectionDetailClient({ collection }: { collection: any }) {
     setIsSearching(true)
     try {
       const res = await fetch(`/api/admin/movies?search=${encodeURIComponent(searchQuery)}&take=10`)
-      const json = await res.json()
-      if (res.ok) {
-        setSearchResults(json.data.data || [])
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(json?.error?.message || "Failed to search movies")
       }
-    } catch (err) {
-      toast.error("Error", { description: "Failed to update movies" })
+      setSearchResults(json?.data?.data || [])
+    } catch (err: any) {
+      toast.error("Error", { description: err?.message || "Failed to search movies" })
     } finally {
       setIsSearching(false)
     }
@@ -99,12 +100,13 @@ export function CollectionDetailClient({ collection }: { collection: any }) {
         body: JSON.stringify({ movieIds })
       })
 
-      if (!res.ok) throw new Error("Failed to save movies")
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to save collection movies")
       
       toast.success("Collection updated successfully")
       router.refresh()
-    } catch (err) {
-      toast.error("Error", { description: "Failed to save collection movies" })
+    } catch (err: any) {
+      toast.error("Error", { description: err?.message || "Failed to save collection movies" })
     } finally {
       setIsSaving(false)
     }
@@ -133,7 +135,7 @@ export function CollectionDetailClient({ collection }: { collection: any }) {
                 <div>
                   <div className="font-medium">{movie.title}</div>
                   <div className="text-xs text-muted-foreground">
-                    {new Date(movie.releaseDate).getFullYear()} • {movie.status}
+                    {movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : "TBA"} • {movie.status}
                   </div>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => addMovie(movie)}>

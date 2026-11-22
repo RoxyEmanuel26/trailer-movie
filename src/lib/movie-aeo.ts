@@ -70,17 +70,19 @@ export function extractUniqueProviders(
   }
 
   if (names.length === 0 && legacyProviders && typeof legacyProviders === 'object') {
+    const asArray = (bucket: unknown) => (Array.isArray(bucket) ? bucket : []);
     const buckets = [
-      ...(legacyProviders.flatrate || []),
-      ...(legacyProviders.free || []),
-      ...(legacyProviders.ads || []),
-      ...(legacyProviders.rent || []),
-      ...(legacyProviders.buy || []),
+      ...asArray(legacyProviders.flatrate),
+      ...asArray(legacyProviders.free),
+      ...asArray(legacyProviders.ads),
+      ...asArray(legacyProviders.rent),
+      ...asArray(legacyProviders.buy),
     ];
     for (const item of buckets) {
-      const raw = item?.provider_name;
-      if (!raw) continue;
-      const clean = normalizeProviderLabel(String(raw));
+      if (!item || typeof item !== 'object') continue;
+      const raw = (item as { provider_name?: unknown }).provider_name;
+      if (typeof raw !== 'string' || !raw.trim()) continue;
+      const clean = normalizeProviderLabel(raw);
       if (clean && !seen.has(clean)) {
         seen.add(clean);
         names.push(clean);

@@ -29,15 +29,16 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
   const [results, setResults] = React.useState({ success: 0, skipped: 0, failed: 0 })
 
   const handleScan = async () => {
+    cancelRef.current = false
     setStage('scanning')
     try {
       const res = await fetch('/api/admin/movies/investigate')
       const data = await res.json()
       if (res.ok) {
-        setMissingMovies(data.data)
+        setMissingMovies(Array.isArray(data.data) ? data.data : [])
         setStage('ready')
       } else {
-        throw new Error(data.error)
+        throw new Error(data?.error?.message || (typeof data?.error === 'string' ? data.error : 'Failed to scan database'))
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to scan database")
@@ -46,6 +47,7 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
   }
 
   const handleFix = async () => {
+    cancelRef.current = false
     setStage('processing')
     setProgressCount(0)
     
@@ -60,7 +62,15 @@ export function InvestigateDialog({ open, onOpenChange }: InvestigateDialogProps
       }
       
       const chunk = missingMovies.slice(i, i + CHUNK_SIZE);
-      const tmdbIds = chunk.map(m => m.tmdbId);
+      const tmdbIds = chunk
+        .map((m) => m.tmdbId)
+        .filter((id): id is number => Number.isInteger(id) && id > 0);
+      if (tmdbIds.length === 0) {
+        currentResults.skipped += chunk.length;
+        setResults({ ...currentResults });
+        setProgressCount(Math.min(i + CHUNK_SIZE, missingMovies.length));
+        continue;
+      }
       
       try {
         const res = await fetch('/api/admin/movies/investigate', {

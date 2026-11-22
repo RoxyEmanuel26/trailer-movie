@@ -63,7 +63,7 @@ export default async function PopularPage({ params, searchParams }: PageProps) {
           ...(item.slug === 'latest-releases' ? { latestReleasesOnly: true } : {}),
         }),
     MovieService.getCatalogStats({
-      ...(item.slug === 'latest-releases' ? { releaseDateLte: new Date() } : {}),
+      ...(item.slug === 'latest-releases' ? { latestReleasesOnly: true } : {}),
       ...(item.slug === 'top-rated' ? { minimumVotes: 50 } : {}),
     }),
   ]);

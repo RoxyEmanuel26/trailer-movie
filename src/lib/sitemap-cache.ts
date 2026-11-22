@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { serializeSitemap, serializeSitemapIndex, type SitemapEntry, type SitemapIndexItem } from './sitemap-xml';
@@ -6,6 +6,7 @@ import { serializeSitemap, serializeSitemapIndex, type SitemapEntry, type Sitema
 const DEFAULT_CACHE_DIR = path.join(process.cwd(), '.cache', 'sitemaps');
 export const SITEMAP_SNAPSHOT_VERSION = 'v4';
 export const STABLE_SITEMAP_SHARD_MAX_AGE_MS = 6 * 3_600_000;
+const inFlightSitemapGenerators = new Map<string, Promise<{ xml: string; stale: boolean }>>();
 
 export function sitemapSnapshotKey(id: string) {
   if (!/^[a-z0-9-]+$/i.test(id)) throw new Error('Invalid sitemap cache key');
@@ -36,30 +37,61 @@ export async function writeSitemapSnapshot(key: string, xml: string) {
   const target = cachePath(key);
   await mkdir(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporary, xml, { encoding: 'utf8', flag: 'wx' });
-  await rename(temporary, target);
-}
-
-export async function generateSitemapWithFallback(key: string, generate: () => Promise<string>) {
-  let xml: string;
   try {
-    xml = await generate();
+    await writeFile(temporary, xml, { encoding: 'utf8', flag: 'wx' });
+    await rename(temporary, target);
   } catch (error) {
-    // A removed shard is not a database outage. Never resurrect its old XML.
-    if (typeof error === 'object' && error !== null && 'digest' in error &&
-      typeof error.digest === 'string' && error.digest.startsWith('NEXT_HTTP_ERROR_FALLBACK;404')) throw error;
-    const snapshot = await readSitemapSnapshot(key, Infinity);
-    if (snapshot) return { xml: snapshot, stale: true };
+    await unlink(temporary).catch(() => {});
     throw error;
   }
-  try {
-    // Reading a fresh shard must not slide its expiry forward on every visit.
-    if (await readSitemapSnapshot(key) !== xml) await writeSitemapSnapshot(key, xml);
-  } catch {
-    // A read-only disk must not turn successfully generated XML into a 503.
-    console.warn('Sitemap snapshot could not be persisted; serving generated XML.');
-  }
-  return { xml, stale: false };
+}
+
+export async function generateSitemapWithFallback(
+  key: string,
+  generate: () => Promise<string>,
+  maxAgeMs = 300_000,
+) {
+  const existing = inFlightSitemapGenerators.get(key);
+  if (existing) return existing;
+
+  const task = (async () => {
+    let xml: string;
+    try {
+      xml = await generate();
+    } catch (error) {
+      // A removed shard is not a database outage. Never resurrect its old XML.
+      if (typeof error === 'object' && error !== null && 'digest' in error &&
+        typeof error.digest === 'string' && error.digest.startsWith('NEXT_HTTP_ERROR_FALLBACK;404')) throw error;
+      const snapshot = await readSitemapSnapshot(key, Infinity);
+      if (snapshot) return { xml: snapshot, stale: true };
+      throw error;
+    }
+    try {
+      // Fresh identical snapshots must not slide their expiry forward on every visit,
+      // while expired identical snapshots refresh mtime so bots do not hammer PostgreSQL.
+      const freshSnapshot = await readSitemapSnapshot(key, maxAgeMs);
+      if (freshSnapshot !== xml) {
+        const anySnapshot = freshSnapshot === null ? await readSitemapSnapshot(key, Infinity) : freshSnapshot;
+        if (anySnapshot === xml) {
+          const now = new Date();
+          await utimes(cachePath(key), now, now);
+        } else {
+          await writeSitemapSnapshot(key, xml);
+        }
+      }
+    } catch {
+      // A read-only disk must not turn successfully generated XML into a 503.
+      console.warn('Sitemap snapshot could not be persisted; serving generated XML.');
+    }
+    return { xml, stale: false };
+  })().finally(() => {
+    if (inFlightSitemapGenerators.get(key) === task) {
+      inFlightSitemapGenerators.delete(key);
+    }
+  });
+
+  inFlightSitemapGenerators.set(key, task);
+  return task;
 }
 
 export interface WarmSitemapSnapshotsInput {
@@ -73,11 +105,9 @@ export interface WarmSitemapSnapshotsInput {
 
 export async function warmSitemapSnapshots(input: WarmSitemapSnapshotsInput) {
   const baseUrl = input.siteUrl.replace(/\/+$/, '');
-  const [moviePageCount, personPageCount, coreEntries] = await Promise.all([
-    input.getMoviePageCount(),
-    input.getPersonPageCount(),
-    input.getCoreEntries(),
-  ]);
+  const moviePageCount = await input.getMoviePageCount();
+  const personPageCount = await input.getPersonPageCount();
+  const coreEntries = await input.getCoreEntries();
   const coreLastMod = coreEntries[0]?.lastModified;
   const items: SitemapIndexItem[] = [
     { url: `${baseUrl}/sitemaps/core`, ...(coreLastMod ? { lastModified: coreLastMod } : {}) },

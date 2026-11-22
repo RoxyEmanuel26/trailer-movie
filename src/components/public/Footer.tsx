@@ -1,9 +1,18 @@
 import Link from 'next/link';
 import { MovieFlixLogo } from '@/components/brand/MovieFlixLogo';
 import { AnalyticsPreferencesButton } from './AnalyticsPreferencesButton';
+import { MovieService } from '@/lib/services/MovieService';
 
-export function Footer() {
+export async function Footer() {
   const currentYear = new Date().getUTCFullYear();
+  const facetGuides = await MovieService.getIndexableFacetGuides().catch(() => null);
+  const latestActionYear = facetGuides?.genreYear
+    .filter((entry) => entry.genreSlug === 'action')
+    .sort((a, b) => b.year - a.year)[0]?.year;
+  const latestHorrorYear = facetGuides?.genreYear
+    .filter((entry) => entry.genreSlug === 'horror')
+    .sort((a, b) => b.year - a.year)[0]?.year;
+
   return (
     <footer className="mt-12 border-t border-white/10 bg-muted/30 py-10 sm:mt-16 sm:py-12">
       <div className="mx-auto grid max-w-[90rem] grid-cols-2 gap-x-6 gap-y-9 px-4 sm:px-6 md:grid-cols-[1.35fr_1fr_1fr_1fr] md:gap-10 lg:px-8">
@@ -109,20 +118,20 @@ export function Footer() {
             </li>
             <li>
               <Link
-                href={`/genre/action/${currentYear}`}
+                href={latestActionYear ? `/genre/action/${latestActionYear}` : '/genre/action'}
                 prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"
               >
-                {currentYear} Action movies
+                {latestActionYear ? `${latestActionYear} Action movies` : 'Action movies'}
               </Link>
             </li>
             <li>
               <Link
-                href={`/genre/horror/${currentYear}`}
+                href={latestHorrorYear ? `/genre/horror/${latestHorrorYear}` : '/genre/horror'}
                 prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"
               >
-                {currentYear} Horror movies
+                {latestHorrorYear ? `${latestHorrorYear} Horror movies` : 'Horror movies'}
               </Link>
             </li>
             <li>

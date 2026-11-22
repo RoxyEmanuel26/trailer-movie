@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   clearAllPublicMemoryCaches();
   invalidate('/');
-  revalidateTag(HOMEPAGE_CATALOG_TAG, 'max');
+  revalidateTag(HOMEPAGE_CATALOG_TAG, { expire: 0 });
   revalidatePath('/opengraph-image', 'page');
   if (parsed.data.scope === 'catalog') {
     // Do not evict every watch/person page on each import batch. Those pages
@@ -45,9 +45,9 @@ export async function POST(request: NextRequest) {
     invalidate('/genres');
     invalidate('/countries');
     invalidate('/years');
-    invalidate('/streaming');
     invalidate('/popular', 'layout');
     invalidate('/genre', 'layout');
+    invalidate('/collection', 'layout');
     invalidate('/origin', 'layout');
     invalidate('/year', 'layout');
     invalidate('/streaming', 'layout');
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     revalidated: true,
     scope: parsed.data.scope,
-    sitemapRefreshAuthorized: parsed.data.refreshSitemaps,
+    sitemapRefreshAuthorized: parsed.data.scope === 'catalog' && parsed.data.refreshSitemaps,
     paths: [...revalidated],
     at: new Date().toISOString(),
   });

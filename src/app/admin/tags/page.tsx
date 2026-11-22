@@ -1,8 +1,19 @@
 import * as React from "react"
+import { redirect } from "next/navigation"
 import { TagService } from "@/lib/services/TagService"
 import { TagsClientWrapper } from "@/components/admin/tags/TagsClientWrapper"
+import { requireAdmin } from "@/lib/auth/utils"
+import { PermissionError, UnauthorizedError } from "@/lib/errors"
 
 export default async function TagsPage() {
+  try {
+    await requireAdmin("read:tags")
+  } catch (error) {
+    if (error instanceof PermissionError) redirect("/admin/forbidden")
+    if (error instanceof UnauthorizedError) redirect("/login")
+    throw error
+  }
+
   const tags = await TagService.listTags()
 
   return (

@@ -58,16 +58,16 @@ export function CollectionDialog({ open, onOpenChange, collection, onSuccess }: 
         body: JSON.stringify(payload)
       })
 
-      const json = await res.json()
+      const json = await res.json().catch(() => null)
       
       if (!res.ok) {
-        throw new Error(json.error?.message || "Failed to save collection")
+        throw new Error(json?.error?.message || "Failed to save collection")
       }
 
       toast.success("Collection saved successfully")
       onSuccess(json.data)
     } catch (err: any) {
-      toast.error("Error", { description: "Failed to save collection" })
+      toast.error("Error", { description: err?.message || "Failed to save collection" })
     } finally {
       setLoading(false)
     }

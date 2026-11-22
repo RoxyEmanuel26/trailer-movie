@@ -4,6 +4,7 @@ import { SeoRepository } from './repositories/SeoRepository';
 
 let lastKnownPersonPageCount: number | null = null;
 let lastPersonCountAt = 0;
+let inFlightPersonCount: Promise<number> | null = null;
 
 const loadMovieCountAndLastMod = async () => {
   const [movies, lastModified] = await Promise.all([
@@ -20,10 +21,19 @@ const loadPersonCount = async () => {
   if (lastKnownPersonPageCount !== null && Date.now() - lastPersonCountAt < 2 * 3_600_000) {
     return lastKnownPersonPageCount;
   }
-  const count = await SeoService.getPersonSitemapPageCount();
-  lastKnownPersonPageCount = count;
-  lastPersonCountAt = Date.now();
-  return count;
+  if (inFlightPersonCount) {
+    return inFlightPersonCount;
+  }
+  inFlightPersonCount = SeoService.getPersonSitemapPageCount()
+    .then((count) => {
+      lastKnownPersonPageCount = count;
+      lastPersonCountAt = Date.now();
+      return count;
+    })
+    .finally(() => {
+      inFlightPersonCount = null;
+    });
+  return inFlightPersonCount;
 };
 
 const cachedMovieMeta = unstable_cache(loadMovieCountAndLastMod, ['sitemap-movie-meta-v4'], { revalidate: 300 });

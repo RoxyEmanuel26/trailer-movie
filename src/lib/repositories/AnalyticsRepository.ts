@@ -5,8 +5,8 @@ import { prisma } from '../prisma';
 export class AnalyticsRepository {
   static async getOverviewMetrics(db: any = prisma) {
     const [moviesCount, publishedCount, collectionsCount, genresCount] = await Promise.all([
-      db.movie.count(),
-      db.movie.count({ where: { status: 'PUBLISHED' } }),
+      db.movie.count({ where: { deletedAt: null } }),
+      db.movie.count({ where: { status: 'PUBLISHED', deletedAt: null } }),
       db.collection.count(),
       db.genre.count(),
     ]);
@@ -180,18 +180,24 @@ export class AnalyticsRepository {
     });
 
     const movieIds = topMetrics.map((m: any) => m.entityId).filter(Boolean) as string[];
-    const movies = await db.movie.findMany({
-      where: { id: { in: movieIds } },
-      select: { id: true, title: true, slug: true, posterUrl: true },
-    });
+    const movies = movieIds.length
+      ? await db.movie.findMany({
+          where: { id: { in: movieIds }, deletedAt: null },
+          select: { id: true, title: true, slug: true, posterUrl: true },
+        })
+      : [];
+    const movieMap = new Map<string, any>(movies.map((m: any) => [m.id, m]));
 
-    return topMetrics.map((metric: any) => {
-      const movie = movies.find((m: any) => m.id === metric.entityId);
-      return {
-        ...movie,
-        count: metric._sum.value || 0,
-      };
-    });
+    return topMetrics
+      .map((metricRow: any) => {
+        const movie = metricRow.entityId ? movieMap.get(metricRow.entityId) : null;
+        if (!movie) return null;
+        return {
+          ...movie,
+          count: metricRow._sum.value || 0,
+        };
+      })
+      .filter(Boolean);
   }
 
   static async getTopSearchQueries(limit: number = 20, db: any = prisma) {
@@ -200,6 +206,7 @@ export class AnalyticsRepository {
       FROM "analytics_events"
       WHERE "eventName" = 'search' 
         AND metadata->>'query' IS NOT NULL
+        AND TRIM(metadata->>'query') <> ''
       GROUP BY LOWER(metadata->>'query')
       ORDER BY count DESC
       LIMIT ${limit}
@@ -213,6 +220,8 @@ export class AnalyticsRepository {
       FROM "analytics_events"
       WHERE "eventName" = 'search' 
         AND metadata->>'query' IS NOT NULL
+        AND TRIM(metadata->>'query') <> ''
+        AND metadata->>'resultsCount' ~ '^[0-9]+$'
         AND (metadata->>'resultsCount')::int = 0
       GROUP BY LOWER(metadata->>'query')
       ORDER BY count DESC
@@ -230,6 +239,7 @@ export class AnalyticsRepository {
         FROM "analytics_events"
         WHERE "eventName" = 'web_vital'
           AND metadata->>'name' IN ('LCP', 'INP', 'CLS')
+          AND metadata->>'value' ~ '^[0-9]+(\\.[0-9]+)?$'
           AND "createdAt" >= NOW() - INTERVAL '28 days'
         GROUP BY metadata->>'name'
       `,
@@ -291,8 +301,8 @@ export class AnalyticsRepository {
   }
 
   static async getMovieAnalytics(movieId: string, db: any = prisma) {
-    const movie = await db.movie.findUnique({
-      where: { id: movieId },
+    const movie = await db.movie.findFirst({
+      where: { id: movieId, deletedAt: null },
       select: { title: true, id: true }
     });
 

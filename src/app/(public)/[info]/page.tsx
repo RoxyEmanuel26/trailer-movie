@@ -122,13 +122,17 @@ const pages = {
 
 type InfoPage = keyof typeof pages;
 
+function resolveInfoPage(info: string) {
+  return Object.hasOwn(pages, info) ? pages[info as InfoPage] : undefined;
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ info: string }>;
 }): Promise<Metadata> {
   const { info } = await params;
-  const page = pages[info as InfoPage];
+  const page = resolveInfoPage(info);
   const requiresContact = info === 'contact' || info === 'dmca';
   return page
     ? SeoService.generateMetadata('Page', info, {
@@ -142,7 +146,7 @@ export async function generateMetadata({
 
 export default async function InfoPage({ params }: { params: Promise<{ info: string }> }) {
   const { info } = await params;
-  const page = pages[info as InfoPage];
+  const page = resolveInfoPage(info);
   if (!page) notFound();
   const pageUrl = absoluteUrl(`/${info}`);
   const schemaType = info === 'about' ? 'AboutPage' : info === 'contact' ? 'ContactPage' : 'WebPage';

@@ -9,10 +9,13 @@ export default async function MoviesPage({
 }) {
   const params = await searchParams
   
-  const skip = typeof params.skip === "string" ? parseInt(params.skip, 10) : 0
-  const take = typeof params.take === "string" ? parseInt(params.take, 10) : 50
-  const search = typeof params.search === "string" ? params.search : undefined
-  const status = typeof params.status === "string" ? params.status : undefined
+  const rawSkip = typeof params.skip === "string" ? Number.parseInt(params.skip, 10) : 0
+  const rawTake = typeof params.take === "string" ? Number.parseInt(params.take, 10) : 50
+  const skip = Number.isFinite(rawSkip) && rawSkip >= 0 ? Math.min(rawSkip, 500_000) : 0
+  const take = Number.isFinite(rawTake) && rawTake >= 1 ? Math.min(rawTake, 100) : 50
+  const search = typeof params.search === "string" ? params.search.trim().slice(0, 120) || undefined : undefined
+  const allowedStatuses = new Set(["DRAFT", "PUBLISHED", "ARCHIVED"])
+  const status = typeof params.status === "string" && allowedStatuses.has(params.status) ? params.status : undefined
 
   // Pass directly to the Domain Service instead of making an HTTP fetch call
   // This is the power of Server Components.

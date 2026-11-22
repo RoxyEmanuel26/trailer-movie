@@ -5,8 +5,8 @@ import { HomepageService } from '@/lib/services/HomepageService';
 import { FeaturedItemInputSchema } from '@/lib/api/schemas';
 import { successResponse } from '@/lib/api/response';
 
-export const PUT = apiHandler(async (req: NextRequest, params: any) => {
-  await requireAdmin("update:movies");
+export const PUT = apiHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+  await requireAdmin('update:homepage');
   const { id } = await params;
   const body = await req.json();
   const data = FeaturedItemInputSchema.parse(body);
@@ -14,8 +14,8 @@ export const PUT = apiHandler(async (req: NextRequest, params: any) => {
   return successResponse(item);
 });
 
-export const DELETE = apiHandler(async (req: NextRequest, params: any) => {
-  await requireAdmin("update:movies");
+export const DELETE = apiHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+  await requireAdmin('delete:homepage');
   const { id } = await params;
   await HomepageService.removeFeaturedItem(id);
   return successResponse({ success: true });

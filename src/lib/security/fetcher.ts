@@ -27,9 +27,12 @@ export async function secureFetch(url: string, options: HardenedFetchOptions = {
     throw new AppError(`Invalid URL provided to secureFetch: ${url}`, 400);
   }
 
-  // 1. Enforce Protocol
+  // 1. Enforce Protocol & Standard Port
   if (parsedUrl.protocol !== 'https:') {
     throw new AppError(`SSRF Blocked: Only HTTPS is allowed. Received ${parsedUrl.protocol}`, 403);
+  }
+  if (parsedUrl.port && parsedUrl.port !== '443') {
+    throw new AppError(`SSRF Blocked: Non-standard port ${parsedUrl.port} is not allowed.`, 403);
   }
 
   // 2. Enforce Domain Allowlist
@@ -37,13 +40,14 @@ export async function secureFetch(url: string, options: HardenedFetchOptions = {
     throw new AppError(`SSRF Blocked: Domain ${parsedUrl.hostname} is not in the allowlist.`, 403);
   }
 
-  // 3. Enforce Timeout
+  // 3. Enforce Timeout & Block Open Redirects
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(parsedUrl.toString(), {
       ...fetchOptions,
+      redirect: 'error',
       signal: controller.signal,
     });
     

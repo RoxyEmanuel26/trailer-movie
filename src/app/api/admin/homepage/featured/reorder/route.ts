@@ -6,7 +6,7 @@ import { ReorderSchema } from '@/lib/api/schemas';
 import { successResponse } from '@/lib/api/response';
 
 export const PUT = apiHandler(async (req: NextRequest) => {
-  await requireAdmin("update:movies");
+  await requireAdmin('write:homepage');
   const body = await req.json();
   const { orderedIds } = ReorderSchema.parse(body);
   await HomepageService.reorderFeaturedItems(orderedIds);

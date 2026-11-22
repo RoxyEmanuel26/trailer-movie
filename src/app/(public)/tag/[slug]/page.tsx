@@ -9,6 +9,13 @@ import { Hash } from 'lucide-react';
 import { isPageOutOfRange, pagePath, parseStrictPage } from '@/lib/pagination';
 import { NotFoundError } from '@/lib/errors';
 
+const TAG_ORDER_BY = [
+  { releaseDate: { sort: 'desc' as const, nulls: 'last' as const } },
+  { popularity: 'desc' as const },
+  { createdAt: 'desc' as const },
+  { id: 'asc' as const },
+];
+
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -24,7 +31,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       page,
       itemsPerPage: 24,
       tagSlug: tag.slug,
-      orderBy: { releaseDate: 'desc' },
+      orderBy: TAG_ORDER_BY,
     });
     if (isPageOutOfRange(page, total, 24)) notFound();
     return SeoService.generateMetadata('Tag', tag.id, {
@@ -61,7 +68,7 @@ export default async function TagPage({ params, searchParams }: PageProps) {
     page: currentPage,
     itemsPerPage,
     tagSlug: tag.slug,
-    orderBy: { releaseDate: 'desc' },
+    orderBy: TAG_ORDER_BY,
   });
   if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();
 

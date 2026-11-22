@@ -3,8 +3,8 @@ import { apiHandler } from '@/lib/api/handler';
 import { ErrorLogService } from '@/lib/services/ErrorLogService';
 import { requireAdmin } from '@/lib/auth/utils';
 
-export const GET = apiHandler(async (req: NextRequest) => {
-  await requireAdmin();
+export const GET = apiHandler(async () => {
+  await requireAdmin('read:analytics');
   const [errors, stats] = await Promise.all([
     ErrorLogService.getRecentErrors(100),
     ErrorLogService.getErrorStats()

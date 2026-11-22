@@ -6,7 +6,7 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
+import { Toaster, toast } from "sonner";
 import { Lock } from "lucide-react";
 import { MovieFlixLogo } from "@/components/brand/MovieFlixLogo";
 
@@ -46,6 +46,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4">
+      <Toaster richColors position="top-center" />
       <div className="w-full max-w-md space-y-8 rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 shadow-xl backdrop-blur-xl">
         <div className="text-center">
           <div className="flex justify-center text-white">

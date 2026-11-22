@@ -4,6 +4,7 @@ import { tmdbFetch } from '../tmdb/client';
 import { ImportRepository } from '../repositories/ImportRepository';
 import { calculateRetryAt, classifyJobError } from '../jobs/error-classification';
 import { DbClient } from '../repositories/base.types';
+import { NotFoundError, ValidationError } from '../errors';
 
 export type CreateImportBatchInput = { startDate: string; endDate: string; country?: string };
 
@@ -53,25 +54,41 @@ export class ImportBatchService {
   }
 
   static async pause(id: string) {
-    await prisma.importBatch.updateMany({
+    const existing = await this.find(id);
+    if (!existing) {
+      throw new NotFoundError(`Bulk import batch not found: ${id}`);
+    }
+    const updated = await prisma.importBatch.updateMany({
       where: { id, status: { in: [ImportBatchStatus.PENDING, ImportBatchStatus.RUNNING] } },
       data: { status: ImportBatchStatus.PAUSED, nextRunAt: null },
     });
+    if (updated.count === 0) {
+      throw new ValidationError(`Cannot pause bulk import batch in status ${existing.status}`);
+    }
     return this.find(id);
   }
 
   static async resume(id: string) {
-    await prisma.importBatch.updateMany({
+    const existing = await this.find(id);
+    if (!existing) {
+      throw new NotFoundError(`Bulk import batch not found: ${id}`);
+    }
+    const updated = await prisma.importBatch.updateMany({
       where: { id, status: ImportBatchStatus.PAUSED },
       data: { status: ImportBatchStatus.PENDING, nextRunAt: new Date(), errorMessage: null, completedAt: null },
     });
+    if (updated.count === 0) {
+      throw new ValidationError(`Cannot resume bulk import batch in status ${existing.status}`);
+    }
     return this.find(id);
   }
 
   static async cancel(id: string) {
     return prisma.$transaction(async (tx) => {
       const batch = await tx.importBatch.findUnique({ where: { id }, select: { status: true } });
-      if (!batch) return null;
+      if (!batch) {
+        throw new NotFoundError(`Bulk import batch not found: ${id}`);
+      }
       const terminalStatuses: ImportBatchStatus[] = [ImportBatchStatus.COMPLETED, ImportBatchStatus.FAILED, ImportBatchStatus.CANCELED];
       if (terminalStatuses.includes(batch.status)) {
         return tx.importBatch.findUnique({ where: { id } });
@@ -98,40 +115,56 @@ export class ImportBatchService {
     if (batches.length === 0) return 0;
 
     const counts = await db.importJob.groupBy({
-      by: ['importBatchId', 'status'],
+      by: ['importBatchId', 'status', 'retryable'],
       where: { importBatchId: { in: batches.map((batch) => batch.id) } },
       _count: { _all: true },
     });
-    const byBatch = new Map<string, Map<string, number>>();
-    for (const row of counts) {
+    const byBatch = new Map<string, { completed: number; failed: number; skipped: number; active: number }>();
+    for (const row of counts as Array<{ importBatchId: string | null; status: string; retryable?: boolean; _count: { _all: number } }>) {
       if (!row.importBatchId) continue;
-      const statuses = byBatch.get(row.importBatchId) || new Map<string, number>();
-      statuses.set(row.status, row._count._all);
-      byBatch.set(row.importBatchId, statuses);
+      const summary = byBatch.get(row.importBatchId) || { completed: 0, failed: 0, skipped: 0, active: 0 };
+      const count = row._count._all;
+      if (row.status === 'COMPLETED') summary.completed += count;
+      else if (row.status === 'FAILED') summary.failed += count;
+      else if (row.status === 'SKIPPED') summary.skipped += count;
+      else if (row.status === 'PENDING' || row.status === 'IN_PROGRESS') summary.active += count;
+      else if (row.status === 'PARTIAL') {
+        if (row.retryable === false) summary.failed += count;
+        else summary.active += count;
+      }
+      byBatch.set(row.importBatchId, summary);
     }
 
     let finalized = 0;
     for (const batch of batches) {
-      const statuses = byBatch.get(batch.id) || new Map<string, number>();
-      const importedCount = statuses.get('COMPLETED') || 0;
-      const failedCount = statuses.get('FAILED') || 0;
-      const unavailableCount = statuses.get('SKIPPED') || 0;
-      const stillRunning = ['PENDING', 'IN_PROGRESS', 'PARTIAL']
-        .some((status) => (statuses.get(status) || 0) > 0);
-      await db.importBatch.update({
-        where: { id: batch.id },
-        data: {
-          importedCount,
-          failedCount,
-          unavailableCount,
-          ...(stillRunning ? {} : {
-            status: failedCount > 0 ? ImportBatchStatus.FAILED : ImportBatchStatus.COMPLETED,
-            completedAt: new Date(),
-            errorMessage: failedCount > 0 ? `${failedCount} movie import job(s) require attention.` : null,
-          }),
-        },
-      });
-      if (!stillRunning) finalized += 1;
+      const summary = byBatch.get(batch.id) || { completed: 0, failed: 0, skipped: 0, active: 0 };
+      const importedCount = summary.completed;
+      const failedCount = summary.failed;
+      const unavailableCount = summary.skipped;
+      const stillRunning = summary.active > 0;
+      const updateData = {
+        importedCount,
+        failedCount,
+        unavailableCount,
+        ...(stillRunning ? {} : {
+          status: failedCount > 0 ? ImportBatchStatus.FAILED : ImportBatchStatus.COMPLETED,
+          completedAt: new Date(),
+          errorMessage: failedCount > 0 ? `${failedCount} movie import job(s) require attention.` : null,
+        }),
+      };
+      if (typeof (db.importBatch as any).updateMany === 'function') {
+        const res = await db.importBatch.updateMany({
+          where: { id: batch.id, status: ImportBatchStatus.IMPORTING },
+          data: updateData,
+        });
+        if (!stillRunning && res.count > 0) finalized += 1;
+      } else {
+        await db.importBatch.update({
+          where: { id: batch.id },
+          data: updateData,
+        });
+        if (!stillRunning) finalized += 1;
+      }
     }
     return finalized;
   }
@@ -238,8 +271,8 @@ export class ImportBatchService {
       return { processed: true, batchId: batch.id, ...pageResult, completed };
     } catch (error) {
       const classified = classifyJobError(error);
-      await prisma.importBatch.update({
-        where: { id: batch.id },
+      await prisma.importBatch.updateMany({
+        where: { id: batch.id, status: ImportBatchStatus.RUNNING },
         data: {
           status: classified.retryable ? ImportBatchStatus.PENDING : ImportBatchStatus.FAILED,
           nextRunAt: classified.retryable ? calculateRetryAt(2, classified.retryAfterSeconds) : null,

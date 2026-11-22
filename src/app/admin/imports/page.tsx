@@ -12,6 +12,7 @@ import { logger } from "@/lib/logger"
 
 export default async function ImportsPage() {
   const localMode = isLocalImportMode()
+  const canTriggerWorker = !localMode && process.env.NODE_ENV !== 'production'
   // Fetch existing jobs on server load
   const jobsData = await readImportMonitoring(() =>
     ImportManagerService.listJobs({ take: 100, includeCompleted: false, includeTotal: false }))
@@ -55,7 +56,12 @@ export default async function ImportsPage() {
         </TabsContent>
         
         <TabsContent value="queue" className="mt-0 outline-none">
-          <ImportQueueTable initialJobs={initialJobs} initialUnavailable={!jobsData} localMode={localMode} />
+          <ImportQueueTable
+            initialJobs={initialJobs}
+            initialUnavailable={!jobsData}
+            localMode={localMode}
+            canTriggerWorker={canTriggerWorker}
+          />
         </TabsContent>
       </Tabs>
     </div>

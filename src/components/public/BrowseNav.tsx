@@ -270,7 +270,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
       <NavDropdown
         menu="countries"
         label="Countries"
-        active={isPathActive(pathname, ['/origin'])}
+        active={isPathActive(pathname, ['/countries', '/origin'])}
         openMenu={openMenu}
         panelClassName="left-1/2 w-[38rem] -translate-x-1/2"
         onOpen={handleOpen}
@@ -308,7 +308,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
       <NavDropdown
         menu="years"
         label="Years"
-        active={isPathActive(pathname, ['/year'])}
+        active={isPathActive(pathname, ['/years', '/year'])}
         openMenu={openMenu}
         panelClassName="right-0 w-[24rem]"
         onOpen={handleOpen}

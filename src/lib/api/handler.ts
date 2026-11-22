@@ -27,15 +27,15 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
       
       let limitTier = RateLimitTiers.PUBLIC_GET;
       
-      if (path.startsWith('/api/admin/analytics')) {
+      if ((path.startsWith('/api/admin/imports') || path.startsWith('/api/import')) && method !== 'GET') {
+        limitTier = RateLimitTiers.IMPORT;
+      } else if (path.startsWith('/api/admin/analytics')) {
         limitTier = RateLimitTiers.ANALYTICS;
       } else if (path.startsWith('/api/admin')) {
         limitTier = RateLimitTiers.ADMIN;
-      } else if (path.startsWith('/api/import')) {
-        limitTier = RateLimitTiers.IMPORT;
       } else if (path.startsWith('/api/search')) {
         limitTier = RateLimitTiers.SEARCH;
-      } else if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+      } else if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
         limitTier = RateLimitTiers.PUBLIC_POST;
       }
       
@@ -51,6 +51,11 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
         return response;
       }
       logger.error({ err: error }, '[API_ERROR] Uncaught exception in API handler');
+
+      // Handle malformed JSON request bodies
+      if (error instanceof SyntaxError) {
+        return errorResponse('Invalid JSON payload', 'INVALID_JSON', 400);
+      }
 
       // Handle Zod Validation Errors
       if (error instanceof ZodError) {

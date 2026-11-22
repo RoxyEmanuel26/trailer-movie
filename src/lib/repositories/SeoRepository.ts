@@ -35,8 +35,8 @@ export class SeoRepository {
       where: { routePath },
       create: {
         routePath,
-        seoableType: 'Page', // Fallback for route-based SEO
-        seoableId: routePath,
+        seoableType: 'Page',
+        seoableId: routePath === '/' ? 'home' : routePath,
         ...data,
       },
       update: data,
@@ -66,11 +66,16 @@ export class SeoRepository {
    * Helper to find SEO data for a given entity or route, falling back to a default if not found.
    */
   static async findPageSEO(seoableType: string, seoableId: string, db: DbClient = prisma) {
-    return db.seoPage.findUnique({
+    const record = await db.seoPage.findUnique({
       where: {
         seoableType_seoableId: { seoableType, seoableId },
       },
     });
+    if (record) return record;
+    if (seoableType === 'Page' && seoableId === 'home') {
+      return db.seoPage.findUnique({ where: { routePath: '/' } });
+    }
+    return null;
   }
 
   /**

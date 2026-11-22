@@ -22,8 +22,11 @@ export function catalogStatsQuery(filters: CatalogFilters) {
   if (filters.languageCodes?.length) origins.push(Prisma.sql`EXISTS (SELECT 1 FROM "movie_languages" ml JOIN "languages" l ON l."id" = ml."languageId" WHERE ml."movieId" = m."id" AND l."isoCode" IN (${Prisma.join(filters.languageCodes)}))`);
   if (origins.length) conditions.push(Prisma.sql`(${Prisma.join(origins, ' OR ')})`);
   if (filters.releaseYear) conditions.push(Prisma.sql`m."releaseDate" >= ${new Date(Date.UTC(filters.releaseYear, 0, 1))} AND m."releaseDate" < ${new Date(Date.UTC(filters.releaseYear + 1, 0, 1))}`);
-  if (filters.releaseDateLte) conditions.push(Prisma.sql`m."releaseDate" <= ${filters.releaseDateLte}`);
-  if (filters.minimumVotes) conditions.push(Prisma.sql`m."voteCount" >= ${filters.minimumVotes}`);
+  if (filters.latestReleasesOnly) conditions.push(Prisma.sql`m."releaseDate" IS NOT NULL AND m."releaseDate" <= NOW()`);
+  else if (filters.releaseDateLte) conditions.push(Prisma.sql`m."releaseDate" <= ${filters.releaseDateLte}`);
+  if (filters.minimumVotes) {
+    conditions.push(Prisma.sql`m."voteAverage" IS NOT NULL AND m."voteCount" >= ${filters.minimumVotes}`);
+  }
   const terms = filters.search?.trim().split(/\s+/).filter(Boolean).slice(0, 8) || [];
   if (terms.length) conditions.push(Prisma.sql`(${Prisma.join(terms.map((term) => {
     // Match Prisma contains literally, including SQL wildcard characters.
@@ -43,6 +46,7 @@ export function catalogStatsQuery(filters: CatalogFilters) {
     ), top_movies AS (
       SELECT m."title", m."slug", m."voteAverage"
       FROM eligible e JOIN "movies" m ON m."id" = e."id"
+      WHERE e."popularity" IS NOT NULL
       ORDER BY e."popularity" DESC, e."voteAverage" DESC, e."id" ASC LIMIT 3
     )
     SELECT COUNT(*)::int AS "total",

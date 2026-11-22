@@ -8,6 +8,7 @@ import { MovieService } from '@/lib/services/MovieService';
 import { BrowseNav } from './BrowseNav';
 import { MovieFlixLogo } from '@/components/brand/MovieFlixLogo';
 import { unstable_cache } from 'next/cache';
+import { HOMEPAGE_CATALOG_TAG } from '@/lib/homepage-cache';
 import { isTransientDatabaseError } from '@/lib/database-errors';
 import { logger } from '@/lib/logger';
 import { loadPublicDataWithSnapshot } from '@/lib/public-catalog-snapshot';
@@ -47,7 +48,7 @@ const getBrowseNavigation = unstable_cache(
     return { genres, years };
   }, isBrowseNavigationData),
   ['public-browse-navigation-v3'],
-  { revalidate: 3600 },
+  { revalidate: 3600, tags: [HOMEPAGE_CATALOG_TAG] },
 );
 
 export async function Navbar() {

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { ArrowUp, ArrowDown, Edit, Trash } from "lucide-react"
+import { ArrowUp, ArrowDown, Trash } from "lucide-react"
 import { useDebounce } from "use-debounce"
 
 export function FeaturedHeroClient({ initialData }: { initialData: any[] }) {
@@ -27,11 +27,12 @@ export function FeaturedHeroClient({ initialData }: { initialData: any[] }) {
     if (!confirm("Are you sure you want to remove this featured item?")) return
     try {
       const res = await fetch(`/api/admin/homepage/featured/${id}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Failed to delete")
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to remove featured item")
       toast.success("Item removed")
       router.refresh()
     } catch (err: any) {
-      toast.error(err.message)
+      toast.error(err?.message || "Failed to remove featured item")
     }
   }
 
@@ -39,6 +40,7 @@ export function FeaturedHeroClient({ initialData }: { initialData: any[] }) {
     if (direction === 'up' && index === 0) return
     if (direction === 'down' && index === items.length - 1) return
 
+    const previousItems = items
     const newItems = [...items]
     const swapIndex = direction === 'up' ? index - 1 : index + 1
     const temp = newItems[index]
@@ -54,11 +56,13 @@ export function FeaturedHeroClient({ initialData }: { initialData: any[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderedIds })
       })
-      if (!res.ok) throw new Error("Failed to reorder")
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to reorder featured items")
       toast.success("Order updated")
+      router.refresh()
     } catch (err: any) {
-      toast.error(err.message)
-      setItems(initialData) // revert on error
+      toast.error(err?.message || "Failed to reorder featured items")
+      setItems(previousItems) // revert on error
     }
   }
 
@@ -139,6 +143,16 @@ function AddFeaturedItemDialog({ open, onOpenChange, onSuccess }: { open: boolea
   const [isSaving, setIsSaving] = React.useState(false)
 
   React.useEffect(() => {
+    if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMovieId("")
+      setCustomHeadline("")
+      setSearchQuery("")
+      setSearchResults([])
+    }
+  }, [open])
+
+  React.useEffect(() => {
     if (!debouncedSearch) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchResults([])
@@ -147,10 +161,11 @@ function AddFeaturedItemDialog({ open, onOpenChange, onSuccess }: { open: boolea
     const search = async () => {
       setIsSearching(true)
       try {
-        const res = await fetch(`/api/admin/movies?query=${encodeURIComponent(debouncedSearch)}`)
+        const res = await fetch(`/api/admin/movies?search=${encodeURIComponent(debouncedSearch)}&take=10`)
         if (res.ok) {
           const data = await res.json()
-          setSearchResults(data.data || [])
+          const list = Array.isArray(data.data?.data) ? data.data.data : Array.isArray(data.data) ? data.data : []
+          setSearchResults(list)
         }
       } catch (err) {
         console.error("Search failed", err)

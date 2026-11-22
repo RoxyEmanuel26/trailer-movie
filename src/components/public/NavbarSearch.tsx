@@ -30,9 +30,6 @@ export function NavbarSearch() {
   React.useEffect(() => {
     const trimmed = searchQuery.trim();
     if (trimmed.length < 2) {
-      setResults([]);
-      setTotalResults(0);
-      setIsLoading(false);
       return;
     }
 
@@ -43,14 +40,21 @@ export function NavbarSearch() {
         const res = await fetch(`/api/search?query=${encodeURIComponent(trimmed)}&page=1`, {
           signal: controller.signal,
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          setResults([]);
+          setTotalResults(0);
+          return;
+        }
         const json = await res.json();
         const items: QuickSearchMovie[] = Array.isArray(json?.data?.data) ? json.data.data : [];
         const total = typeof json?.data?.total === 'number' ? json.data.total : items.length;
         setResults(items.slice(0, 6));
         setTotalResults(total);
       } catch {
-        // Ignore aborted or failed requests
+        if (!controller.signal.aborted) {
+          setResults([]);
+          setTotalResults(0);
+        }
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
@@ -82,7 +86,7 @@ export function NavbarSearch() {
   };
 
   if (isSearchOpen) {
-    const showDropdown = searchQuery.trim().length >= 2 && (isLoading || results.length > 0);
+    const showDropdown = searchQuery.trim().length >= 2 && results.length > 0;
     return (
       <div ref={containerRef} className="relative hidden md:block">
         <form onSubmit={handleSearch} className="flex items-center relative">
@@ -92,7 +96,15 @@ export function NavbarSearch() {
             className="w-64 pr-8 lg:w-72"
             autoFocus
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setSearchQuery(next);
+              if (next.trim().length < 2) {
+                setResults([]);
+                setTotalResults(0);
+                setIsLoading(false);
+              }
+            }}
           />
           <Button
             type="button"
@@ -102,6 +114,9 @@ export function NavbarSearch() {
             onClick={() => {
               setIsSearchOpen(false);
               setSearchQuery('');
+              setResults([]);
+              setTotalResults(0);
+              setIsLoading(false);
             }}
           >
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}

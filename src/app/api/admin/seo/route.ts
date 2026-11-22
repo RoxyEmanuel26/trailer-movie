@@ -14,7 +14,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
 });
 
 export const PATCH = apiHandler(async (request: NextRequest) => {
-  await requireAdmin("update:seo");
+  await requireAdmin('write:seo');
   const body = await request.json();
   const data = SeoUpdateSchema.parse(body);
 

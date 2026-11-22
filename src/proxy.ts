@@ -33,12 +33,15 @@ export async function proxy(request: NextRequest) {
     });
   }
   const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
-  const requestHost = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(':')[0].toLowerCase();
+  const requestHost = (request.headers.get('host') || '').split(':')[0].toLowerCase();
   const canonicalHost = new URL(siteConfig.url).hostname.toLowerCase();
+  const redirectBase = process.env.NODE_ENV === 'production' ? siteConfig.url : request.url;
 
   if (process.env.NODE_ENV === 'production' && requestHost === 'movieflix.site' && canonicalHost === 'www.movieflix.site') {
     const canonical = new URL(`${pathname}${request.nextUrl.search}`, siteConfig.url);
-    return NextResponse.redirect(canonical, 308);
+    const redirectResponse = NextResponse.redirect(canonical, 308);
+    redirectResponse.headers.set('Cache-Control', 'no-store');
+    return redirectResponse;
   }
 
   if (request.nextUrl.searchParams.has('page')) {
@@ -48,7 +51,7 @@ export async function proxy(request: NextRequest) {
         return invalidPaginationResponse();
       }
       if (page === '1' && pathname !== '/search') {
-        const cleanUrl = new URL(request.url);
+        const cleanUrl = new URL(`${pathname}${request.nextUrl.search}`, redirectBase);
         cleanUrl.searchParams.delete('page');
         return NextResponse.redirect(cleanUrl, 308);
       }
@@ -57,17 +60,35 @@ export async function proxy(request: NextRequest) {
 
   const movieParam = pathname.startsWith('/watch/') ? pathname.slice('/watch/'.length) : '';
   if (/^-\d+$/.test(movieParam)) {
-    return NextResponse.redirect(new URL(moviePath(movieParam), request.url), 308);
+    return NextResponse.redirect(new URL(moviePath(movieParam), redirectBase), 308);
   }
   if (legacyIdPattern.test(movieParam)) {
-    const canonicalSlug = await MovieRepository.resolveCanonicalSlug(movieParam);
-    if (canonicalSlug) return NextResponse.redirect(new URL(moviePath(canonicalSlug), request.url), 308);
+    try {
+      const canonicalSlug = await MovieRepository.resolveCanonicalSlug(movieParam);
+      if (canonicalSlug) {
+        const targetPath = moviePath(canonicalSlug);
+        if (targetPath !== pathname) {
+          return NextResponse.redirect(new URL(targetPath, redirectBase), 308);
+        }
+      }
+    } catch {
+      // Fall through to page handler if DB is momentarily unavailable
+    }
   }
 
   const personParam = pathname.startsWith('/person/') ? pathname.slice('/person/'.length) : '';
   if (legacyIdPattern.test(personParam)) {
-    const canonicalSlug = await PersonRepository.resolveCanonicalSlug(personParam);
-    if (canonicalSlug) return NextResponse.redirect(new URL(personPath(canonicalSlug), request.url), 308);
+    try {
+      const canonicalSlug = await PersonRepository.resolveCanonicalSlug(personParam);
+      if (canonicalSlug) {
+        const targetPath = personPath(canonicalSlug);
+        if (targetPath !== pathname) {
+          return NextResponse.redirect(new URL(targetPath, redirectBase), 308);
+        }
+      }
+    } catch {
+      // Fall through to page handler if DB is momentarily unavailable
+    }
   }
 
   // Only protect admin routes for now.
@@ -76,18 +97,24 @@ export async function proxy(request: NextRequest) {
   // Cryptographic and DB validation is enforced securely inside `requireAdmin()` on API 
   // routes and Server Components (like AdminLayout).
   if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
-    const sessionCookie =
-      request.cookies.get('trailer-movie.session_token')?.value ||
-      request.cookies.get('__Secure-trailer-movie.session_token')?.value ||
-      request.cookies.get('better-auth.session_token')?.value;
+    const isCronBearerRoute =
+      pathname === '/api/admin/cron/process-imports' &&
+      Boolean(request.headers.get('authorization')?.trim());
 
-    if (!sessionCookie) {
-      // If it's an API request, return 401
-      if (pathname.startsWith('/api/admin')) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!isCronBearerRoute) {
+      const sessionCookie =
+        request.cookies.get('trailer-movie.session_token')?.value ||
+        request.cookies.get('__Secure-trailer-movie.session_token')?.value ||
+        request.cookies.get('better-auth.session_token')?.value;
+
+      if (!sessionCookie) {
+        // If it's an API request, return 401
+        if (pathname.startsWith('/api/admin')) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        // Redirect to login for UI
+        return NextResponse.redirect(new URL('/login', redirectBase));
       }
-      // Redirect to login for UI
-      return NextResponse.redirect(new URL('/login', request.url));
     }
   }
 

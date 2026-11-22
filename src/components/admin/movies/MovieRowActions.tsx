@@ -38,11 +38,12 @@ export function MovieRowActions({ movie, onEdit }: MovieRowActionsProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (!res.ok) throw new Error("Failed to update status")
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to update status")
       toast.success(`Movie marked as ${newStatus}`)
       router.refresh()
-    } catch (error) {
-      toast.error("An error occurred")
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to update status")
     }
   }
 
@@ -52,12 +53,13 @@ export function MovieRowActions({ movie, onEdit }: MovieRowActionsProps) {
       const res = await fetch(`/api/admin/movies/${movie.id}`, {
         method: "DELETE",
       })
-      if (!res.ok) throw new Error("Failed to delete movie")
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to delete movie")
       toast.success("Movie deleted")
       setShowDeleteDialog(false)
       router.refresh()
-    } catch (error) {
-      toast.error("Failed to delete movie")
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete movie")
     } finally {
       setIsDeleting(false)
     }

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiHandler } from "@/lib/api/handler";
-import { successResponse } from "@/lib/api/response";
+import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/utils";
 import { CollectionService } from "@/lib/services/CollectionService";
 import { BulkIdsSchema, BulkStatusSchema, BulkFeaturedSchema } from "@/lib/api/schemas";
@@ -8,6 +8,9 @@ import { BulkIdsSchema, BulkStatusSchema, BulkFeaturedSchema } from "@/lib/api/s
 export const PUT = apiHandler(async (req: NextRequest) => {
   await requireAdmin("update:collections");
   const body = await req.json();
+  if (!body || typeof body !== "object") {
+    return errorResponse("Invalid bulk payload", "VALIDATION_ERROR", 400);
+  }
   
   if (body.isActive !== undefined) {
     const data = BulkStatusSchema.parse(body);
@@ -21,12 +24,13 @@ export const PUT = apiHandler(async (req: NextRequest) => {
     return successResponse({ count: result.count });
   }
 
-  return successResponse({ message: "Invalid bulk operation" }, 400);
+  return errorResponse("Invalid bulk operation", "VALIDATION_ERROR", 400);
 });
 
 export const DELETE = apiHandler(async (req: NextRequest) => {
   await requireAdmin("delete:collections");
-  const data = BulkIdsSchema.parse(await req.json());
+  const body = await req.json();
+  const data = BulkIdsSchema.parse(body);
   const result = await CollectionService.deleteMany(data.ids);
   return successResponse({ count: result.count });
 });

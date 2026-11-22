@@ -8,10 +8,20 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-const activeCaches = new Set<{ clear: () => void }>();
+const GLOBAL_CACHE_REGISTRY_KEY = '__movieflixActiveMemoryCaches';
+
+function getActiveCacheRegistry(): Set<{ clear: () => void }> {
+  const globalStore = globalThis as typeof globalThis & {
+    [GLOBAL_CACHE_REGISTRY_KEY]?: Set<{ clear: () => void }>;
+  };
+  if (!globalStore[GLOBAL_CACHE_REGISTRY_KEY]) {
+    globalStore[GLOBAL_CACHE_REGISTRY_KEY] = new Set();
+  }
+  return globalStore[GLOBAL_CACHE_REGISTRY_KEY];
+}
 
 export function clearAllPublicMemoryCaches() {
-  for (const cacheInstance of activeCaches) {
+  for (const cacheInstance of getActiveCacheRegistry()) {
     cacheInstance.clear();
   }
 }
@@ -19,6 +29,7 @@ export function clearAllPublicMemoryCaches() {
 export function createMemoryCache<T>(options: MemoryCacheOptions) {
   const store = new Map<string, CacheEntry<T>>();
   const inFlight = new Map<string, Promise<T>>();
+  let epoch = 0;
   const { maxEntries, ttlMs } = options;
 
   const instance = {
@@ -61,19 +72,27 @@ export function createMemoryCache<T>(options: MemoryCacheOptions) {
         return existingPromise;
       }
 
-      const promise = loader()
+      const startEpoch = epoch;
+      const promise: Promise<T> = loader()
         .then((result) => {
-          inFlight.delete(key);
-          // Do not cache null/undefined for long if an entity is missing, or cache briefly (30s) to prevent 404 stampedes
-          if (result === null || result === undefined) {
-            instance.set(key, result, Math.min(customTtlMs, 30_000));
-          } else {
-            instance.set(key, result, customTtlMs);
+          const isCurrent = epoch === startEpoch && inFlight.get(key) === promise;
+          if (inFlight.get(key) === promise) {
+            inFlight.delete(key);
+          }
+          if (isCurrent) {
+            // Do not cache null/undefined for long if an entity is missing, or cache briefly (30s) to prevent 404 stampedes
+            if (result === null || result === undefined) {
+              instance.set(key, result, Math.min(customTtlMs, 30_000));
+            } else {
+              instance.set(key, result, customTtlMs);
+            }
           }
           return result;
         })
         .catch((err) => {
-          inFlight.delete(key);
+          if (inFlight.get(key) === promise) {
+            inFlight.delete(key);
+          }
           throw err;
         });
 
@@ -87,11 +106,12 @@ export function createMemoryCache<T>(options: MemoryCacheOptions) {
     },
 
     clear(): void {
+      epoch += 1;
       store.clear();
       inFlight.clear();
     },
   };
 
-  activeCaches.add(instance);
+  getActiveCacheRegistry().add(instance);
   return instance;
 }

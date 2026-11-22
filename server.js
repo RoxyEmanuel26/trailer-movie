@@ -204,7 +204,10 @@ function getPublicCachePolicy(pathname) {
     }
   }
   for (const prefix of LONG_TTL_PREFIXES) {
-    if (pathname === prefix || pathname.startsWith(prefix)) {
+    const isMatch = prefix.endsWith('/')
+      ? pathname.startsWith(prefix)
+      : pathname === prefix || pathname.startsWith(prefix + '/');
+    if (isMatch) {
       return {
         browserAndEdge: 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400, stale-if-error=86400',
         cdnOnly: 'public, max-age=3600, stale-while-revalidate=86400, stale-if-error=86400',
@@ -228,6 +231,7 @@ function installPublicCacheHeaderHook() {
 
   const origWriteHead = http.ServerResponse.prototype.writeHead;
   http.ServerResponse.prototype.writeHead = function (statusCode, statusMessage, headers) {
+    let nextArgs = arguments;
     try {
       const req = this.__movieflixReq;
       const code = typeof statusCode === 'number' ? statusCode : this.statusCode;
@@ -238,6 +242,8 @@ function installPublicCacheHeaderHook() {
         const search = qIndex >= 0 ? rawUrl.slice(qIndex + 1) : '';
         const isRsc =
           req.headers['rsc'] === '1' ||
+          Boolean(req.headers['next-router-prefetch']) ||
+          Boolean(req.headers['next-router-segment-prefetch']) ||
           /(?:^|&)_rsc=/.test(search);
         const cookieHeader = req.headers['cookie'] || '';
         const hasAuthCookie =
@@ -247,12 +253,18 @@ function installPublicCacheHeaderHook() {
         if (!isRsc && !hasAuthCookie) {
           const policy = getPublicCachePolicy(pathname);
           if (policy) {
-            const hdrObj =
+            const hdrArgIndex =
               typeof statusMessage === 'object' && statusMessage !== null
-                ? statusMessage
+                ? 1
                 : typeof headers === 'object' && headers !== null
-                  ? headers
-                  : null;
+                  ? 2
+                  : -1;
+            const rawHdrArg = hdrArgIndex === 1 ? statusMessage : hdrArgIndex === 2 ? headers : null;
+            // Bail out cleanly if Node's flat-array headers form was passed to writeHead.
+            if (Array.isArray(rawHdrArg)) {
+              return origWriteHead.apply(this, arguments);
+            }
+            const hdrObj = rawHdrArg ? { ...rawHdrArg } : null;
 
             const getHdr = (name) => {
               const lower = name.toLowerCase();
@@ -278,24 +290,46 @@ function installPublicCacheHeaderHook() {
 
             const contentType = getHdr('content-type').toLowerCase();
             const robotsTag = getHdr('x-robots-tag').toLowerCase();
-            if (contentType.startsWith('text/html') && !robotsTag.includes('noindex')) {
+            const setCookie = getHdr('set-cookie');
+            if (contentType.startsWith('text/html') && !robotsTag.includes('noindex') && !setCookie) {
               setHdr('Cache-Control', policy.browserAndEdge);
               setHdr('CDN-Cache-Control', policy.cdnOnly);
               setHdr('Cloudflare-CDN-Cache-Control', policy.cdnOnly);
-              setHdr('Vary', 'RSC, Next-Router-State-Tree, Next-Router-Prefetch, Accept-Encoding');
+              const existingVary = getHdr('vary')
+                .split(',')
+                .map((v) => v.trim())
+                .filter(Boolean);
+              const requiredVary = [
+                'RSC',
+                'Next-Router-State-Tree',
+                'Next-Router-Prefetch',
+                'Next-Router-Segment-Prefetch',
+                'Next-Url',
+                'Accept-Encoding',
+              ];
+              const varyMap = new Map();
+              for (const token of [...existingVary, ...requiredVary]) {
+                const lower = token.toLowerCase();
+                if (!varyMap.has(lower)) varyMap.set(lower, token);
+              }
+              setHdr('Vary', Array.from(varyMap.values()).join(', '));
+              if (hdrObj && hdrArgIndex >= 0) {
+                nextArgs = Array.from(arguments);
+                nextArgs[hdrArgIndex] = hdrObj;
+              }
             }
           }
         }
       }
     } catch {}
-    return origWriteHead.apply(this, arguments);
+    return origWriteHead.apply(this, nextArgs);
   };
 }
 
 installPublicCacheHeaderHook();
 
 // 4. Gentle Background Sitemap Warmer & Local Force-Rebuilder
-function fetchLocalText(port, urlPath, hostHeader, originToken, revalidationSecret) {
+function fetchLocalText(port, urlPath, hostHeader, originToken, revalidationSecret, discardBody = false) {
   return new Promise((resolve, reject) => {
     const req = http.get(
       {
@@ -311,6 +345,18 @@ function fetchLocalText(port, urlPath, hostHeader, originToken, revalidationSecr
         },
       },
       (res) => {
+        res.on('error', reject);
+        if (discardBody) {
+          res.resume();
+          res.on('end', () => {
+            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+              resolve('');
+            } else {
+              reject(new Error(`HTTP ${res.statusCode} for ${urlPath}`));
+            }
+          });
+          return;
+        }
         let body = '';
         res.setEncoding('utf8');
         res.on('data', (chunk) => {
@@ -340,47 +386,70 @@ function scheduleSitemapWarmup(port) {
   } catch {}
   const originToken = process.env.ORIGIN_GATE_SECRET || '';
   const revalidationSecret = process.env.REVALIDATION_SECRET || '';
+  const FORCE_COOLDOWN_MS = 10 * 60_000;
   let warmupRunning = false;
   let pendingForceRefresh = false;
   let debounceTimer = null;
+  let cooldownTimer = null;
   let lastForceRebuildAt = 0;
+
+  const scheduleDeferredForce = (delayMs) => {
+    if (cooldownTimer) return;
+    cooldownTimer = setTimeout(() => {
+      cooldownTimer = null;
+      void runWarmup(true);
+    }, Math.max(1_000, delayMs)).unref();
+  };
 
   const runWarmup = async (forceRefresh = false) => {
     if (warmupRunning) {
       if (forceRefresh) pendingForceRefresh = true;
       return;
     }
-    if (forceRefresh && Date.now() - lastForceRebuildAt < 10 * 60_000) {
-      return;
+    if (forceRefresh) {
+      const elapsed = Date.now() - lastForceRebuildAt;
+      if (lastForceRebuildAt > 0 && elapsed < FORCE_COOLDOWN_MS) {
+        scheduleDeferredForce(FORCE_COOLDOWN_MS - elapsed);
+        return;
+      }
     }
     warmupRunning = true;
-    if (forceRefresh) lastForceRebuildAt = Date.now();
     try {
       const secretToUse = forceRefresh ? revalidationSecret : '';
-      const indexXml = await fetchLocalText(port, '/sitemap.xml', hostHeader, originToken, secretToUse);
+      const indexXml = await fetchLocalText(port, '/sitemap.xml', hostHeader, originToken, secretToUse, false);
       const locMatches = [...indexXml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
       const movieShards = locMatches.filter((u) => u.includes('/sitemaps/movies-'));
       const newestMovieShard = movieShards[movieShards.length - 1] || '';
 
+      let hotShardsAttempted = 0;
+      let hotShardsSucceeded = 0;
+
       for (const loc of locMatches) {
+        let isHotShard = false;
         try {
           const parsed = new URL(loc);
           // Only force-refresh /sitemaps/core and the newest movie shard on revalidation.
           // Older movie shards and people-* shards use their 6-hour disk snapshot so we
           // never tie up database pool connections scanning 3M movie_people rows repeatedly.
-          const isHotShard =
+          isHotShard =
             parsed.pathname === '/sitemaps/core' ||
             loc === newestMovieShard;
+          if (isHotShard) hotShardsAttempted += 1;
           await fetchLocalText(
             port,
             parsed.pathname,
             hostHeader,
             originToken,
             forceRefresh && isHotShard ? revalidationSecret : '',
+            true,
           );
+          if (isHotShard) hotShardsSucceeded += 1;
           // Pause 2s between shards to keep CPU and DB load minimal
           await new Promise((r) => setTimeout(r, 2000));
         } catch {}
+      }
+      if (forceRefresh && (hotShardsAttempted === 0 || hotShardsSucceeded === hotShardsAttempted)) {
+        lastForceRebuildAt = Date.now();
       }
       console.log(
         `[MovieFlix] Background sitemap cache ${forceRefresh ? 'rebuilt' : 'warmed'} (${locMatches.length} shards ready).`,
@@ -408,7 +477,7 @@ function scheduleSitemapWarmup(port) {
     const corePaths = ['/', '/years', '/countries', '/genres', '/streaming', '/popular', '/feed.xml'];
     for (const p of corePaths) {
       try {
-        await fetchLocalText(port, p, hostHeader, originToken, '');
+        await fetchLocalText(port, p, hostHeader, originToken, '', true);
         await new Promise((r) => setTimeout(r, 800));
       } catch {}
     }

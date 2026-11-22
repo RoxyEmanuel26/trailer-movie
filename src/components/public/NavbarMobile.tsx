@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Search, Menu, ChevronDown, Film, Loader2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '@/lib/public-catalog';
 import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
@@ -40,9 +40,6 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
   React.useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!isOpen || trimmed.length < 2) {
-      setResults([]);
-      setTotalResults(0);
-      setIsLoading(false);
       return;
     }
 
@@ -53,14 +50,21 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
         const res = await fetch(`/api/search?query=${encodeURIComponent(trimmed)}&page=1`, {
           signal: controller.signal,
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          setResults([]);
+          setTotalResults(0);
+          return;
+        }
         const json = await res.json();
         const items: QuickSearchMovie[] = Array.isArray(json?.data?.data) ? json.data.data : [];
         const total = typeof json?.data?.total === 'number' ? json.data.total : items.length;
         setResults(items.slice(0, 5));
         setTotalResults(total);
       } catch {
-        // Ignore aborted requests
+        if (!controller.signal.aborted) {
+          setResults([]);
+          setTotalResults(0);
+        }
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
@@ -72,18 +76,27 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
     };
   }, [searchQuery, isOpen]);
 
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      setResults([]);
+      setTotalResults(0);
+      setIsLoading(false);
+    }
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-      setIsOpen(false);
+      handleOpenChange(false);
     }
   };
 
-  const closeMenu = () => setIsOpen(false);
+  const closeMenu = () => handleOpenChange(false);
 
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon" className="h-11 w-11 lg:hidden">
           <Menu className="h-5 w-5" />
@@ -91,6 +104,9 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
         </Button>
       </SheetTrigger>
       <SheetContent className="flex h-dvh w-[min(92vw,25rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <SheetDescription className="sr-only">
+          Browse MovieFlix categories, genres, streaming services, and search movies.
+        </SheetDescription>
         <div className="shrink-0 border-b bg-background/95 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-6">
           <Link href="/" className="flex min-h-11 items-center space-x-2 pr-12" onClick={closeMenu}>
             <MovieFlixMark className="h-9 w-9 text-primary" />
@@ -101,7 +117,15 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
               type="search"
               placeholder="Search movies…"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setSearchQuery(next);
+                if (next.trim().length < 2) {
+                  setResults([]);
+                  setTotalResults(0);
+                  setIsLoading(false);
+                }
+              }}
               className="h-11"
             />
             <Button type="submit" size="icon" className="h-11 w-11 shrink-0">

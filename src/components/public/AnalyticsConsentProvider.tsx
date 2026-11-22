@@ -17,13 +17,14 @@ export function useAnalyticsConsent() {
 
 export function AnalyticsConsentProvider({ children }: { children: React.ReactNode }) {
   const [consent, setConsent] = useState<AnalyticsConsent>('unknown');
+  const [hydrated, setHydrated] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
-    const hydrateConsent = window.setTimeout(
-      () => setConsent(readAnalyticsConsentCookie(document.cookie)),
-      0,
-    );
+    const hydrateConsent = window.setTimeout(() => {
+      setConsent(readAnalyticsConsentCookie(document.cookie));
+      setHydrated(true);
+    }, 0);
     const openSettings = () => setSettingsOpen(true);
     window.addEventListener(ANALYTICS_SETTINGS_EVENT, openSettings);
     return () => {
@@ -33,20 +34,24 @@ export function AnalyticsConsentProvider({ children }: { children: React.ReactNo
   }, []);
 
   const choose = useCallback(async (analytics: boolean) => {
-    const response = await fetch('/api/analytics/consent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ analytics }),
-    });
-    if (!response.ok) return;
-    const nextConsent: AnalyticsConsent = analytics ? 'granted' : 'denied';
-    setConsent(nextConsent);
-    setSettingsOpen(false);
-    window.dispatchEvent(new CustomEvent(ANALYTICS_CONSENT_EVENT, { detail: nextConsent }));
+    try {
+      const response = await fetch('/api/analytics/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analytics }),
+      });
+      if (!response.ok) return;
+      const nextConsent: AnalyticsConsent = analytics ? 'granted' : 'denied';
+      setConsent(nextConsent);
+      setSettingsOpen(false);
+      window.dispatchEvent(new CustomEvent(ANALYTICS_CONSENT_EVENT, { detail: nextConsent }));
+    } catch {
+      // Ignore offline/network errors silently
+    }
   }, []);
 
   const contextValue = useMemo(() => consent, [consent]);
-  const shouldShow = consent === 'unknown' || settingsOpen;
+  const shouldShow = settingsOpen || (hydrated && consent === 'unknown');
 
   return (
     <AnalyticsConsentContext.Provider value={contextValue}>

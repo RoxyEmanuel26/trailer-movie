@@ -1,8 +1,12 @@
 import { SeoRepository } from '../repositories/SeoRepository';
 import { SettingsRepository } from '../repositories/SettingsRepository';
 import { Prisma } from '@prisma/client';
+import { prisma } from '../prisma';
+import { extractYouTubeId } from '../utils/youtube';
 import { Metadata } from 'next';
 import { cache } from 'react';
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { MovieRepository } from '../repositories/MovieRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '../public-catalog';
@@ -53,20 +57,69 @@ const rssFeedCache = createMemoryCache<string>({
   ttlMs: 15 * 60_000,
 });
 
+function revalidatePublicSeo(paths: string[] = ['/']) {
+  clearAllPublicMemoryCaches();
+  try {
+    revalidateTag(HOMEPAGE_CATALOG_TAG, { expire: 0 });
+    for (const p of paths) {
+      revalidatePath(p);
+    }
+  } catch {
+    // Revalidation APIs require an active Next.js server store; ignore in CLI/tests.
+  }
+}
+
 export class SeoService {
   // --------------------------------------------------------------------------
   // Basic SEO Page CRUD
   // --------------------------------------------------------------------------
 
   static getHomepageSeo = cache(async () => {
-    return SeoRepository.getByRoute('/');
+    return (await SeoRepository.getByEntity('Page', 'home')) ?? (await SeoRepository.getByRoute('/'));
   });
 
   static async updateHomepageSeo(
     data: Omit<Prisma.SeoPageCreateInput, 'routePath' | 'seoableType' | 'seoableId'>
   ) {
-    const result = await SeoRepository.upsertByRoute('/', data);
-    clearAllPublicMemoryCaches();
+    const result = await prisma.$transaction(async (tx) => {
+      const [byEntity, byRoute] = await Promise.all([
+        SeoRepository.getByEntity('Page', 'home', tx),
+        SeoRepository.getByRoute('/', tx),
+      ]);
+
+      if (byEntity && byRoute && byEntity.id !== byRoute.id) {
+        await tx.seoPage.delete({ where: { id: byRoute.id } });
+        return tx.seoPage.update({
+          where: { id: byEntity.id },
+          data: { ...data, routePath: '/' },
+        });
+      }
+
+      if (byEntity) {
+        return tx.seoPage.update({
+          where: { id: byEntity.id },
+          data: { ...data, routePath: '/' },
+        });
+      }
+
+      if (byRoute) {
+        return tx.seoPage.update({
+          where: { id: byRoute.id },
+          data: { ...data, seoableType: 'Page', seoableId: 'home', routePath: '/' },
+        });
+      }
+
+      return tx.seoPage.create({
+        data: {
+          seoableType: 'Page',
+          seoableId: 'home',
+          routePath: '/',
+          ...data,
+        },
+      });
+    });
+
+    revalidatePublicSeo(['/', '/opengraph-image', '/sitemap.xml']);
     return result;
   }
 
@@ -80,7 +133,7 @@ export class SeoService {
     data: Omit<Prisma.SeoPageCreateInput, 'seoableType' | 'seoableId'>
   ) {
     const result = await SeoRepository.upsertByEntity(seoableType, seoableId, data);
-    clearAllPublicMemoryCaches();
+    revalidatePublicSeo(result.routePath ? ['/', result.routePath, '/sitemap.xml'] : ['/', '/sitemap.xml']);
     return result;
   }
 
@@ -125,7 +178,7 @@ export class SeoService {
       group: 'seo',
     }));
     await SettingsRepository.upsertMany(settings);
-    clearAllPublicMemoryCaches();
+    revalidatePublicSeo(['/', '/sitemap.xml']);
     return data;
   }
 
@@ -476,7 +529,9 @@ export class SeoService {
 
     return movies.map((movie) => {
       const trailer = movie.trailers[0];
-      const youtubeId = trailer?.sourceId || movie.youtubeTrailerId;
+      const youtubeId =
+        extractYouTubeId(trailer?.sourceId || '') ||
+        extractYouTubeId(movie.youtubeTrailerId || '');
       const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
       const description = normalizeMetaDescription(
         movie.synopsis,

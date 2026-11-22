@@ -23,9 +23,10 @@ export function ImportIdPanel() {
       const response = await fetch('/api/admin/imports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tmdbId: id }),
+        body: JSON.stringify({ tmdbId: id, forceRefresh: true }),
       });
-      if (!response.ok) throw new Error('Could not queue this movie');
+      const json = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(json?.error?.message || 'Could not queue this movie');
       toast.success(`Movie ${id} queued for the local worker`);
       setTmdbId('');
     } catch (error) {

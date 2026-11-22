@@ -13,6 +13,8 @@ import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { coreIndexNowPaths, submitIndexNowUrls } from '../indexnow';
 import { clearAllPublicMemoryCaches, createMemoryCache } from '../memory-cache';
+import { ImportQualityService } from './ImportQualityService';
+import { extractYouTubeId } from '../utils/youtube';
 import { ORIGIN_CATALOG } from '../public-catalog';
 import { STREAMING_CATALOG } from '../streaming-catalog';
 import {
@@ -289,7 +291,7 @@ function notifyPublicCatalogMutation(slug?: string, submitToIndexNow = false) {
   clearAllPublicMemoryCaches();
   const detailPath = slug ? moviePath(slug) : undefined;
   try {
-    revalidateTag(HOMEPAGE_CATALOG_TAG, 'max');
+    revalidateTag(HOMEPAGE_CATALOG_TAG, { expire: 0 });
     revalidatePath('/');
     revalidatePath('/movies');
     revalidatePath('/streaming');
@@ -416,6 +418,7 @@ export class MovieService {
     }
 
     const updated = await MovieRepository.update(id, { status: 'PUBLISHED' });
+    await ImportQualityService.evaluate(id, prisma, { preserveStatus: true });
     notifyPublicCatalogMutation(updated.slug, true);
     return updated;
   }
@@ -449,7 +452,88 @@ export class MovieService {
     if (!movie) {
       throw new NotFoundError(`Movie with id ${id} not found`);
     }
-    const updated = await MovieRepository.update(id, data);
+
+    const updateData = { ...data };
+    const hasTrailerUpdate = Object.prototype.hasOwnProperty.call(updateData, 'youtubeTrailerId');
+    let normalizedYoutubeId: string | null | undefined = undefined;
+
+    if (hasTrailerUpdate) {
+      const rawTrailer = updateData.youtubeTrailerId;
+      if (rawTrailer === null || (typeof rawTrailer === 'string' && rawTrailer.trim() === '')) {
+        normalizedYoutubeId = null;
+      } else if (typeof rawTrailer === 'string') {
+        const extracted = extractYouTubeId(rawTrailer);
+        if (!extracted) {
+          throw new ValidationError('Invalid YouTube trailer URL or 11-character video ID');
+        }
+        normalizedYoutubeId = extracted;
+      } else {
+        throw new ValidationError('Invalid YouTube trailer ID');
+      }
+      updateData.youtubeTrailerId = normalizedYoutubeId;
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedMovie = await MovieRepository.update(id, updateData, tx);
+
+      if (hasTrailerUpdate) {
+        if (normalizedYoutubeId) {
+          await tx.trailer.updateMany({
+            where: {
+              movieId: id,
+              sourceType: 'YOUTUBE',
+              sourceId: { not: normalizedYoutubeId },
+            },
+            data: {
+              isPrimary: false,
+              status: 'INACTIVE',
+            },
+          });
+
+          await tx.trailer.upsert({
+            where: {
+              movieId_sourceId: {
+                movieId: id,
+                sourceId: normalizedYoutubeId,
+              },
+            },
+            update: {
+              sourceType: 'YOUTUBE',
+              isPrimary: true,
+              status: 'ACTIVE',
+              dataSource: 'MANUAL',
+              thumbnailUrl: `https://i.ytimg.com/vi/${normalizedYoutubeId}/hqdefault.jpg`,
+            },
+            create: {
+              movieId: id,
+              title: `${updatedMovie.title} Official Trailer`,
+              sourceType: 'YOUTUBE',
+              sourceId: normalizedYoutubeId,
+              videoType: 'TRAILER',
+              isPrimary: true,
+              status: 'ACTIVE',
+              dataSource: 'MANUAL',
+              thumbnailUrl: `https://i.ytimg.com/vi/${normalizedYoutubeId}/hqdefault.jpg`,
+            },
+          });
+        } else {
+          await tx.trailer.updateMany({
+            where: {
+              movieId: id,
+              sourceType: 'YOUTUBE',
+            },
+            data: {
+              isPrimary: false,
+              status: 'INACTIVE',
+            },
+          });
+        }
+      }
+
+      return updatedMovie;
+    });
+
+    await ImportQualityService.evaluate(id, prisma, { preserveStatus: true });
     notifyPublicCatalogMutation(updated.slug, updated.status === 'PUBLISHED');
     return updated;
   }

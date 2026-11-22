@@ -30,10 +30,15 @@ export function HomepageSeoClient({ initialData }: HomepageSeoClientProps) {
   const handleSave = async () => {
     setIsSaving(true)
     try {
+      const payload = {
+        metaTitle: formData.metaTitle.trim() || null,
+        metaDescription: formData.metaDescription.trim() || null,
+        canonicalUrl: formData.canonicalUrl.trim() || null,
+      }
       const res = await fetch("/api/admin/homepage/seo", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       })
 
       if (!res.ok) {

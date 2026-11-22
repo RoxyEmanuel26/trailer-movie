@@ -38,21 +38,30 @@ export async function generateMetadata(): Promise<Metadata> {
       twitter: { card: 'summary_large_image' },
     };
   }
+  const resolvedTitle =
+    typeof metadata.title === 'string' && metadata.title.trim()
+      ? metadata.title.trim()
+      : homepageTitle;
+  const resolvedDescription =
+    typeof metadata.description === 'string' && metadata.description.trim()
+      ? metadata.description.trim()
+      : homepageDescription;
+
   return {
     ...metadata,
-    title: { absolute: homepageTitle },
-    description: homepageDescription,
+    title: { absolute: resolvedTitle },
+    description: resolvedDescription,
     robots: homepage.availability === 'unavailable' ? { index: false, follow: true } : metadata.robots,
     openGraph: {
       ...metadata.openGraph,
-      title: homepageTitle,
-      description: homepageDescription,
+      title: resolvedTitle,
+      description: resolvedDescription,
       images: [{ url: image, width: 1200, height: 630, alt: homepage.hero ? `${homepage.hero.title} on MovieFlix` : 'MovieFlix movie discovery' }],
     },
     twitter: {
       ...metadata.twitter,
-      title: homepageTitle,
-      description: homepageDescription,
+      title: resolvedTitle,
+      description: resolvedDescription,
       images: [image],
     },
     verification:
@@ -65,6 +74,11 @@ export const revalidate = 300;
 
 export default async function HomePage() {
   const discovery = await HomepageService.getSmartHomepageData();
+  if (discovery.availability === 'unavailable') {
+    const err = new Error('The movie catalog is temporarily unavailable.');
+    (err as Error & { code?: string }).code = 'P1008';
+    throw err;
+  }
   const { hero, heroBackdrop, heroHeadline: headline, sections } = discovery;
   const primaryImage = heroBackdrop ? getTmdbImageUrl(heroBackdrop, 1280) : absoluteUrl('/opengraph-image');
 
@@ -156,7 +170,7 @@ export default async function HomePage() {
                 {hero.releaseDate ? (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span>{new Date(hero.releaseDate).getFullYear()}</span>
+                    <span>{new Date(hero.releaseDate).getUTCFullYear()}</span>
                   </>
                 ) : null}
                 {hero.genres.slice(0, 3).map(({ genre }) => (

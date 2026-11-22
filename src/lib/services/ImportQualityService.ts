@@ -42,7 +42,11 @@ export function evaluateLegacyMovieQuality(input: Pick<MovieQualityInput, 'poste
 }
 
 export class ImportQualityService {
-  static async evaluate(movieId: string, db: DbClient = prisma) {
+  static async evaluate(
+    movieId: string,
+    db: DbClient = prisma,
+    options: { preserveStatus?: boolean } = {},
+  ) {
     const movie = await db.movie.findUniqueOrThrow({
       where: { id: movieId },
       select: {
@@ -52,6 +56,8 @@ export class ImportQualityService {
         posterUrl: true,
         productionStatus: true,
         youtubeTrailerId: true,
+        status: true,
+        lockedFields: true,
         _count: { select: { genres: true } },
         trailers: {
           where: { status: TrailerStatus.ACTIVE, sourceType: TrailerSource.YOUTUBE },
@@ -68,10 +74,16 @@ export class ImportQualityService {
     });
 
     const ready = issues.length === 0;
+    const locked = Array.isArray(movie.lockedFields) ? movie.lockedFields : [];
+    const keepStatus =
+      options.preserveStatus ||
+      locked.includes('status') ||
+      movie.status === MovieStatus.ARCHIVED;
+
     await db.movie.update({
       where: { id: movieId },
       data: {
-        status: ready ? MovieStatus.PUBLISHED : MovieStatus.DRAFT,
+        ...(keepStatus ? {} : { status: ready ? MovieStatus.PUBLISHED : MovieStatus.DRAFT }),
         importQualityStatus: ready ? MovieQualityStatus.READY : MovieQualityStatus.INCOMPLETE,
         importQualityIssues: issues,
       },
@@ -80,12 +92,18 @@ export class ImportQualityService {
     return { ready, issues };
   }
 
-  static async evaluateLegacy(movieId: string, db: DbClient = prisma) {
+  static async evaluateLegacy(
+    movieId: string,
+    db: DbClient = prisma,
+    options: { preserveStatus?: boolean } = {},
+  ) {
     const movie = await db.movie.findUniqueOrThrow({
       where: { id: movieId },
       select: {
         posterUrl: true,
         youtubeTrailerId: true,
+        status: true,
+        lockedFields: true,
         trailers: {
           where: { status: TrailerStatus.ACTIVE, sourceType: TrailerSource.YOUTUBE },
           select: { id: true },
@@ -98,10 +116,16 @@ export class ImportQualityService {
       activeYoutubeTrailerCount: movie.trailers.length,
     });
     const ready = issues.length === 0;
+    const locked = Array.isArray(movie.lockedFields) ? movie.lockedFields : [];
+    const keepStatus =
+      options.preserveStatus ||
+      locked.includes('status') ||
+      movie.status === MovieStatus.ARCHIVED;
+
     await db.movie.update({
       where: { id: movieId },
       data: {
-        status: ready ? MovieStatus.PUBLISHED : MovieStatus.DRAFT,
+        ...(keepStatus ? {} : { status: ready ? MovieStatus.PUBLISHED : MovieStatus.DRAFT }),
         importQualityStatus: ready ? MovieQualityStatus.READY : MovieQualityStatus.INCOMPLETE,
         importQualityIssues: issues,
       },

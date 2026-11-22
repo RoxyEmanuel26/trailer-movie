@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 
-import { ArrowUp, ArrowDown, Trash } from "lucide-react"
+import { ArrowUp, ArrowDown, Trash, Power } from "lucide-react"
 import { useDebounce } from "use-debounce"
 
 export function HomepageSectionsClient({ initialData }: { initialData: any[] }) {
@@ -23,15 +23,43 @@ export function HomepageSectionsClient({ initialData }: { initialData: any[] }) 
     setItems(initialData)
   }, [initialData])
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this section?")) return
+  const handleToggleActive = async (item: any) => {
     try {
-      const res = await fetch(`/api/admin/homepage/sections/${id}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Failed to delete")
-      toast.success("Section removed")
+      const nextActive = !item.isActive
+      const res = await fetch(`/api/admin/homepage/sections/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemKey: item.systemKey ?? null,
+          title: item.title,
+          type: item.type,
+          collectionId: item.collectionId ?? null,
+          genreId: item.genreId ?? null,
+          isActive: nextActive,
+        }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to update section status")
+      toast.success(nextActive ? "Section activated" : "Section deactivated")
       router.refresh()
     } catch (err: any) {
-      toast.error(err.message)
+      toast.error(err?.message || "Failed to update section status")
+    }
+  }
+
+  const handleDelete = async (item: any) => {
+    const promptText = item.systemKey
+      ? "Deactivate this system section? You can reactivate it anytime."
+      : "Are you sure you want to remove this section?"
+    if (!confirm(promptText)) return
+    try {
+      const res = await fetch(`/api/admin/homepage/sections/${item.id}`, { method: "DELETE" })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to delete section")
+      toast.success(item.systemKey ? "Section deactivated" : "Section removed")
+      router.refresh()
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete section")
     }
   }
 
@@ -39,6 +67,7 @@ export function HomepageSectionsClient({ initialData }: { initialData: any[] }) 
     if (direction === 'up' && index === 0) return
     if (direction === 'down' && index === items.length - 1) return
 
+    const previousItems = items
     const newItems = [...items]
     const swapIndex = direction === 'up' ? index - 1 : index + 1
     const temp = newItems[index]
@@ -54,11 +83,13 @@ export function HomepageSectionsClient({ initialData }: { initialData: any[] }) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderedIds })
       })
-      if (!res.ok) throw new Error("Failed to reorder")
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to reorder sections")
       toast.success("Order updated")
+      router.refresh()
     } catch (err: any) {
-      toast.error(err.message)
-      setItems(initialData) 
+      toast.error(err?.message || "Failed to reorder sections")
+      setItems(previousItems)
     }
   }
 
@@ -121,9 +152,22 @@ export function HomepageSectionsClient({ initialData }: { initialData: any[] }) 
                     {item.isActive ? "Active" : "Inactive"}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                      <Trash className="h-4 w-4 text-destructive" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={item.isActive ? "Deactivate section" : "Activate section"}
+                        aria-label={item.isActive ? "Deactivate section" : "Activate section"}
+                        onClick={() => handleToggleActive(item)}
+                      >
+                        <Power className={`h-4 w-4 ${item.isActive ? "text-emerald-600" : "text-muted-foreground"}`} />
+                      </Button>
+                      {!item.systemKey && (
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item)}>
+                          <Trash className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -182,6 +226,19 @@ function AddSectionDialog({ open, onOpenChange, onSuccess }: { open: boolean, on
     setSearchQuery("")
     setSearchResults([])
   }, [type])
+
+  // Reset entire dialog form when closed
+  React.useEffect(() => {
+    if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTitle("")
+      setType("AUTO_RECENT")
+      setCollectionId(null)
+      setGenreId(null)
+      setSearchQuery("")
+      setSearchResults([])
+    }
+  }, [open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

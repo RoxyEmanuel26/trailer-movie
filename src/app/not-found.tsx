@@ -14,11 +14,9 @@ export default function NotFound() {
       <p className="text-muted-foreground max-w-md pb-4">
         MovieFlix couldn&apos;t find the page you&apos;re looking for. It may have been removed or renamed.
       </p>
-      <Link href="/">
-        <Button variant="default" size="lg">
-          Return Home
-        </Button>
-      </Link>
+      <Button variant="default" size="lg" asChild>
+        <Link href="/">Return Home</Link>
+      </Button>
     </div>
   );
 }

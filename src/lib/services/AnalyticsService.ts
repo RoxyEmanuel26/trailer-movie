@@ -9,10 +9,11 @@ export class AnalyticsService {
       AnalyticsRepository.getSeoObservability(),
     ]);
     
-    // Get last 7 days of page views for a chart
+    // Get last 7 UTC calendar days of page views for a chart
     const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 7);
+    const startDate = new Date(endDate);
+    startDate.setUTCDate(startDate.getUTCDate() - 6);
+    startDate.setUTCHours(0, 0, 0, 0);
     
     const dailyViews = await AnalyticsRepository.getDailyMetricsByDateRange('page_view', startDate, endDate);
     const topMovies = await AnalyticsRepository.getTopMoviesByMetric('qualified_movie_view', 5);

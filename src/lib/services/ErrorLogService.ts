@@ -1,5 +1,6 @@
 import { AnalyticsRepository } from '../repositories/AnalyticsRepository';
 import { Prisma } from '@prisma/client';
+import { requireAdmin } from '../auth/utils';
 
 export class ErrorLogService {
   static async logError(context: string, error: any) {
@@ -19,10 +20,12 @@ export class ErrorLogService {
   }
 
   static async getRecentErrors(take: number = 50) {
+    await requireAdmin('read:analytics');
     return AnalyticsRepository.getRecentErrors(take);
   }
 
   static async getErrorStats() {
+    await requireAdmin('read:analytics');
     return AnalyticsRepository.getErrorStats();
   }
 }

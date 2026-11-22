@@ -30,6 +30,10 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
 
   // Top movies stored in JSON field during import (fallback/extended)
   const topMovies = Array.isArray(person.topMovies) ? person.topMovies : [];
+  const visibleTopMovies = topMovies.filter(
+    (m: any) =>
+      Boolean(m && typeof m === 'object' && typeof m.poster_path === 'string' && m.poster_path.trim().startsWith('/')),
+  );
   const rawCatalogMovies = person.movies || [];
 
   // Group by movie ID so a person with multiple roles in a single movie doesn't create duplicate cards or React keys
@@ -254,7 +258,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
                 {catalogMovies.map(({ movie, roles }) => {
-                  const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
+                  const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
                   return (
                     <Link
                       key={movie.id}
@@ -302,30 +306,35 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
           )}
 
           {/* External Notable Works (if catalog movies is empty or for extra context) */}
-          {catalogMovies.length === 0 && topMovies.length > 0 && (
+          {catalogMovies.length === 0 && visibleTopMovies.length > 0 && (
             <div className="order-5 mt-4 md:order-none md:mt-8">
               <h2 className="text-xl font-semibold mb-6">Known For (Movies)</h2>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
-                {topMovies.map((m: any, idx: number) => (
-                  <div
-                    key={m.id ? `${m.id}-${idx}` : idx}
-                    className="group relative flex flex-col gap-2 overflow-hidden"
-                  >
-                    <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted">
-                      <Image
-                        src={`https://image.tmdb.org/t/p/w500${m.poster_path}`}
-                        alt={m.title}
-                        fill
-                        sizes="(max-width: 639px) 50vw, (max-width: 1023px) 33vw, 20vw"
-                        className="object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
+                {visibleTopMovies.map((m: any, idx: number) => {
+                  const displayTitle = m.title || m.name || 'Untitled';
+                  return (
+                    <div
+                      key={m.id ? `${m.id}-${idx}` : idx}
+                      className="group relative flex flex-col gap-2 overflow-hidden"
+                    >
+                      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-muted">
+                        <Image
+                          src={`https://image.tmdb.org/t/p/w500${m.poster_path.trim()}`}
+                          alt={m.title || m.name || 'Movie poster'}
+                          fill
+                          sizes="(max-width: 639px) 50vw, (max-width: 1023px) 33vw, 20vw"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      </div>
+                      <h3 className="line-clamp-2 font-medium text-sm leading-tight group-hover:text-primary">
+                        {displayTitle}
+                      </h3>
+                      {m.character ? (
+                        <p className="text-xs text-muted-foreground line-clamp-1">{m.character}</p>
+                      ) : null}
                     </div>
-                    <h3 className="line-clamp-2 font-medium text-sm leading-tight group-hover:text-primary">
-                      {m.title}
-                    </h3>
-                    <p className="text-xs text-muted-foreground line-clamp-1">{m.character}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

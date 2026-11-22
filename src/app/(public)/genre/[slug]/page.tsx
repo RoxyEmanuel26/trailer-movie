@@ -11,6 +11,13 @@ import { ORIGIN_CATALOG } from '@/lib/public-catalog';
 import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
 import { getRelatedGuidesForGenre } from '@/lib/programmatic-guides';
 
+const GENRE_ORDER_BY = [
+  { releaseDate: { sort: 'desc' as const, nulls: 'last' as const } },
+  { popularity: 'desc' as const },
+  { createdAt: 'desc' as const },
+  { id: 'asc' as const },
+];
+
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -26,7 +33,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       page,
       itemsPerPage: 24,
       genreSlug: genre.slug,
-      orderBy: { releaseDate: 'desc' },
+      orderBy: GENRE_ORDER_BY,
     });
     if (isPageOutOfRange(page, total, 24)) notFound();
     return SeoService.generateMetadata('Genre', genre.id, {
@@ -64,7 +71,7 @@ export default async function GenrePage({ params, searchParams }: PageProps) {
       page: currentPage,
       itemsPerPage,
       genreSlug: genre.slug,
-      orderBy: { releaseDate: 'desc' },
+      orderBy: GENRE_ORDER_BY,
     }),
     MovieService.getCatalogStats({ genreSlug: genre.slug }),
     MovieService.getIndexableFacetGuides().catch(() => null),

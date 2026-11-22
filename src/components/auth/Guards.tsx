@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useSession } from "./SessionProvider"
 import { useRouter } from "next/navigation"
+import { hasRolePermission } from "@/lib/auth/permissions"
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useSession()
@@ -38,7 +39,7 @@ export function PermissionGuard({
       return
     }
 
-    const hasPerm = user.role?.permissions.some(p => p.permission.action === action)
+    const hasPerm = hasRolePermission(user.role, action)
     if (!hasPerm) {
       router.push("/admin/forbidden")
     }
@@ -46,7 +47,7 @@ export function PermissionGuard({
 
   if (isLoading) return null
 
-  const hasPerm = user?.role?.permissions.some(p => p.permission.action === action)
+  const hasPerm = hasRolePermission(user?.role, action)
   if (!hasPerm) return null
 
   return <>{children}</>

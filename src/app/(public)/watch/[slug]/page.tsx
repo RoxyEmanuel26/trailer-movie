@@ -28,6 +28,7 @@ import { getOriginAdjective } from '@/lib/programmatic-guides';
 import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 import { trailerSchema } from '@/lib/trailer-schema';
 import { ShareMovieButton } from '@/components/public/ShareMovieButton';
+import { extractYouTubeId } from '@/lib/utils/youtube';
 import { MovieQuickFactsFaq } from '@/components/movie/MovieQuickFactsFaq';
 import {
   buildFaqJsonLd,
@@ -123,7 +124,14 @@ export default async function MovieDetailPage({ params }: PageProps) {
   const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
   const primaryTrailer = movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE' && trailer.isPrimary)
     || movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE');
-  const youtubeId = primaryTrailer?.sourceId || movie.youtubeTrailerId;
+  const youtubeId =
+    extractYouTubeId(primaryTrailer?.sourceId || '') ||
+    extractYouTubeId(movie.youtubeTrailerId || '');
+  const legacyReviews = Array.isArray(movie.reviews)
+    ? movie.reviews.filter((review) => Boolean(review && typeof review === 'object'))
+    : [];
+  const resolvedReviews =
+    movie.movieReviews && movie.movieReviews.length > 0 ? movie.movieReviews : legacyReviews;
   const movieUrl = absoluteUrl(canonicalPath);
   const description = normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title} and explore its cast, crew, and viewing information.`);
   const matchingOrigins = ORIGIN_CATALOG.filter((origin) =>
@@ -367,7 +375,14 @@ export default async function MovieDetailPage({ params }: PageProps) {
               {movie.releaseDate && (
                 <div className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
-                  <span>{new Date(movie.releaseDate).toLocaleDateString()}</span>
+                  <span>
+                    {new Intl.DateTimeFormat('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      timeZone: 'UTC',
+                    }).format(new Date(movie.releaseDate))}
+                  </span>
                 </div>
               )}
               {movie.runtimeMinutes && (
@@ -631,14 +646,10 @@ export default async function MovieDetailPage({ params }: PageProps) {
               </div>
             )}
 
-            {((movie.movieReviews && movie.movieReviews.length > 0) || movie.reviews) && (
+            {resolvedReviews.length > 0 && (
               <div className="order-10 lg:order-none">
                 <MovieReviews
-                  reviews={
-                    movie.movieReviews && movie.movieReviews.length > 0
-                      ? movie.movieReviews
-                      : (movie.reviews as any[]) || []
-                  }
+                  reviews={resolvedReviews as any[]}
                   movieSlug={movie.slug}
                 />
               </div>

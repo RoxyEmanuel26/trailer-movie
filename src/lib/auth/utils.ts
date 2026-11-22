@@ -2,6 +2,9 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { UserRepository } from '@/lib/repositories/UserRepository';
 import { UnauthorizedError, PermissionError } from '@/lib/errors';
+import { hasRolePermission } from './permissions';
+
+export { hasRolePermission };
 
 export async function getCurrentSession() {
   const reqHeaders = await headers();
@@ -33,11 +36,8 @@ export async function requireAdmin(action?: string) {
     throw new PermissionError('No assigned role');
   }
 
-  if (action) {
-    const hasPermission = dbUser.role.permissions.some((rp) => rp.permission.action === action);
-    if (!hasPermission) {
-      throw new PermissionError(`Missing required permission '${action}'`);
-    }
+  if (action && !hasRolePermission(dbUser.role, action)) {
+    throw new PermissionError(`Missing required permission '${action}'`);
   }
 
   return { session, user: dbUser };

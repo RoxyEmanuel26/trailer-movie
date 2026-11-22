@@ -29,10 +29,11 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
 export default async function SearchPage({ searchParams }: PageProps) {
   const resolvedParams = await searchParams;
 
-  const q = typeof resolvedParams.q === 'string' ? resolvedParams.q : undefined;
-  const genreSlug = typeof resolvedParams.genre === 'string' ? resolvedParams.genre : undefined;
+  const trimmedQ = typeof resolvedParams.q === 'string' ? resolvedParams.q.trim() : '';
+  const q = trimmedQ || undefined;
+  const genreSlug = typeof resolvedParams.genre === 'string' ? resolvedParams.genre.trim() || undefined : undefined;
   const collectionSlug =
-    typeof resolvedParams.collection === 'string' ? resolvedParams.collection : undefined;
+    typeof resolvedParams.collection === 'string' ? resolvedParams.collection.trim() || undefined : undefined;
   const sort =
     typeof resolvedParams.sort === 'string'
       ? resolvedParams.sort
@@ -45,13 +46,14 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const itemsPerPage = 24;
   const skip = (page - 1) * itemsPerPage;
 
-  let orderBy: any = { createdAt: 'desc' };
-  if (sort === 'popularity_desc') orderBy = { popularity: 'desc' };
-  if (sort === 'voteAverage_desc') orderBy = [{ voteAverage: 'desc' }, { voteCount: 'desc' }];
-  if (sort === 'releaseDate_desc') orderBy = { releaseDate: 'desc' };
-  if (sort === 'releaseDate_asc') orderBy = { releaseDate: 'asc' };
-  if (sort === 'title_asc') orderBy = { title: 'asc' };
-  if (sort === 'title_desc') orderBy = { title: 'desc' };
+  let orderBy: any = [{ createdAt: 'desc' }, { id: 'asc' }];
+  // Keep sort keys aligned with partial public B-tree indexes so /search never falls back to a 9s heap sort
+  if (sort === 'popularity_desc') orderBy = [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }];
+  if (sort === 'voteAverage_desc') orderBy = [{ voteAverage: { sort: 'desc', nulls: 'last' } }, { voteCount: 'desc' }, { id: 'asc' }];
+  if (sort === 'releaseDate_desc') orderBy = [{ releaseDate: { sort: 'desc', nulls: 'last' } }, { popularity: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }];
+  if (sort === 'releaseDate_asc') orderBy = [{ releaseDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }];
+  if (sort === 'title_asc') orderBy = [{ title: 'asc' }, { id: 'asc' }];
+  if (sort === 'title_desc') orderBy = [{ title: 'desc' }, { id: 'asc' }];
 
   const [{ data: movies, total: totalMovies }, genres] = await Promise.all([
     MovieService.searchMovies({
@@ -88,7 +90,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
         className="cinema-panel mb-8 grid gap-3 rounded-2xl p-4 sm:grid-cols-2 sm:items-end sm:p-5 lg:mb-10 lg:grid-cols-[minmax(15rem,1fr)_minmax(10rem,.35fr)_minmax(10rem,.35fr)_auto]"
       >
         <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
-          <span>Search title or synopsis</span>
+          <span>Search movie title</span>
           <span className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
             <input

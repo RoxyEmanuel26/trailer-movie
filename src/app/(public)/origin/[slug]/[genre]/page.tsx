@@ -49,7 +49,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       countryCodes: origin.countryCodes,
       languageCodes: origin.languageCodes,
       genreSlug: genre.slug,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       countryCodes: origin.countryCodes,
@@ -92,7 +92,7 @@ export default async function OriginGenrePage({ params, searchParams }: PageProp
       countryCodes: origin.countryCodes,
       languageCodes: origin.languageCodes,
       genreSlug: genre.slug,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       countryCodes: origin.countryCodes,

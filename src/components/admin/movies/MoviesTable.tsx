@@ -90,6 +90,8 @@ export function MoviesTable({ data, total, skip, take, onEdit }: MoviesTableProp
 
   const canPreviousPage = skip > 0
   const canNextPage = skip + take < total
+  const rangeStart = total === 0 || skip >= total ? 0 : skip + 1
+  const rangeEnd = rangeStart === 0 ? 0 : Math.min(skip + take, total)
 
   const goToPage = (newSkip: number) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -145,7 +147,7 @@ export function MoviesTable({ data, total, skip, take, onEdit }: MoviesTableProp
       </div>
       <div className="flex items-center justify-between px-2">
         <div className="text-sm text-muted-foreground">
-          Showing {total === 0 ? 0 : skip + 1} to {Math.min(skip + take, total)} of {total} results
+          Showing {rangeStart} to {rangeEnd} of {total} results
         </div>
         <div className="flex items-center space-x-2">
           <Button

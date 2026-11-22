@@ -50,7 +50,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       itemsPerPage: 24,
       genreSlug: genre.slug,
       releaseYear: year,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       genreSlug: genre.slug,
@@ -95,7 +95,7 @@ export default async function GenreYearPage({ params, searchParams }: PageProps)
       itemsPerPage,
       genreSlug: genre.slug,
       releaseYear: year,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       genreSlug: genre.slug,

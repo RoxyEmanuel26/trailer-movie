@@ -1,8 +1,19 @@
 import * as React from "react"
+import { redirect } from "next/navigation"
 import { CollectionService } from "@/lib/services/CollectionService"
 import { CollectionsClientWrapper } from "@/components/admin/collections/CollectionsClientWrapper"
+import { requireAdmin } from "@/lib/auth/utils"
+import { PermissionError, UnauthorizedError } from "@/lib/errors"
 
 export default async function CollectionsPage() {
+  try {
+    await requireAdmin("read:collections")
+  } catch (error) {
+    if (error instanceof PermissionError) redirect("/admin/forbidden")
+    if (error instanceof UnauthorizedError) redirect("/login")
+    throw error
+  }
+
   const collections = await CollectionService.listCollections()
 
   return (

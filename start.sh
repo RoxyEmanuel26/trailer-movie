@@ -45,16 +45,31 @@ else
   PM="npm"
 fi
 
-# 1. Install dependencies only if node_modules is missing on server
-if [ ! -d "$ROOT/node_modules" ]; then
-  echo "[MovieFlix] node_modules not found. Installing dependencies..."
+# 1. Install dependencies if node_modules is missing or pnpm-lock.yaml changed
+LOCK_HASH=""
+if [ -f "$ROOT/pnpm-lock.yaml" ] && command -v sha256sum >/dev/null 2>&1; then
+  LOCK_HASH="$(sha256sum "$ROOT/pnpm-lock.yaml" | awk '{print $1}')"
+fi
+PREV_LOCK_HASH=""
+if [ -f "$ROOT/node_modules/.movieflix-lock-hash" ]; then
+  PREV_LOCK_HASH="$(cat "$ROOT/node_modules/.movieflix-lock-hash" 2>/dev/null || true)"
+fi
+
+if [ ! -d "$ROOT/node_modules" ] || { [ -n "$LOCK_HASH" ] && [ -n "$PREV_LOCK_HASH" ] && [ "$LOCK_HASH" != "$PREV_LOCK_HASH" ]; }; then
+  echo "[MovieFlix] Installing dependencies..."
   if [[ "$PM" == *"pnpm"* ]]; then
     $PM install --frozen-lockfile || $PM install --no-frozen-lockfile
   else
     npm install --legacy-peer-deps
   fi
+  if [ -n "$LOCK_HASH" ] && [ -d "$ROOT/node_modules" ]; then
+    echo "$LOCK_HASH" > "$ROOT/node_modules/.movieflix-lock-hash" 2>/dev/null || true
+  fi
 else
-  echo "[MovieFlix] node_modules found. Skipping installation."
+  if [ -n "$LOCK_HASH" ] && [ -z "$PREV_LOCK_HASH" ] && [ -d "$ROOT/node_modules" ]; then
+    echo "$LOCK_HASH" > "$ROOT/node_modules/.movieflix-lock-hash" 2>/dev/null || true
+  fi
+  echo "[MovieFlix] node_modules up to date. Skipping installation."
 fi
 
 # 2. Check Prisma Client

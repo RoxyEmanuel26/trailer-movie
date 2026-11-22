@@ -31,7 +31,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     page,
     itemsPerPage: 24,
     providerTmdbIds: item.tmdbIds,
-    orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+    orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
   });
   if (isPageOutOfRange(page, total, 24)) notFound();
 
@@ -57,7 +57,7 @@ export default async function StreamingPlatformPage({ params, searchParams }: Pa
       page: currentPage,
       itemsPerPage,
       providerTmdbIds: item.tmdbIds,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       providerTmdbIds: item.tmdbIds,

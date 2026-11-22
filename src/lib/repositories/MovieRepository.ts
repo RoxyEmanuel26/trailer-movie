@@ -16,6 +16,7 @@ export interface CatalogFilters {
   languageCodes?: string[];
   releaseYear?: number;
   releaseDateLte?: Date;
+  latestReleasesOnly?: boolean;
   minimumVotes?: number;
 }
 
@@ -93,7 +94,8 @@ function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
   if (params.languageCodes?.length) originFilters.push({ languages: { some: { language: { isoCode: { in: params.languageCodes } } } } });
   if (originFilters.length) andFilters.push({ OR: originFilters });
   if (params.releaseYear) andFilters.push({ releaseDate: { gte: new Date(Date.UTC(params.releaseYear, 0, 1)), lt: new Date(Date.UTC(params.releaseYear + 1, 0, 1)) } });
-  if (params.releaseDateLte) andFilters.push({ releaseDate: { lte: params.releaseDateLte } });
+  if (params.latestReleasesOnly) andFilters.push({ releaseDate: { not: null, lte: new Date() } });
+  else if (params.releaseDateLte) andFilters.push({ releaseDate: { lte: params.releaseDateLte } });
   if (params.minimumVotes) andFilters.push({ voteCount: { gte: params.minimumVotes } });
   if (andFilters.length) where.AND = andFilters;
   return where;
@@ -147,9 +149,6 @@ export class MovieRepository {
       JOIN "movies" movie ON movie."id" = mm."movieId"
       WHERE movie."status" = 'PUBLISHED'
         AND movie."deletedAt" IS NULL
-        AND movie."importQualityStatus" = 'READY'
-        AND movie."posterUrl" IS NOT NULL
-        AND movie."releaseDate" <= CURRENT_TIMESTAMP
       GROUP BY mm."slug"
     `);
     return new Map(rows.map((row) => [row.slug, Number(row.total)]));

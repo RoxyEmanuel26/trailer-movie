@@ -7,7 +7,7 @@ import { ImportJobStatus } from "@prisma/client";
 import { ValidationError, NotFoundError } from "@/lib/errors";
 
 export const POST = apiHandler(async (request: NextRequest, { params }: any) => {
-  await requireAdmin("create:imports");
+  await requireAdmin("write:imports");
   const { id } = await params;
 
   const job = await ImportRepository.findById(id);
@@ -15,8 +15,8 @@ export const POST = apiHandler(async (request: NextRequest, { params }: any) => 
     throw new NotFoundError(`Import job with id ${id} not found`);
   }
 
-  if ((job.status !== ImportJobStatus.FAILED && job.status !== ImportJobStatus.PARTIAL) || !job.retryable) {
-    throw new ValidationError(`This ${job.status} job is not retryable.`);
+  if (job.status !== ImportJobStatus.FAILED && job.status !== ImportJobStatus.PARTIAL) {
+    throw new ValidationError(`Only FAILED or PARTIAL jobs can be retried (current status: ${job.status}).`);
   }
 
   // Reset status back to PENDING so the worker picks it up on the next cycle.

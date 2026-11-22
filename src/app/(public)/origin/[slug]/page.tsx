@@ -31,7 +31,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     itemsPerPage: 24,
     countryCodes: item.countryCodes,
     languageCodes: item.languageCodes,
-    orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+    orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
   });
   if (isPageOutOfRange(page, total, 24)) notFound();
   const description = `Browse published movies connected to ${item.label} by production country or spoken language, with trailers, cast, genres, ratings, and release details.`;
@@ -57,7 +57,7 @@ export default async function OriginPage({ params, searchParams }: PageProps) {
       itemsPerPage,
       countryCodes: item.countryCodes,
       languageCodes: item.languageCodes,
-      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({
       countryCodes: item.countryCodes,

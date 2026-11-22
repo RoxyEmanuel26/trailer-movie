@@ -14,6 +14,13 @@ import { NotFoundError } from '@/lib/errors';
 import { absoluteUrl, organizationSchemaId, websiteSchemaId } from '@/lib/site-config';
 import { moviePath } from '@/lib/public-routes';
 
+const COLLECTION_ORDER_BY = [
+  { releaseDate: { sort: 'desc' as const, nulls: 'last' as const } },
+  { popularity: 'desc' as const },
+  { createdAt: 'desc' as const },
+  { id: 'asc' as const },
+];
+
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -29,7 +36,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       page,
       itemsPerPage: 24,
       collectionSlug: collection.slug,
-      orderBy: { releaseDate: 'desc' },
+      orderBy: COLLECTION_ORDER_BY,
     });
     if (isPageOutOfRange(page, total, 24)) notFound();
     return SeoService.generateMetadata('Collection', collection.id, {
@@ -67,7 +74,7 @@ export default async function CollectionPage({ params, searchParams }: PageProps
     page: currentPage,
     itemsPerPage,
     collectionSlug: collection.slug,
-    orderBy: { releaseDate: 'desc' },
+    orderBy: COLLECTION_ORDER_BY,
   });
   if (isPageOutOfRange(currentPage, totalMovies, itemsPerPage)) notFound();
 

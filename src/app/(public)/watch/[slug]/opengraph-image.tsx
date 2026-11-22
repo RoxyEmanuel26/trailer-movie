@@ -1,12 +1,20 @@
 import { ImageResponse } from 'next/og';
 import { MovieService } from '@/lib/services/MovieService';
-import { siteConfig } from '@/lib/site-config';
+import { absoluteUrl, siteConfig } from '@/lib/site-config';
 import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
 
 export const alt = 'Movie trailer, cast and where to watch on MovieFlix';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 export const revalidate = 3600;
+
+function resolveAbsoluteImageUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/')) return absoluteUrl(trimmed);
+  return '';
+}
 
 export default async function MovieOpenGraphImage({
   params,
@@ -17,7 +25,7 @@ export default async function MovieOpenGraphImage({
 
   let title = 'Discover Movies & Official Trailers';
   let yearText = '';
-  let ratingText = '';
+  let ratingValue = '';
   let runtimeText = '';
   let genresText = '';
   let taglineText = 'Explore cast, crew, ratings, and official streaming options on MovieFlix.';
@@ -33,7 +41,7 @@ export default async function MovieOpenGraphImage({
         yearText = String(new Date(movie.releaseDate).getUTCFullYear());
       }
       if (movie.voteAverage && movie.voteAverage > 0) {
-        ratingText = `★ ${movie.voteAverage.toFixed(1)}`;
+        ratingValue = movie.voteAverage.toFixed(1);
       }
       if (movie.runtimeMinutes && movie.runtimeMinutes > 0) {
         runtimeText = `${movie.runtimeMinutes} min`;
@@ -42,7 +50,7 @@ export default async function MovieOpenGraphImage({
         genresText = movie.genres
           .slice(0, 3)
           .map((g) => g.genre.name)
-          .join(' • ');
+          .join(' / ');
       }
       if (movie.tagline?.trim()) {
         taglineText =
@@ -56,17 +64,18 @@ export default async function MovieOpenGraphImage({
             : movie.synopsis;
       }
       if (movie.backdropUrl) {
-        backdropSrc = getTmdbImageUrl(movie.backdropUrl, 1280);
+        backdropSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.backdropUrl, 1280));
       }
       if (movie.posterUrl) {
-        posterSrc = getTmdbImageUrl(movie.posterUrl, 500);
+        posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.posterUrl, 500));
       }
     }
   } catch {
     // Serve branded fallback card if database or upstream artwork is temporarily unreachable.
   }
 
-  const metaPills = [yearText, ratingText, runtimeText, genresText].filter(Boolean);
+  const textPills = [yearText, runtimeText, genresText].filter(Boolean);
+  const hasMeta = Boolean(ratingValue || textPills.length > 0);
 
   return new ImageResponse(
     (
@@ -116,9 +125,31 @@ export default async function MovieOpenGraphImage({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            {metaPills.length > 0 ? (
+            {hasMeta ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: 21, color: '#e5e0d5' }}>
-                {metaPills.map((pill) => (
+                {ratingValue ? (
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '6px 14px',
+                      borderRadius: '999px',
+                      backgroundColor: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.16)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                      <path
+                        fill="#f59e0b"
+                        d="M12 2l2.92 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 7.08-1.01L12 2z"
+                      />
+                    </svg>
+                    <span>{ratingValue}</span>
+                  </span>
+                ) : null}
+                {textPills.map((pill) => (
                   <span
                     key={pill}
                     style={{
@@ -165,7 +196,10 @@ export default async function MovieOpenGraphImage({
                 fontWeight: 700,
               }}
             >
-              <span>▶ Watch Official Trailer & Streaming Guide</span>
+              <svg width="20" height="20" viewBox="0 0 24 24">
+                <path fill="#fffaf5" d="M8 5v14l11-7z" />
+              </svg>
+              <span>Watch Official Trailer &amp; Streaming Guide</span>
             </div>
           </div>
         </div>

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { Play } from 'lucide-react';
 import { sendAnalyticsEvent } from '@/lib/analytics/client';
+import { extractYouTubeId } from '@/lib/utils/youtube';
 
 interface YouTubePlayerProps {
   videoId: string;
@@ -29,7 +30,10 @@ export function YouTubePlayer({
   const [isReady, setIsReady] = React.useState(false);
   const [hasStarted, setHasStarted] = React.useState(false);
 
-  const previewSrc = backdropUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const safeVideoId = extractYouTubeId(videoId);
+  if (!safeVideoId) return null;
+
+  const previewSrc = backdropUrl || `https://i.ytimg.com/vi/${safeVideoId}/hqdefault.jpg`;
   const cleanTitle = movieTitle?.trim();
   const previewAlt = cleanTitle ? `${cleanTitle} official trailer` : 'Movie trailer preview';
   const playLabel = cleanTitle ? `Play ${cleanTitle} official trailer` : 'Play movie trailer';
@@ -41,7 +45,7 @@ export function YouTubePlayer({
       void sendAnalyticsEvent({
         eventName: 'trailer_play',
         entityId: movieId,
-        metadata: { trailerId: videoId },
+        metadata: { trailerId: safeVideoId },
       });
     }
   };
@@ -58,7 +62,7 @@ export function YouTubePlayer({
         <>
           {!isReady ? <Skeleton className="absolute inset-0 h-full w-full rounded-none" /> : null}
           <iframe
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0`}
+            src={`https://www.youtube.com/embed/${safeVideoId}?autoplay=1&modestbranding=1&rel=0`}
             className={cn('absolute inset-0 h-full w-full border-0 transition-opacity duration-300', isReady ? 'opacity-100' : 'opacity-0')}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen

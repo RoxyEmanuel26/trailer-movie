@@ -1,9 +1,20 @@
 import * as React from "react"
+import { redirect } from "next/navigation"
 import { HomepageService } from "@/lib/services/HomepageService"
 import { SeoService } from "@/lib/services/SeoService"
 import { HomepageClientWrapper } from "@/components/admin/homepage/HomepageClientWrapper"
+import { requireAdmin } from "@/lib/auth/utils"
+import { PermissionError, UnauthorizedError } from "@/lib/errors"
 
 export default async function HomepageBuilderPage() {
+  try {
+    await requireAdmin("read:homepage")
+  } catch (error) {
+    if (error instanceof PermissionError) redirect("/admin/forbidden")
+    if (error instanceof UnauthorizedError) redirect("/login")
+    throw error
+  }
+
   const sections = await HomepageService.listSections()
   const featuredItems = await HomepageService.listFeaturedItems()
   const seo = await SeoService.getHomepageSeo()

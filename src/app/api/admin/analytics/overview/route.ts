@@ -3,8 +3,8 @@ import { apiHandler } from '@/lib/api/handler';
 import { AnalyticsService } from '@/lib/services/AnalyticsService';
 import { requireAdmin } from '@/lib/auth/utils';
 
-export const GET = apiHandler(async (req: NextRequest) => {
-  await requireAdmin();
+export const GET = apiHandler(async () => {
+  await requireAdmin('read:analytics');
   const data = await AnalyticsService.getOverviewDashboard();
   return NextResponse.json(data);
 });

@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { siteConfig } from '@/lib/site-config';
+import { absoluteUrl, siteConfig } from '@/lib/site-config';
 import { HomepageService } from '@/lib/services/HomepageService';
 import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
 
@@ -8,13 +8,23 @@ export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 export const revalidate = 300;
 
+function resolveAbsoluteImageUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/')) return absoluteUrl(trimmed);
+  return '';
+}
+
 export default async function OpenGraphImage() {
   let heroTitle = 'Discover movies, trailers and where to watch.';
   let heroImage = '';
   try {
     const homepage = await HomepageService.getSmartHomepageData();
     heroTitle = homepage.hero ? `Discover ${homepage.hero.title} and what to watch next.` : heroTitle;
-    heroImage = homepage.heroBackdrop ? getTmdbImageUrl(homepage.heroBackdrop, 1280) : '';
+    heroImage = homepage.heroBackdrop
+      ? resolveAbsoluteImageUrl(getTmdbImageUrl(homepage.heroBackdrop, 1280))
+      : '';
   } catch {
     // The branded fallback remains valid while the catalog database is unavailable.
   }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sanitizeHtml, sanitizeRichText } from '../../security/sanitize';
+import { extractYouTubeId } from '../../utils/youtube';
 
 const safeString = z.string().trim().transform((val) => sanitizeHtml(val));
 const safeRichText = z.string().trim().transform((val) => sanitizeRichText(val));
@@ -29,12 +30,21 @@ export const ImportSchema = z.object({
 export const ImportListSchema = z.object({
   skip: z.coerce.number().int().min(0).default(0),
   take: z.coerce.number().int().min(1).max(100).default(50),
-  status: z.enum(['PENDING', 'IN_PROGRESS', 'PARTIAL', 'COMPLETED', 'FAILED']).optional(),
+  status: z.enum(['PENDING', 'IN_PROGRESS', 'PARTIAL', 'COMPLETED', 'FAILED', 'SKIPPED', 'CANCELED']).optional(),
   entityType: z.enum(['Movie', 'Person']).optional(),
   stage: z.string().trim().max(50).optional(),
   retryable: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   includeCompleted: z.enum(['true', 'false']).transform((value) => value === 'true').optional().default(false),
   includeTotal: z.enum(['true', 'false']).transform((value) => value === 'true').optional().default(true),
+});
+
+export const AdminMovieListQuerySchema = z.object({
+  skip: z.coerce.number().int().min(0).max(500_000).default(0),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  search: z.string().trim().max(120).optional(),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
+  sort: z.enum(['createdAt', 'updatedAt', 'releaseDate', 'title', 'popularity', 'voteAverage']).default('createdAt'),
+  order: z.enum(['asc', 'desc']).default('desc'),
 });
 
 const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
@@ -51,11 +61,26 @@ export const ImportBatchSchema = z.object({
 /**
  * Movie Update Schema (Example for Admin edits)
  */
+const optionalYoutubeTrailerIdSchema = z.preprocess(
+  (value) => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return extractYouTubeId(trimmed) ?? trimmed;
+  },
+  z.string()
+    .regex(/^[A-Za-z0-9_-]{11}$/, 'Invalid YouTube trailer URL or 11-character video ID')
+    .optional()
+    .nullable(),
+);
+
 export const MovieAdminUpdateSchema = z.object({
   title: safeString.refine(s => s.length > 0, "Title is required").optional(),
   synopsis: safeRichText.optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
-  youtubeTrailerId: safeString.optional().nullable(),
+  youtubeTrailerId: optionalYoutubeTrailerIdSchema,
   lockedFields: z.array(z.string()).optional(),
 });
 
@@ -77,12 +102,28 @@ export const TagInputSchema = z.object({
 /**
  * Collection Schemas
  */
+const optionalUrlSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? (value.trim() === '' ? null : value.trim()) : value),
+  z.string()
+    .url('Must be a valid URL')
+    .refine((value) => {
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }, 'URL must use http or https protocol')
+    .optional()
+    .nullable(),
+);
+
 export const CollectionInputSchema = z.object({
   title: safeString.refine(s => s.length > 0, "Title is required"),
   description: safeRichText.optional().nullable(),
   isActive: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
-  coverImageUrl: z.string().url().optional().nullable(),
+  coverImageUrl: optionalUrlSchema,
 });
 
 export const BulkIdsSchema = z.object({
@@ -105,9 +146,15 @@ export const CollectionMoviesSchema = z.object({
  * SEO Update Schema
  */
 export const SeoUpdateSchema = z.object({
-  metaTitle: z.string().optional(),
-  metaDescription: z.string().optional(),
-  canonicalUrl: z.string().url().optional().nullable(),
+  metaTitle: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+    z.string().trim().max(300).optional().nullable(),
+  ),
+  metaDescription: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+    z.string().trim().max(600).optional().nullable(),
+  ),
+  canonicalUrl: optionalUrlSchema,
 });
 
 /**
@@ -166,7 +213,7 @@ export const HomepageSectionInputSchema = z.object({
 export const FeaturedItemInputSchema = z.object({
   movieId: z.string().cuid("Movie is required"),
   customHeadline: z.string().optional().nullable(),
-  customBackdropUrl: z.string().url().optional().nullable(),
+  customBackdropUrl: optionalUrlSchema,
   isActive: z.boolean().optional(),
   startDate: z.string().datetime().optional().nullable(),
   endDate: z.string().datetime().optional().nullable(),

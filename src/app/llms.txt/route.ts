@@ -2,6 +2,7 @@ import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '@/lib/public-catalog';
 import { absoluteUrl, siteConfig } from '@/lib/site-config';
 import { SeoRepository } from '@/lib/repositories/SeoRepository';
+import { MovieService } from '@/lib/services/MovieService';
 import { createMemoryCache } from '@/lib/memory-cache';
 
 export const revalidate = 3600;
@@ -12,14 +13,28 @@ const llmsMovieCountCache = createMemoryCache<number>({
 });
 
 export async function GET() {
-  const movieCount = await llmsMovieCountCache
-    .getOrLoad('indexable-movie-count', () => SeoRepository.countIndexableMovies())
-    .catch(() => null);
+  const [movieCount, facetGuides] = await Promise.all([
+    llmsMovieCountCache
+      .getOrLoad('indexable-movie-count', () => SeoRepository.countIndexableMovies())
+      .catch(() => null),
+    MovieService.getIndexableFacetGuides().catch(() => null),
+  ]);
   const movieCountLabel =
     typeof movieCount === 'number' && movieCount > 0
       ? movieCount.toLocaleString('en-US')
       : 'over 79,000';
-  const currentYear = new Date().getUTCFullYear();
+  const latestActionYear = facetGuides?.genreYear
+    .filter((entry) => entry.genreSlug === 'action')
+    .sort((a, b) => b.year - a.year)[0]?.year;
+  const latestHorrorYear = facetGuides?.genreYear
+    .filter((entry) => entry.genreSlug === 'horror')
+    .sort((a, b) => b.year - a.year)[0]?.year;
+  const actionGuideLine = latestActionYear
+    ? `- [Best Action Movies of ${latestActionYear}](${absoluteUrl(`/genre/action/${latestActionYear}`)}): New ${latestActionYear} action releases with official trailers and viewing options.`
+    : `- [Best Action Movies](${absoluteUrl('/genre/action')}): Action releases with official trailers and viewing options.`;
+  const horrorGuideLine = latestHorrorYear
+    ? `- [Best Horror Movies of ${latestHorrorYear}](${absoluteUrl(`/genre/horror/${latestHorrorYear}`)}): ${latestHorrorYear} horror films ranked by popularity and release date.`
+    : `- [Best Horror Movies](${absoluteUrl('/genre/horror')}): Horror films ranked by popularity and release date.`;
 
   const streamingLinks = STREAMING_CATALOG.slice(0, 12)
     .map((item) => `- [${item.label} Movies](${absoluteUrl(`/streaming/${item.slug}`)}): ${item.tagline}`)
@@ -56,8 +71,8 @@ ${siteConfig.name} (${siteConfig.url}) is an independent movie discovery catalog
 
 - [Best Action Movies on Netflix](${absoluteUrl('/streaming/netflix/action')}): Top action films streaming on Netflix with trailers and cast credits.
 - [Best Horror Movies on Netflix](${absoluteUrl('/streaming/netflix/horror')}): Horror movies currently listed on Netflix across regions.
-- [Best Action Movies of ${currentYear}](${absoluteUrl(`/genre/action/${currentYear}`)}): New ${currentYear} action releases with official trailers and viewing options.
-- [Best Horror Movies of ${currentYear}](${absoluteUrl(`/genre/horror/${currentYear}`)}): ${currentYear} horror films ranked by popularity and release date.
+${actionGuideLine}
+${horrorGuideLine}
 - [Best Korean Thriller Movies](${absoluteUrl('/origin/south-korea-korean/thriller')}): South Korean thriller cinema with trailers, cast, and streaming options.
 - [Best Japanese Animation Movies](${absoluteUrl('/origin/japan-japanese/animation')}): Japanese anime feature films and theatrical animation.
 - [Best Indonesian Horror Movies](${absoluteUrl('/origin/indonesia-indonesian/horror')}): Indonesian horror releases with trailers and regional streaming guides.

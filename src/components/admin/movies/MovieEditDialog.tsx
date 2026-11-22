@@ -56,16 +56,17 @@ export function MovieEditDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           title, 
-          youtubeTrailerId: youtubeTrailerId || null,
+          youtubeTrailerId: youtubeTrailerId.trim() || null,
           lockedFields 
         }),
       })
-      if (!res.ok) throw new Error("Failed to save")
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error?.message || "Failed to save movie")
       toast.success("Movie updated successfully")
       onOpenChange(false)
       router.refresh()
-    } catch (error) {
-      toast.error("An error occurred while saving")
+    } catch (error: any) {
+      toast.error(error?.message || "An error occurred while saving")
     } finally {
       setIsSaving(false)
     }
@@ -79,8 +80,9 @@ export function MovieEditDialog({
 
   if (!movie) return null
 
-  // If the youtubeTrailerId is exactly 11 chars, we assume it's a valid ID for preview
-  const isValidPreview = youtubeTrailerId && youtubeTrailerId.length === 11
+  const trimmedTrailerId = youtubeTrailerId.trim()
+  const isValidPreview = /^[A-Za-z0-9_-]{11}$/.test(trimmedTrailerId)
+  const hasInvalidTrailer = trimmedTrailerId.length > 0 && !isValidPreview
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -110,7 +112,7 @@ export function MovieEditDialog({
                 <iframe
                   width="100%"
                   height="100%"
-                  src={`https://www.youtube-nocookie.com/embed/${youtubeTrailerId}?rel=0&modestbranding=1`}
+                  src={`https://www.youtube-nocookie.com/embed/${trimmedTrailerId}?rel=0&modestbranding=1`}
                   title="YouTube video player"
                   frameBorder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -118,7 +120,7 @@ export function MovieEditDialog({
                 ></iframe>
               </div>
             )}
-            {!isValidPreview && youtubeTrailerId.length > 0 && (
+            {hasInvalidTrailer && (
               <p className="text-sm text-destructive">Invalid YouTube ID or URL.</p>
             )}
           </div>
@@ -155,7 +157,7 @@ export function MovieEditDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button onClick={handleSave} disabled={isSaving || hasInvalidTrailer || !title.trim()}>
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>
         </DialogFooter>

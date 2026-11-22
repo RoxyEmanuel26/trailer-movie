@@ -23,20 +23,25 @@ async function checkWebsiteHealth() {
 }
 
 async function warmSitemaps(baseUrl: string, secret: string) {
-  const indexUrl = `${baseUrl.replace(/\/+$/, '')}/sitemap.xml`;
+  const normalizedBase = baseUrl.replace(/\/+$/, '');
+  const indexUrl = `${normalizedBase}/sitemap.xml`;
   const headers = { Authorization: `Bearer ${secret}` };
   const index = await fetch(indexUrl, { headers, signal: AbortSignal.timeout(120_000) });
   if (!index.ok) throw new Error(`sitemap index returned HTTP ${index.status}`);
   const xml = await index.text();
   const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)]
     .map((match) => match[1].replace(/&amp;/g, '&'))
-    .filter((url) => url.startsWith(`${baseUrl.replace(/\/+$/, '')}/sitemaps/`));
-  for (let index = 0; index < urls.length; index += 3) {
-    const responses = await Promise.all(urls.slice(index, index + 3).map((url) =>
-      fetch(url, { headers, signal: AbortSignal.timeout(120_000) }),
-    ));
-    const failure = responses.find((response) => !response.ok);
-    if (failure) throw new Error(`sitemap shard returned HTTP ${failure.status}`);
+    .filter((url) => url.startsWith(`${normalizedBase}/sitemaps/`));
+  const movieShards = urls.filter((url) => url.includes('/sitemaps/movies-'));
+  const newestMovieShard = movieShards[movieShards.length - 1];
+  // Only force-warm hot shards sequentially over the edge. Older movie shards and
+  // people-* shards stay on their 6-hour disk snapshot (refreshed locally by server.js).
+  const hotUrls = urls.filter(
+    (url) => url.endsWith('/sitemaps/core') || (newestMovieShard && url === newestMovieShard),
+  );
+  for (const url of hotUrls) {
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(120_000) });
+    if (!response.ok) throw new Error(`sitemap shard returned HTTP ${response.status}`);
   }
 }
 
@@ -174,6 +179,8 @@ async function main() {
         return true;
       },
     });
+    const { ImportBatchService } = await import('../src/lib/services/ImportBatchService');
+    await ImportBatchService.finalizeImporting().catch(() => undefined);
     if (changedJobs > 0) {
       await requestRevalidation(true);
       if (!(process.env.REVALIDATION_BASE_URL || process.env.NEXT_PUBLIC_APP_URL) || !process.env.REVALIDATION_SECRET) {

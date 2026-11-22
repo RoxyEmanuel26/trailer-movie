@@ -23,7 +23,9 @@ export class CollectionRepository {
   }
 
   static async findById(id: string, publicOnly = false, db: DbClient = prisma) {
-    const movieWhere = publicOnly ? { status: 'PUBLISHED' as const, deletedAt: null } : {};
+    const movieWhere = publicOnly
+      ? { status: 'PUBLISHED' as const, deletedAt: null }
+      : { deletedAt: null };
     return db.collection.findFirst({
       where: publicOnly ? { id, isActive: true } : { id },
       include: {
@@ -76,18 +78,20 @@ export class CollectionRepository {
     const run = async (tx: any) => {
       await tx.collectionMovie.deleteMany({ where: { collectionId } });
       
-      if (movieIds.length > 0) {
-        const createData = movieIds.map((movieId, index) => ({
+      const uniqueMovieIds = [...new Set(movieIds.filter(Boolean))];
+      if (uniqueMovieIds.length > 0) {
+        const createData = uniqueMovieIds.map((movieId, index) => ({
           collectionId,
           movieId,
           sortOrder: index,
         }));
-        await tx.collectionMovie.createMany({ data: createData });
+        await tx.collectionMovie.createMany({ data: createData, skipDuplicates: true });
       }
       return tx.collection.findUnique({
         where: { id: collectionId },
         include: {
           movies: {
+            where: { movie: { deletedAt: null } },
             include: { movie: true },
             orderBy: { sortOrder: 'asc' },
           },

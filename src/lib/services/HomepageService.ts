@@ -2,6 +2,7 @@ import { HomepageRepository } from '../repositories/HomepageRepository';
 import { Prisma } from '@prisma/client';
 import { cache } from 'react';
 import { requireAdmin } from '../auth/utils';
+import { NotFoundError } from '../errors';
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache';
 import { HOMEPAGE_CATALOG_TAG } from '../homepage-cache';
 import { isTransientDatabaseError } from '../database-errors';
@@ -66,12 +67,12 @@ export class HomepageService {
 
   static getSection = cache(async (id: string) => {
     const section = await HomepageRepository.getSection(id);
-    if (!section) throw new Error(`Section not found: ${id}`);
+    if (!section) throw new NotFoundError(`Section not found: ${id}`);
     return section;
   });
 
   static async createSection(data: Prisma.HomepageSectionUncheckedCreateInput) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('create:homepage');
     // Determine sortOrder if not provided
     if (data.sortOrder === undefined) {
       const existing = await HomepageRepository.listSections();
@@ -83,16 +84,18 @@ export class HomepageService {
   }
 
   static async updateSection(id: string, data: Prisma.HomepageSectionUncheckedUpdateInput) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('update:homepage');
+    const existing = await HomepageRepository.getSection(id);
+    if (!existing) throw new NotFoundError(`Section not found: ${id}`);
     const section = await HomepageRepository.updateSection(id, data);
     revalidateHomepage();
     return section;
   }
 
   static async deleteSection(id: string) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('delete:homepage');
     const existing = await HomepageRepository.getSection(id);
-    if (!existing) throw new Error(`Section not found: ${id}`);
+    if (!existing) throw new NotFoundError(`Section not found: ${id}`);
     const section = existing.systemKey
       ? await HomepageRepository.updateSection(id, { isActive: false })
       : await HomepageRepository.deleteSection(id);
@@ -101,7 +104,7 @@ export class HomepageService {
   }
 
   static async reorderSections(orderedIds: string[]) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('update:homepage');
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
     const sections = await HomepageRepository.updateSectionOrder(updates);
     revalidateHomepage();
@@ -117,7 +120,7 @@ export class HomepageService {
   });
 
   static async addFeaturedItem(data: Prisma.FeaturedItemUncheckedCreateInput) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('create:homepage');
     if (data.sortOrder === undefined) {
       const existing = await HomepageRepository.listFeaturedItems();
       data.sortOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
@@ -128,21 +131,25 @@ export class HomepageService {
   }
 
   static async updateFeaturedItem(id: string, data: Prisma.FeaturedItemUncheckedUpdateInput) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('update:homepage');
+    const existing = await HomepageRepository.getFeaturedItem(id);
+    if (!existing) throw new NotFoundError(`Featured item not found: ${id}`);
     const item = await HomepageRepository.updateFeaturedItem(id, data);
     revalidateHomepage();
     return item;
   }
 
   static async removeFeaturedItem(id: string) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('delete:homepage');
+    const existing = await HomepageRepository.getFeaturedItem(id);
+    if (!existing) throw new NotFoundError(`Featured item not found: ${id}`);
     const item = await HomepageRepository.deleteFeaturedItem(id);
     revalidateHomepage();
     return item;
   }
 
   static async reorderFeaturedItems(orderedIds: string[]) {
-    await requireAdmin('write:homepage');
+    await requireAdmin('update:homepage');
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
     const items = await HomepageRepository.updateFeaturedItemOrder(updates);
     revalidateHomepage();

@@ -1,7 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { useSession } from "@/components/auth/SessionProvider"
+import { authClient } from "@/lib/auth-client"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Popover,
@@ -12,10 +14,23 @@ import { Button } from "@/components/ui/button"
 
 export function UserMenu() {
   const { user } = useSession()
+  const router = useRouter()
+  const [signingOut, setSigningOut] = React.useState(false)
 
   const initials = user?.name
     ? user.name.slice(0, 2).toUpperCase()
-    : user?.email.slice(0, 2).toUpperCase()
+    : (user?.email?.slice(0, 2).toUpperCase() || "AD")
+
+  const handleSignOut = async () => {
+    if (signingOut) return
+    setSigningOut(true)
+    try {
+      await authClient.signOut()
+    } finally {
+      router.push("/login")
+      router.refresh()
+    }
+  }
 
   return (
     <Popover>
@@ -33,11 +48,13 @@ export function UserMenu() {
         </div>
         <div className="border-t my-1" />
         <div className="p-1">
-          <Button variant="ghost" className="w-full justify-start text-sm h-8">
-            Profile
-          </Button>
-          <Button variant="ghost" className="w-full justify-start text-sm h-8">
-            Sign out
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-sm h-8 text-destructive hover:text-destructive"
+            disabled={signingOut}
+            onClick={() => void handleSignOut()}
+          >
+            {signingOut ? "Signing out..." : "Sign out"}
           </Button>
         </div>
       </PopoverContent>

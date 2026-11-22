@@ -26,7 +26,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     page,
     itemsPerPage: 24,
     releaseYear: year,
-    orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
+    orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }, { id: 'asc' }],
   });
   if (isPageOutOfRange(page, total, 24)) notFound();
   return SeoService.generateMetadata('YearCatalog', rawYear, {
@@ -54,7 +54,7 @@ export default async function YearPage({ params, searchParams }: PageProps) {
       page: currentPage,
       itemsPerPage,
       releaseYear: year,
-      orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
+      orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }, { id: 'asc' }],
     }),
     MovieService.getCatalogStats({ releaseYear: year }),
     GenreService.listGenres(),

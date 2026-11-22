@@ -133,14 +133,17 @@ export class ImportQueueWorker {
         await ImportRepository.cleanupCompleted(14);
         this.lastCleanupAt = now;
       }
-      if (now - this.lastFinalizationAt >= 30_000) {
-        await ImportBatchService.finalizeImporting();
-        this.lastFinalizationAt = now;
-      }
       const workerState = await ImportRepository.getWorkerState();
       const discoveryState = await this.readDiscoveryState(
         Boolean(discovery.processed) || workerState.ready === 0,
       );
+      if (
+        now - this.lastFinalizationAt >= 30_000 ||
+        (workerState.ready === 0 && discoveryState.remaining === 0)
+      ) {
+        await ImportBatchService.finalizeImporting();
+        this.lastFinalizationAt = now;
+      }
       const nextPollAllowedAt = shouldPollDiscovery
         ? null
         : new Date(this.lastDiscoveryPollAt + (workerState.ready === 0 ? 200 : 5_000));

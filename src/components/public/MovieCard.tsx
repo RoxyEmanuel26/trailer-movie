@@ -20,7 +20,7 @@ interface MovieCardProps {
 }
 
 export function MovieCard({ movie, className = '', priority = false }: MovieCardProps) {
-  const year = movie.releaseDate ? new Date(movie.releaseDate).getFullYear() : null;
+  const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
   const displayRating = movie.voteAverage
     ? movie.voteAverage.toFixed(1)
     : movie.rating

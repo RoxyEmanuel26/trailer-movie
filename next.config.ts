@@ -56,7 +56,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; frame-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://image.tmdb.org https://i.ytimg.com; font-src 'self' data:; connect-src 'self'${sentryConnectOrigin ? ` ${sentryConnectOrigin}` : ''}`,
+            value: `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://image.tmdb.org https://i.ytimg.com; font-src 'self' data:; connect-src 'self'${sentryConnectOrigin ? ` ${sentryConnectOrigin}` : ''}`,
           },
           {
             key: 'Permissions-Policy',

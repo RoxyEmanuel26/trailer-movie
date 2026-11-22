@@ -4,7 +4,7 @@ import { AnalyticsService } from '@/lib/services/AnalyticsService';
 import { requireAdmin } from '@/lib/auth/utils';
 
 export const GET = apiHandler(async (req: NextRequest) => {
-  await requireAdmin();
+  await requireAdmin('read:analytics');
   const url = new URL(req.url);
   const movieId = url.searchParams.get('movieId');
 

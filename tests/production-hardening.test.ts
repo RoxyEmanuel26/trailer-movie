@@ -80,6 +80,13 @@ test('sitemap snapshots expire, remain available for outages, and cannot revive 
     assert.equal(await readSitemapSnapshot('movies-1', Infinity), '<urlset />');
     assert.deepEqual(await generateSitemapWithFallback('movies-1', async () => { throw new Error('database timeout'); }), { xml: '<urlset />', stale: true });
     await assert.rejects(generateSitemapWithFallback('movies-1', async () => { throw Object.assign(new Error('not found'), { digest: 'NEXT_HTTP_ERROR_FALLBACK;404' }); }));
+
+    // Regenerating identical XML for an expired snapshot MUST refresh mtime so the cache warms back up
+    const beforeRefresh = (await stat(file)).mtimeMs;
+    await generateSitemapWithFallback('movies-1', async () => '<urlset />');
+    const afterRefresh = (await stat(file)).mtimeMs;
+    assert.ok(afterRefresh > beforeRefresh, 'mtime should refresh when regenerating an expired identical snapshot');
+    assert.equal(await readSitemapSnapshot('movies-1'), '<urlset />');
   } finally {
     if (previous === undefined) delete process.env.SITEMAP_CACHE_DIR;
     else process.env.SITEMAP_CACHE_DIR = previous;

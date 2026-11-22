@@ -257,31 +257,36 @@ export function WatchProviders({ providers, links, movieSlug, movieTitle }: Watc
   }
 
   // B. Parse from JSON fallback if links is empty or supplemental
-  if (providerMap.size === 0 && providers) {
-    const listFlatrate = providers.flatrate || [];
-    const listFree = providers.free || [];
-    const listAds = providers.ads || [];
-    const listRent = providers.rent || [];
-    const listBuy = providers.buy || [];
+  if (providerMap.size === 0 && providers && typeof providers === 'object') {
+    const listFlatrate = Array.isArray(providers.flatrate) ? providers.flatrate : [];
+    const listFree = Array.isArray(providers.free) ? providers.free : [];
+    const listAds = Array.isArray(providers.ads) ? providers.ads : [];
+    const listRent = Array.isArray(providers.rent) ? providers.rent : [];
+    const listBuy = Array.isArray(providers.buy) ? providers.buy : [];
 
     const processItems = (items: any[], cat: 'stream' | 'rent' | 'buy') => {
       for (const p of items) {
+        if (!p || typeof p !== 'object' || typeof p.provider_name !== 'string' || !p.provider_name.trim()) {
+          continue;
+        }
         const normalized = normalizeProviderName(p.provider_name);
         const existing = providerMap.get(normalized);
         if (existing) {
           existing.types.add(cat);
-          if (!existing.logoUrl && p.logo_path) {
+          if (!existing.logoUrl && typeof p.logo_path === 'string' && p.logo_path.trim()) {
             existing.logoUrl = `https://image.tmdb.org/t/p/w92${p.logo_path}`;
           }
         } else {
           providerMap.set(normalized, {
-            id: p.provider_id,
+            id: p.provider_id ?? normalized,
             name: normalized,
             normalizedName: normalized,
-            logoUrl: p.logo_path ? `https://image.tmdb.org/t/p/w92${p.logo_path}` : null,
+            logoUrl: typeof p.logo_path === 'string' && p.logo_path.trim()
+              ? `https://image.tmdb.org/t/p/w92${p.logo_path}`
+              : null,
             directUrl: getDirectWatchUrl(normalized, effectiveTitle),
-            fallbackLink: providers.link || null,
-            priorityScore: getProviderScore(normalized, p.display_priority),
+            fallbackLink: typeof providers.link === 'string' ? providers.link : null,
+            priorityScore: getProviderScore(normalized, typeof p.display_priority === 'number' ? p.display_priority : undefined),
             types: new Set([cat]),
           });
         }

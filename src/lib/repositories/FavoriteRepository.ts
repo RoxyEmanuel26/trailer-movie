@@ -19,7 +19,7 @@ export class FavoriteRepository {
 
   static async listByUser(userId: string, db: DbClient = prisma) {
     return db.userFavorite.findMany({
-      where: { userId },
+      where: { userId, movie: { status: 'PUBLISHED', deletedAt: null } },
       include: { movie: true },
       orderBy: { createdAt: 'desc' },
     });

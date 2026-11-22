@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { EventTrackingService } from '@/lib/services/EventTrackingService';
 import { ANALYTICS_CONSENT_COOKIE, ANALYTICS_ID_COOKIE } from '@/lib/analytics/consent';
-import { hashAnalyticsIdentifier, isLikelyBot } from '@/lib/analytics/server';
+import { isLikelyBot } from '@/lib/analytics/server';
+import {
+  analyticsEventSchema,
+  isAllowedAnalyticsOrigin,
+  sanitizeAnalyticsSearchQuery,
+} from '@/lib/analytics/validation';
 import { enforceRateLimit, RateLimitTiers, resolveIp } from '@/lib/security/rateLimiter';
-
-const eventSchema = z.object({
-  eventName: z.enum(['page_view', 'movie_view', 'person_view', 'trailer_play', 'trailer_complete', 'search', 'filter_apply', 'pagination', 'homepage_click', 'web_vital', 'system_error', 'security_alert']),
-  entityId: z.string().optional(),
-  metadata: z.record(z.string(), z.any()).optional(),
-});
+import { AppError } from '@/lib/errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,25 +22,29 @@ export async function POST(req: NextRequest) {
     if (isLikelyBot(userAgent)) return new NextResponse(null, { status: 204 });
 
     const origin = req.headers.get('origin');
-    if (origin && origin !== req.nextUrl.origin) {
+    if (!isAllowedAnalyticsOrigin(origin, req.nextUrl.origin)) {
       return NextResponse.json({ error: 'Invalid origin' }, { status: 403 });
     }
 
-    const rateLimitId = hashAnalyticsIdentifier(`${anonymousId}:${resolveIp(req)}`);
-    await enforceRateLimit(rateLimitId, RateLimitTiers.ANALYTICS, '/api/analytics/events');
+    await enforceRateLimit(resolveIp(req), RateLimitTiers.ANALYTICS, '/api/analytics/events');
 
-    const body = await req.json();
-    const parsed = eventSchema.safeParse(body);
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
+    }
 
+    const parsed = analyticsEventSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid event data' }, { status: 400 });
     }
 
-    const { eventName, entityId, metadata } = parsed.data;
+    const payload = parsed.data;
 
-    switch (eventName) {
+    switch (payload.eventName) {
       case 'page_view':
-        if (!(await EventTrackingService.trackPageView((metadata?.path as string) || '/'))) {
+        if (!(await EventTrackingService.trackPageView(payload.metadata?.path || '/'))) {
           return NextResponse.json(
             { error: 'Analytics temporarily unavailable' },
             { status: 503, headers: { 'Cache-Control': 'no-store' } },
@@ -49,30 +52,42 @@ export async function POST(req: NextRequest) {
         }
         break;
       case 'movie_view':
-        if (entityId) await EventTrackingService.trackMovieView(entityId, anonymousId);
+        await EventTrackingService.trackMovieView(payload.entityId, anonymousId);
         break;
       case 'trailer_play':
-        if (entityId) await EventTrackingService.trackTrailerPlay(entityId, (metadata?.trailerId as string) || '', anonymousId);
+        await EventTrackingService.trackTrailerPlay(
+          payload.entityId,
+          payload.metadata?.trailerId || '',
+          anonymousId,
+        );
         break;
       case 'search':
-        await EventTrackingService.trackSearch(sanitizeSearchQuery((metadata?.query as string) || ''), (metadata?.resultsCount as number) || 0);
+        await EventTrackingService.trackSearch(
+          sanitizeAnalyticsSearchQuery(payload.metadata.query),
+          payload.metadata.resultsCount,
+        );
         break;
       default:
-        await EventTrackingService.trackGeneric(eventName, entityId, metadata as any);
+        await EventTrackingService.trackGeneric(
+          payload.eventName,
+          payload.entityId,
+          payload.metadata as Record<string, any> | undefined,
+        );
         break;
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof AppError) {
+      const response = NextResponse.json({ error: error.message }, { status: error.statusCode });
+      const extraHeaders = (error as AppError & { headers?: Record<string, string> }).headers;
+      if (extraHeaders) {
+        for (const [key, value] of Object.entries(extraHeaders)) {
+          response.headers.set(key, value);
+        }
+      }
+      return response;
+    }
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-}
-
-function sanitizeSearchQuery(value: string) {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
-    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[redacted-phone]')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 100);
 }

@@ -51,7 +51,15 @@ export function BulkImportPanel({ initialBatches = [], localMode = false, initia
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ startDate, endDate, country: country || undefined }),
       });
-      if (!response.ok) throw new Error((await response.json()).error || 'Failed to create batch');
+      if (!response.ok) {
+        const errPayload = await response.json().catch(() => null);
+        const errMsg =
+          errPayload?.error?.message ||
+          (typeof errPayload?.error === 'string' ? errPayload.error : null) ||
+          errPayload?.message ||
+          'Failed to create batch';
+        throw new Error(errMsg);
+      }
       toast.success(localMode ? 'Bulk discovery queued for the local worker.' : 'Bulk discovery queued. It will continue after this page is closed.');
       await loadBatches();
     } catch (error) {
@@ -65,7 +73,14 @@ export function BulkImportPanel({ initialBatches = [], localMode = false, initia
     setBusy(true);
     try {
       const response = await fetch(`/api/admin/imports/bulk/${batch.id}/${action}`, { method: 'POST' });
-      if (!response.ok) throw new Error(`Failed to ${action} batch`);
+      if (!response.ok) {
+        const errPayload = await response.json().catch(() => null);
+        throw new Error(
+          errPayload?.error?.message ||
+            (typeof errPayload?.error === 'string' ? errPayload.error : null) ||
+            `Failed to ${action} batch`,
+        );
+      }
       toast.success(action === 'cancel' ? 'Bulk import canceled and moved to the log.' : `Bulk import ${action}d.`);
       await loadBatches();
     } catch (error) {

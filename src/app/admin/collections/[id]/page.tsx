@@ -1,20 +1,31 @@
 import * as React from "react"
 import { CollectionService } from "@/lib/services/CollectionService"
 import { CollectionDetailClient } from "@/components/admin/collections/CollectionDetailClient"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
+import { requireAdmin } from "@/lib/auth/utils"
+import { NotFoundError, PermissionError, UnauthorizedError } from "@/lib/errors"
 
 export default async function CollectionDetailPage({
   params
 }: {
   params: Promise<{ id: string }>
 }) {
+  try {
+    await requireAdmin("read:collections")
+  } catch (error) {
+    if (error instanceof PermissionError) redirect("/admin/forbidden")
+    if (error instanceof UnauthorizedError) redirect("/login")
+    throw error
+  }
+
   const { id } = await params
   let collection
   
   try {
     collection = await CollectionService.getCollection(id)
   } catch (err) {
-    notFound()
+    if (err instanceof NotFoundError) notFound()
+    throw err
   }
 
   return (

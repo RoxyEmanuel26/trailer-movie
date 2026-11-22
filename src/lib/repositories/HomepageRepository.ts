@@ -103,9 +103,20 @@ export class HomepageRepository {
 
     await Promise.all(defaults.map((section) => db.homepageSection.upsert({
       where: { systemKey: section.systemKey },
-      update: section.genreId ? { genreId: section.genreId } : {},
+      update: {},
       create: section,
     })));
+
+    await Promise.all(
+      defaults
+        .filter((section) => section.type === 'GENRE_BASED' && Boolean(section.genreId))
+        .map((section) =>
+          db.homepageSection.updateMany({
+            where: { systemKey: section.systemKey, type: 'GENRE_BASED', genreId: null },
+            data: { genreId: section.genreId },
+          }),
+        ),
+    );
   }
 
   static async getSection(id: string, db: DbClient = prisma) {
@@ -138,13 +149,16 @@ export class HomepageRepository {
   }
 
   static async updateSectionOrder(updates: { id: string; sortOrder: number }[], db: DbClient = prisma) {
-    const promises = updates.map((update) =>
+    const ops = updates.map((update) =>
       db.homepageSection.update({
         where: { id: update.id },
         data: { sortOrder: update.sortOrder },
       })
     );
-    return Promise.all(promises);
+    if (db === prisma) {
+      return prisma.$transaction(ops);
+    }
+    return Promise.all(ops);
   }
 
   // ---------------------------------------------------------------------------
@@ -194,14 +208,20 @@ export class HomepageRepository {
           youtubeTrailerId: { not: null },
         },
         orderBy: [{ popularity: 'desc' }, { voteCount: 'desc' }],
-        include: { genres: { include: { genre: true } } },
+        select: homepageMovieSelect,
       }),
       db.movie.count({ where: movieWhere }),
       db.movie.count({ where: { ...movieWhere, youtubeTrailerId: { not: null } } }),
       db.genre.findMany({
         orderBy: { movies: { _count: 'desc' } },
         take: 12,
-        include: { _count: { select: { movies: true } } },
+        include: {
+          _count: {
+            select: {
+              movies: { where: { movie: movieWhere } },
+            },
+          },
+        },
       }),
     ]);
 
@@ -313,15 +333,26 @@ export class HomepageRepository {
     const preparedDefinitions = defaults
       .map((definition) => ({ definition, override: resolveOverride(definition) }))
       .filter(({ override }) => override?.isActive !== false)
-      .map(({ definition, override }) => ({
-        ...definition,
-        id: override?.id || `system-${definition.key}`,
-        title: override?.title || definition.title,
-        sortOrder: override?.sortOrder ?? definition.sortOrder,
-        collectionId: override?.collectionId || null,
-        genreId: override?.genreId || definition.genre?.id || null,
-        collection: override?.collection || null,
-      }));
+      .map(({ definition, override }) => {
+        const defaultGenreId = 'genre' in definition ? definition.genre?.id || null : null;
+        const overrideChangedQuery = Boolean(
+          override &&
+          (override.type !== definition.type ||
+            (override.type === 'GENRE_BASED' && override.genreId && override.genreId !== defaultGenreId))
+        );
+        return {
+          ...definition,
+          id: override?.id || `system-${definition.key}`,
+          title: override?.title || definition.title,
+          type: override?.type || definition.type,
+          sortOrder: override?.sortOrder ?? definition.sortOrder,
+          collectionId: override?.collectionId || null,
+          genreId: override?.genreId || defaultGenreId,
+          genre: override?.genre || ('genre' in definition ? definition.genre : null) || null,
+          collection: override?.collection || null,
+          source: overrideChangedQuery ? null : definition.source,
+        };
+      });
 
     const customDefinitions = configuredSections
       .filter((section) => section.isActive && !consumedSectionIds.has(section.id))
@@ -336,6 +367,11 @@ export class HomepageRepository {
     const sections = [];
 
     for (const definition of definitions) {
+      const { source: _unusedSource, ...sectionMeta } = definition;
+      if (definition.type === 'AD_SLOT') {
+        sections.push({ ...sectionMeta, movies: [], viewAllLink: '' });
+        continue;
+      }
       let source = definition.source;
       let viewAllLink = definition.viewAllLink;
       if (!source) {
@@ -344,7 +380,7 @@ export class HomepageRepository {
         viewAllLink = custom.viewAllLink;
       }
       const movies = takeUniqueMovies(source, seen, 6);
-      if (movies.length) sections.push({ ...definition, movies, viewAllLink });
+      if (movies.length) sections.push({ ...sectionMeta, movies, viewAllLink });
     }
 
     const genres = browseGenres;
@@ -390,13 +426,16 @@ export class HomepageRepository {
   }
 
   static async updateFeaturedItemOrder(updates: { id: string; sortOrder: number }[], db: DbClient = prisma) {
-    const promises = updates.map((update) =>
+    const ops = updates.map((update) =>
       db.featuredItem.update({
         where: { id: update.id },
         data: { sortOrder: update.sortOrder },
       })
     );
-    return Promise.all(promises);
+    if (db === prisma) {
+      return prisma.$transaction(ops);
+    }
+    return Promise.all(ops);
   }
 
   // ---------------------------------------------------------------------------
@@ -406,80 +445,98 @@ export class HomepageRepository {
   static async getSectionData(section: any, db: DbClient = prisma, take = 6) {
     let movies: any[] = [];
     let viewAllLink = '';
+    const now = new Date();
 
     switch (section.type) {
-      case 'AUTO_RECENT':
+      case 'AUTO_RECENT': {
         const recent = await db.movie.findMany({
           where: {
-            status: 'PUBLISHED',
-            deletedAt: null,
-            releaseDate: { not: null, lte: new Date() },
+            AND: [publicHomepageMovieWhere, { releaseDate: { not: null, lte: now } }],
           },
           orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
           take,
-          include: { genres: { include: { genre: true } } }
+          select: homepageMovieSelect,
         });
         movies = recent;
         viewAllLink = '/popular/latest-releases';
         break;
+      }
 
-      case 'AUTO_UPCOMING':
+      case 'AUTO_UPCOMING': {
         const upcoming = await db.movie.findMany({
-          where: { status: 'PUBLISHED', releaseDate: { gt: new Date() }, deletedAt: null },
+          where: {
+            AND: [publicHomepageMovieWhere, { releaseDate: { gt: now } }],
+          },
           orderBy: { releaseDate: 'asc' },
           take,
-          include: { genres: { include: { genre: true } } }
+          select: homepageMovieSelect,
         });
         movies = upcoming;
-        viewAllLink = '/search?sort=releaseDate_asc';
+        viewAllLink = '/movies';
         break;
+      }
 
-      case 'AUTO_TRENDING':
+      case 'AUTO_TRENDING': {
         const trending = await db.movie.findMany({
-          where: { status: 'PUBLISHED', deletedAt: null },
+          where: {
+            AND: [publicHomepageMovieWhere, { releaseDate: { not: null, lte: now } }],
+          },
           orderBy: [{ popularity: 'desc' }, { releaseDate: 'desc' }],
           take,
-          include: { genres: { include: { genre: true } } }
+          select: homepageMovieSelect,
         });
         movies = trending;
         viewAllLink = '/popular/most-popular';
         break;
+      }
 
-      case 'MANUAL_COLLECTION':
+      case 'MANUAL_COLLECTION': {
         if (section.collectionId) {
-          const collection = await db.collection.findUnique({
-            where: { id: section.collectionId },
-            include: {
+          const collection = await db.collection.findFirst({
+            where: { id: section.collectionId, isActive: true },
+            select: {
+              id: true,
+              slug: true,
               movies: {
-                include: { movie: { include: { genres: { include: { genre: true } } } } },
+                where: { movie: publicHomepageMovieWhere },
+                select: { movie: { select: homepageMovieSelect } },
                 orderBy: { sortOrder: 'asc' },
                 take,
-              }
-            }
+              },
+            },
           });
           if (collection) {
-            movies = collection.movies.map(cm => cm.movie).filter(m => m.status === 'PUBLISHED' && m.deletedAt === null);
-            viewAllLink = `/collection/${section.collection?.slug}`;
+            movies = collection.movies.map((cm) => cm.movie);
+            viewAllLink = collection.slug?.trim() ? `/collection/${collection.slug.trim()}` : '';
           }
         }
         break;
+      }
 
-      case 'GENRE_BASED':
+      case 'GENRE_BASED': {
         if (section.genreId) {
-          const genreMovies = await db.movie.findMany({
-            where: {
-              status: 'PUBLISHED',
-              deletedAt: null,
-              genres: { some: { genreId: section.genreId } }
-            },
-            orderBy: { releaseDate: 'desc' },
-            take,
-            include: { genres: { include: { genre: true } } }
-          });
+          const [genreRecord, genreMovies] = await Promise.all([
+            section.genre?.slug
+              ? Promise.resolve(section.genre)
+              : db.genre.findUnique({ where: { id: section.genreId }, select: { slug: true } }),
+            db.movie.findMany({
+              where: {
+                AND: [
+                  publicHomepageMovieWhere,
+                  { releaseDate: { not: null, lte: now } },
+                  { genres: { some: { genreId: section.genreId } } },
+                ],
+              },
+              orderBy: [{ releaseDate: 'desc' }, { popularity: 'desc' }],
+              take,
+              select: homepageMovieSelect,
+            }),
+          ]);
           movies = genreMovies;
-          viewAllLink = `/genre/${section.genre?.slug}`;
+          viewAllLink = genreRecord?.slug?.trim() ? `/genre/${genreRecord.slug.trim()}` : '';
         }
         break;
+      }
     }
 
     return { movies, viewAllLink };

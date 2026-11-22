@@ -16,8 +16,12 @@ export interface ApiErrorResponse {
 export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 export function successResponse<T>(data: T, status = 200): NextResponse<ApiResponse<T>> {
-  const jsonSafeData = JSON.parse(
-    JSON.stringify(data, (_key, value) => (typeof value === 'bigint' ? value.toString() : value))
+  const jsonSafeData = (
+    data === undefined
+      ? null
+      : JSON.parse(
+          JSON.stringify(data, (_key, value) => (typeof value === 'bigint' ? value.toString() : value))
+        )
   ) as T;
   return NextResponse.json({ success: true, data: jsonSafeData }, { status });
 }

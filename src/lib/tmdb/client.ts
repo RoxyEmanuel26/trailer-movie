@@ -14,6 +14,21 @@ const TIMEOUT_MS = Number.isSafeInteger(configuredTimeout) && configuredTimeout 
   ? configuredTimeout
   : 15_000;
 
+function parseRetryAfterSeconds(headerValue: string | null): number {
+  if (!headerValue) return 2;
+  const trimmed = headerValue.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const secs = Number.parseInt(trimmed, 10);
+    return Math.min(30, Math.max(1, secs));
+  }
+  const parsedDate = Date.parse(trimmed);
+  if (!Number.isNaN(parsedDate)) {
+    const deltaSecs = Math.ceil((parsedDate - Date.now()) / 1000);
+    return Math.min(30, Math.max(1, deltaSecs));
+  }
+  return 2;
+}
+
 function retryDelay(retries: number) {
   return Math.min(8000, 2 ** (DEFAULT_RETRIES - retries) * 1000) + Math.floor(Math.random() * 500);
 }
@@ -53,7 +68,7 @@ export async function tmdbFetch<T>(endpoint: string, options: FetchOptions = {})
 
     if (!response.ok) {
       if (response.status === 429) {
-        const retryAfter = parseInt(response.headers.get('retry-after') || '1', 10);
+        const retryAfter = parseRetryAfterSeconds(response.headers.get('retry-after'));
         if (retries > 0) {
           logger.warn(
             `TMDB Rate limited. Retrying after ${retryAfter}s... (${retries} retries left)`

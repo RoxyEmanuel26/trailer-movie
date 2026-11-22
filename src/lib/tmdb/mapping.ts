@@ -12,8 +12,8 @@ export function generateSlug(text: string): string {
 /**
  * Maps a TMDB Movie status to our internal Prisma MovieStatus
  */
-export function mapTmdbStatus(status: string): MovieStatus {
-  const normalized = status.toLowerCase();
+export function mapTmdbStatus(status?: string | null): MovieStatus {
+  const normalized = (status || '').toLowerCase();
   if (normalized === 'released') return MovieStatus.PUBLISHED;
   if (normalized === 'post production' || normalized === 'planned') return MovieStatus.DRAFT;
   return MovieStatus.DRAFT;
@@ -34,18 +34,24 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
     }
   };
 
-  assignIfNotLocked('title', tmdbMovie.title);
+  const resolvedTitle =
+    tmdbMovie.title?.trim() || tmdbMovie.original_title?.trim() || `Movie ${tmdbMovie.id}`;
+
+  assignIfNotLocked('title', resolvedTitle);
   assignIfNotLocked('originalTitle', tmdbMovie.original_title);
 
-  if (tmdbMovie.title && !lockedFields.includes('slug')) {
-    assignIfNotLocked('slug', `${generateSlug(tmdbMovie.title) || 'movie'}-${tmdbMovie.id}`);
+  if (!lockedFields.includes('slug')) {
+    assignIfNotLocked('slug', `${generateSlug(resolvedTitle) || 'movie'}-${tmdbMovie.id}`);
   }
 
   assignIfNotLocked('synopsis', tmdbMovie.overview || null);
 
   if (tmdbMovie.release_date && !lockedFields.includes('releaseDate')) {
     // TMDB format is YYYY-MM-DD
-    assignIfNotLocked('releaseDate', new Date(tmdbMovie.release_date));
+    const parsedReleaseDate = new Date(tmdbMovie.release_date);
+    if (!Number.isNaN(parsedReleaseDate.getTime())) {
+      assignIfNotLocked('releaseDate', parsedReleaseDate);
+    }
   }
 
   assignIfNotLocked('runtimeMinutes', tmdbMovie.runtime || null);
@@ -116,10 +122,15 @@ export function mapTmdbMovieToPrisma(tmdbMovie: TmdbMovie, lockedFields: string[
     }
   }
 
-  if (extra['watch/providers'] && extra['watch/providers'].results) {
+  if (
+    extra['watch/providers'] &&
+    extra['watch/providers'].results &&
+    !lockedFields.includes('watchProviders') &&
+    !lockedFields.includes('watch_providers')
+  ) {
     const usProviders = extra['watch/providers'].results.US || extra['watch/providers'].results.ID || null;
     if (usProviders) {
-      assignIfNotLocked('watchProviders', usProviders);
+      mapped['watchProviders'] = usProviders;
     }
   }
 

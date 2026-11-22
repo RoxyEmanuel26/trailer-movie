@@ -29,7 +29,17 @@ import { useImportPolling } from "./useImportPolling"
 interface ImportQueueTableProps {
   initialJobs: any[]
   localMode?: boolean
+  canTriggerWorker?: boolean
   initialUnavailable?: boolean
+}
+
+const PERMANENT_ERROR_CODES = new Set(['TMDB_404', 'NON_RETRYABLE'])
+
+function isJobRetryableInUi(job: { status: string; retryable?: boolean; errorCode?: string | null }) {
+  return (
+    ['FAILED', 'PARTIAL'].includes(job.status) &&
+    (Boolean(job.retryable) || !PERMANENT_ERROR_CODES.has(job.errorCode ?? ''))
+  )
 }
 
 type DrainProgress = {
@@ -56,7 +66,12 @@ const initialDrainProgress: DrainProgress = {
   discoveryRemaining: null,
 }
 
-export function ImportQueueTable({ initialJobs, localMode = false, initialUnavailable = false }: ImportQueueTableProps) {
+export function ImportQueueTable({
+  initialJobs,
+  localMode = false,
+  canTriggerWorker = !localMode,
+  initialUnavailable = false,
+}: ImportQueueTableProps) {
   const [jobs, setJobs] = React.useState(initialJobs)
   const [selectedJob, setSelectedJob] = React.useState<any | null>(null)
   const [deletingJobId, setDeletingJobId] = React.useState<string | null>(null)
@@ -70,19 +85,22 @@ export function ImportQueueTable({ initialJobs, localMode = false, initialUnavai
   const [isRetryingAll, setIsRetryingAll] = React.useState(false)
 
   const failedJobsCount = React.useMemo(() => {
-    return jobs.filter((j: any) => ['FAILED', 'PARTIAL'].includes(j.status) && j.retryable).length
+    return jobs.filter((j: any) => isJobRetryableInUi(j)).length
   }, [jobs])
 
   const handleRetrySingle = async (id: string) => {
     setRetryingJobIds(prev => new Set(prev).add(id))
     try {
       const res = await fetch(`/api/admin/imports/${id}/retry`, { method: 'POST' })
-      if (!res.ok) throw new Error('Failed to retry')
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error?.message || err?.message || 'Failed to retry job')
+      }
       toast.success("Job queued for retry")
-      setJobs(prev => prev.map(j => j.id === id ? { ...j, status: 'PENDING' } : j))
+      setJobs(prev => prev.map(j => j.id === id ? { ...j, status: 'PENDING', retryable: true } : j))
       await fetchLatestJobs()
-    } catch (e) {
-      toast.error("Failed to retry job")
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to retry job")
     } finally {
       setRetryingJobIds(prev => {
         const next = new Set(prev)
@@ -96,13 +114,16 @@ export function ImportQueueTable({ initialJobs, localMode = false, initialUnavai
     setIsRetryingAll(true)
     try {
       const res = await fetch('/api/admin/imports/retry-all', { method: 'POST' })
-      if (!res.ok) throw new Error('Failed to retry all')
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error?.message || err?.message || 'Failed to retry all failed jobs')
+      }
       const data = await res.json()
       toast.success(data?.data?.message || "All failed jobs queued for retry")
-      setJobs(prev => prev.map(j => ['FAILED', 'PARTIAL'].includes(j.status) && j.retryable ? { ...j, status: 'PENDING' } : j))
+      setJobs(prev => prev.map(j => isJobRetryableInUi(j) ? { ...j, status: 'PENDING', retryable: true } : j))
       await fetchLatestJobs()
-    } catch (e) {
-      toast.error("Failed to retry all failed jobs")
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to retry all failed jobs")
     } finally {
       setIsRetryingAll(false)
     }
@@ -169,7 +190,7 @@ export function ImportQueueTable({ initialJobs, localMode = false, initialUnavai
       cell: ({ row }) => {
         const job = row.original
         const canDelete = job.status !== "IN_PROGRESS"
-        const isFailed = ["FAILED", "PARTIAL"].includes(job.status) && job.retryable
+        const isFailed = isJobRetryableInUi(job)
         const isRetrying = retryingJobIds.has(job.id)
 
         return (
@@ -324,7 +345,7 @@ export function ImportQueueTable({ initialJobs, localMode = false, initialUnavai
               Retry Eligible ({failedJobsCount})
             </Button>
           )}
-          {localMode ? null : isCurrentlyFetching ? (
+          {!canTriggerWorker ? null : isCurrentlyFetching ? (
             <Button onClick={stopProcessingQueue} variant="outline">
               <Square className="mr-2 h-4 w-4" /> Stop
             </Button>
