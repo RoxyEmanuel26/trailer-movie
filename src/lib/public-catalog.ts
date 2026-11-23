@@ -73,7 +73,13 @@ export const ORIGIN_CATALOG: OriginCatalogItem[] = [
   },
   { slug: 'india-hindi', label: 'India / Hindi', countryCodes: ['IN'], languageCodes: ['hi'] },
   { slug: 'united-kingdom', label: 'United Kingdom', countryCodes: ['GB'], languageCodes: [] },
+  { slug: 'ireland', label: 'Ireland', countryCodes: ['IE'], languageCodes: [] },
+  { slug: 'spain-spanish', label: 'Spain / Spanish', countryCodes: ['ES'], languageCodes: [] },
   { slug: 'italy-italian', label: 'Italy / Italian', countryCodes: ['IT'], languageCodes: ['it'] },
+  { slug: 'nordic', label: 'Nordic (Sweden, Norway & Denmark)', countryCodes: ['SE', 'NO', 'DK'], languageCodes: ['sv', 'no', 'da'] },
+  { slug: 'belgium', label: 'Belgium', countryCodes: ['BE'], languageCodes: [] },
+  { slug: 'netherlands-dutch', label: 'Netherlands / Dutch', countryCodes: ['NL'], languageCodes: ['nl'] },
+  { slug: 'poland-polish', label: 'Poland / Polish', countryCodes: ['PL'], languageCodes: ['pl'] },
   {
     slug: 'japan-japanese',
     label: 'Japan / Japanese',

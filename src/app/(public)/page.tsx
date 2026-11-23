@@ -1,15 +1,18 @@
 import { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Clapperboard, Play, Search, Star } from 'lucide-react';
+import { Clapperboard, Flame, Play, Search, Sparkles, Star } from 'lucide-react';
 import { HomepageService } from '@/lib/services/HomepageService';
+import { MovieService } from '@/lib/services/MovieService';
 import { SeoService } from '@/lib/services/SeoService';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
+import { MovieCard } from '@/components/public/MovieCard';
 import { Button } from '@/components/ui/button';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { absoluteUrl, organizationSchemaId, siteConfig, websiteSchemaId } from '@/lib/site-config';
 import { moviePath } from '@/lib/public-routes';
 import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
+import { formatReleaseCountdown, formatUpcomingDateShort } from '@/lib/upcoming-guides';
 import { isTransientDatabaseError } from '@/lib/database-errors';
 import { logger } from '@/lib/logger';
 
@@ -73,7 +76,15 @@ export async function generateMetadata(): Promise<Metadata> {
 export const revalidate = 300;
 
 export default async function HomePage() {
-  const discovery = await HomepageService.getSmartHomepageData();
+  const [discovery, upcomingSpotlight] = await Promise.all([
+    HomepageService.getSmartHomepageData(),
+    MovieService.getPublicCatalogPage({
+      page: 1,
+      itemsPerPage: 6,
+      upcomingOnly: true,
+      orderBy: [{ popularity: 'desc' }, { releaseDate: 'asc' }, { id: 'asc' }],
+    }).catch(() => ({ data: [], total: 0 })),
+  ]);
   if (discovery.availability === 'unavailable') {
     const err = new Error('The movie catalog is temporarily unavailable.');
     (err as Error & { code?: string }).code = 'P1008';
@@ -133,7 +144,7 @@ export default async function HomePage() {
               </p>
             )}
 
-            <div className="mt-6 grid w-full max-w-md grid-cols-1 gap-2.5 min-[430px]:grid-cols-2 sm:mt-8 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+            <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2.5 min-[430px]:grid-cols-2 sm:mt-8 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
               {hero ? (
                 <Button
                   size="lg"
@@ -146,6 +157,17 @@ export default async function HomePage() {
                   </Link>
                 </Button>
               ) : null}
+              <Button
+                size="lg"
+                variant="outline"
+                asChild
+                className="h-12 w-full rounded-xl border-white/25 bg-white/8 px-6 text-white hover:bg-white/15 hover:text-white sm:w-auto"
+              >
+                <Link href="/tonight">
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Pick for tonight
+                </Link>
+              </Button>
               <Button
                 size="lg"
                 variant="outline"
@@ -190,6 +212,44 @@ export default async function HomePage() {
         ))}
       </div>
 
+      {/* Upcoming Blockbuster Trailers Strip */}
+      {upcomingSpotlight.data.length > 0 ? (
+        <section
+          aria-labelledby="home-upcoming-heading"
+          className="mx-auto w-full max-w-[90rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
+        >
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary">
+                <Flame className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="eyebrow">Coming to theaters</p>
+                <h2 id="home-upcoming-heading" className="text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">
+                  Most Anticipated Upcoming Trailers
+                </h2>
+              </div>
+            </div>
+            <Link
+              href="/upcoming"
+              prefetch={false}
+              className="text-sm font-semibold text-primary hover:underline"
+            >
+              View full release calendar →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-5 lg:grid-cols-6">
+            {upcomingSpotlight.data.map((movie) => (
+              <MovieCard
+                key={`home-upcoming-${movie.id}`}
+                movie={movie}
+                badge={formatReleaseCountdown(movie.releaseDate) || formatUpcomingDateShort(movie.releaseDate)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="mx-auto w-full max-w-[90rem] px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
         <div className="cinema-panel overflow-hidden rounded-[1.5rem] p-5 sm:rounded-[1.75rem] sm:p-8 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[.75fr_1.25fr] lg:items-end">
@@ -200,7 +260,7 @@ export default async function HomePage() {
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
-                  {discovery.genres.map((genre) => (
+              {discovery.genres.map((genre) => (
                 <Link
                   key={genre.id}
                   href={`/genre/${genre.slug}`}
@@ -214,14 +274,110 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-[90rem] px-4 pb-8 pt-3 sm:px-6 sm:pb-12 lg:px-8">
-        <div className="grid gap-4 border-t pt-7 sm:grid-cols-2 sm:gap-6 lg:grid-cols-5">
+      {/* Global Studios & Curated Themes Band */}
+      <section className="mx-auto w-full max-w-[90rem] px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border bg-card/55 p-5 sm:p-7">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow">US · Europe · Asia</p>
+                <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] sm:text-2xl">
+                  Iconic Film Studios
+                </h2>
+              </div>
+              <Link href="/studios" prefetch={false} className="text-xs font-semibold text-primary hover:underline">
+                All 36 studios →
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { slug: 'a24', label: 'A24' },
+                { slug: 'blumhouse', label: 'Blumhouse' },
+                { slug: 'marvel-studios', label: 'Marvel Studios' },
+                { slug: 'pixar', label: 'Pixar' },
+                { slug: 'warner-bros', label: 'Warner Bros.' },
+                { slug: 'universal-pictures', label: 'Universal' },
+                { slug: 'bbc-film', label: 'BBC Film' },
+                { slug: 'bfi', label: 'BFI' },
+                { slug: 'studiocanal', label: 'StudioCanal' },
+                { slug: 'film4', label: 'Film4' },
+                { slug: 'pathe', label: 'Pathé' },
+                { slug: 'toho', label: 'TOHO' },
+                { slug: 'cj-enm', label: 'CJ ENM' },
+                { slug: 'kadokawa', label: 'KADOKAWA' },
+                { slug: 'toei-animation', label: 'Toei Animation' },
+                { slug: 'neon', label: 'NEON' },
+              ].map((studio) => (
+                <Link
+                  key={studio.slug}
+                  href={`/studio/${studio.slug}`}
+                  prefetch={false}
+                  className="rounded-xl border bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary/45 hover:text-primary sm:text-sm"
+                >
+                  {studio.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border bg-card/55 p-5 sm:p-7">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow">Story Tropes &amp; Subgenres</p>
+                <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] sm:text-2xl">
+                  Curated Movie Themes
+                </h2>
+              </div>
+              <Link href="/themes" prefetch={false} className="text-xs font-semibold text-primary hover:underline">
+                All 35 themes →
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { slug: 'christmas', label: 'Christmas Movies' },
+                { slug: 'based-on-true-story', label: 'Based on a True Story' },
+                { slug: 'based-on-a-book', label: 'Based on a Book' },
+                { slug: 'time-travel', label: 'Time Travel' },
+                { slug: 'found-footage', label: 'Found Footage' },
+                { slug: 'psychological-thriller', label: 'Psychological Thriller' },
+                { slug: 'anime', label: 'Anime Movies' },
+                { slug: 'plot-twist', label: 'Plot Twist' },
+                { slug: 'heist', label: 'Heist Movies' },
+                { slug: 'dystopian', label: 'Dystopian' },
+                { slug: 'dark-comedy', label: 'Dark Comedy' },
+                { slug: 'folk-horror', label: 'Folk Horror' },
+                { slug: 'cyberpunk', label: 'Cyberpunk' },
+                { slug: 'martial-arts', label: 'Martial Arts' },
+                { slug: 'kaiju', label: 'Kaiju' },
+                { slug: 'zombie', label: 'Zombie' },
+              ].map((theme) => (
+                <Link
+                  key={theme.slug}
+                  href={`/theme/${theme.slug}`}
+                  prefetch={false}
+                  className="rounded-xl border bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary/45 hover:text-primary sm:text-sm"
+                >
+                  {theme.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-[90rem] px-4 pb-8 pt-4 sm:px-6 sm:pb-12 lg:px-8">
+        <div className="grid gap-4 border-t pt-7 sm:grid-cols-2 sm:gap-5 lg:grid-cols-5">
           {[
+            { href: '/upcoming', title: 'Upcoming releases', text: 'Watch verified official trailers and countdowns for upcoming theatrical films.' },
+            { href: '/tonight', title: 'What to watch tonight?', text: 'Swipe trailers solo in 30 seconds or match live with your partner or friends.' },
+            { href: '/collections', title: 'Franchises in order', text: 'Chronological watch orders and marathon runtimes for 260+ major film series.' },
+            { href: '/studios', title: 'Browse by film studio', text: 'Explore A24, Blumhouse, Pixar, BBC Film, StudioCanal, TOHO, CJ ENM, and more.' },
+            { href: '/themes', title: 'Movies by theme & trope', text: 'Time travel, true stories, heist, cyberpunk, folk horror, anime, and holiday picks.' },
             { href: '/movies', title: 'Explore all movies', text: 'Browse the newest releases first, then filter the catalog by what matters to you.' },
-            { href: '/streaming', title: 'Browse by streaming', text: 'Find movies on Netflix, Prime Video, Disney+, Apple TV, Vidio, Tubi, and more.' },
-            { href: '/popular', title: 'See what is popular', text: 'Find audience favorites, highly rated movies and current releases.' },
-            { href: '/countries', title: 'Discover by origin', text: 'Explore movies through production countries and spoken languages.' },
-            { href: '/years', title: 'Browse by year', text: 'Travel through recent releases and earlier eras of cinema.' },
+            { href: '/movies/under-90-minutes', title: 'Under 90 minutes', text: 'Tight, high-impact feature films you can finish on any weeknight.' },
+            { href: '/streaming', title: 'Browse by streaming', text: 'Find movies on Netflix, Prime Video, Disney+, Apple TV, Sky, Rakuten TV, and more.' },
+            { href: '/countries', title: 'Discover by origin', text: 'Explore movies across US, British, French, Spanish, Nordic, Korean, and Japanese cinema.' },
+            { href: '/years', title: 'Browse by year', text: 'Travel through current theatrical slates and earlier eras of global cinema.' },
           ].map((item) => (
             <Link key={item.href} href={item.href} prefetch={false} className="group rounded-2xl border bg-card/55 p-4 transition hover:border-primary/35 hover:bg-card sm:p-5">
               <h2 className="font-semibold tracking-[-0.02em] group-hover:text-primary">{item.title}</h2>

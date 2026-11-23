@@ -31,6 +31,7 @@ export interface MatchedStreamingPlatformLink {
 function normalizeProviderLabel(rawName: string): string {
   const norm = rawName.trim();
   if (/^netflix/i.test(norm)) return 'Netflix';
+  if (/mx player/i.test(norm)) return 'Amazon MX Player';
   if (/amazon|prime video/i.test(norm)) return 'Prime Video';
   if (/apple/i.test(norm)) return 'Apple TV';
   if (/disney/i.test(norm)) return 'Disney+';
@@ -40,6 +41,11 @@ function normalizeProviderLabel(rawName: string): string {
   if (/hulu/i.test(norm)) return 'Hulu';
   if (/paramount/i.test(norm)) return 'Paramount+';
   if (/peacock/i.test(norm)) return 'Peacock';
+  if (/fandango|vudu/i.test(norm)) return 'Fandango at Home';
+  if (/rakuten/i.test(norm)) return 'Rakuten TV';
+  if (/^sky/i.test(norm)) return 'Sky';
+  if (/canal/i.test(norm)) return 'CANAL+';
+  if (/hoopla/i.test(norm)) return 'Hoopla';
   if (/vidio/i.test(norm)) return 'Vidio';
   if (/catchplay/i.test(norm)) return 'Catchplay+';
   if (/viu/i.test(norm)) return 'Viu';
@@ -146,6 +152,23 @@ export function buildMovieQuickFactsAndFaq(input: MovieAeoInput): {
 
   const faqs: MovieFaqItem[] = [];
 
+  const isUpcoming = Boolean(input.releaseDate && input.releaseDate.getTime() > Date.now());
+  const formattedRelease = input.releaseDate
+    ? new Intl.DateTimeFormat('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(input.releaseDate)
+    : null;
+
+  if (isUpcoming && formattedRelease) {
+    faqs.push({
+      question: `When does ${input.title} come out in theaters?`,
+      answer: `${input.title} is scheduled to release on ${formattedRelease} (regional release dates across the US, Europe, and Asia may vary slightly). You can watch the official trailer above and track cast and streaming updates on MovieFlix.`,
+    });
+  }
+
   if (input.providerNames.length > 0) {
     const listed = input.providerNames.slice(0, 6).join(', ');
     faqs.push({
@@ -155,7 +178,9 @@ export function buildMovieQuickFactsAndFaq(input: MovieAeoInput): {
   } else if (input.hasActiveTrailer) {
     faqs.push({
       question: `Is there an official trailer for ${titleWithYear}?`,
-      answer: `Yes. You can watch the official trailer for ${input.title} directly on this MovieFlix page, and check back as regional streaming, digital rental, and purchase listings are updated.`,
+      answer: isUpcoming && formattedRelease
+        ? `Yes. The official trailer for ${input.title} is available to watch above ahead of its scheduled ${formattedRelease} release. Streaming and digital rental listings will appear here once announced.`
+        : `Yes. You can watch the official trailer for ${input.title} directly on this MovieFlix page, and check back as regional streaming, digital rental, and purchase listings are updated.`,
     });
   }
 

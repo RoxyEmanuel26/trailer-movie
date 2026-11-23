@@ -72,11 +72,10 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       totalMovies: total,
       page,
     });
-    const heroImage = collection.coverImageUrl || collection.backdropUrl || collection.posterUrl || undefined;
     return SeoService.generateMetadata('Collection', collection.id, {
       title: guide.metaTitle,
       description: guide.metaDescription,
-      image: heroImage,
+      image: `/collection/${collection.slug}/opengraph-image`,
       path: pagePath(`/collection/${collection.slug}`, page),
       indexable: guide.indexable,
     });

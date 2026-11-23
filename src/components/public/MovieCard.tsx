@@ -17,9 +17,10 @@ interface MovieCardProps {
   };
   className?: string;
   priority?: boolean;
+  badge?: string | null;
 }
 
-export function MovieCard({ movie, className = '', priority = false }: MovieCardProps) {
+export function MovieCard({ movie, className = '', priority = false, badge = null }: MovieCardProps) {
   const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
   const displayRating = movie.voteAverage
     ? movie.voteAverage.toFixed(1)
@@ -55,6 +56,13 @@ export function MovieCard({ movie, className = '', priority = false }: MovieCard
             <Play className="ml-0.5 h-5 w-5 fill-current" />
           </div>
         </div>
+
+        {/* Optional Left Badge (e.g. upcoming release countdown) */}
+        {badge ? (
+          <div className="absolute left-2.5 top-2.5 z-10 rounded-lg bg-primary/92 px-2 py-1 text-[11px] font-semibold tracking-tight text-primary-foreground shadow-sm backdrop-blur-md">
+            {badge}
+          </div>
+        ) : null}
 
         {/* Rating Badge */}
         {displayRating ? (

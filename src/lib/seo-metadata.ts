@@ -20,9 +20,19 @@ export function paginatedMetadataTitle(title: string, path: string) {
  * so high-CTR intent keywords ("Trailer", "Where to Watch") stay visible without
  * getting truncated on long movie titles.
  */
-export function buildWatchMetaTitle(rawTitle: string, year?: number | null): string {
+export function buildWatchMetaTitle(
+  rawTitle: string,
+  year?: number | null,
+  options: { isUpcoming?: boolean } = {},
+): string {
   const title = rawTitle.replace(/\s+/g, ' ').trim();
   const yearPart = year ? ` (${year})` : '';
+  if (options.isUpcoming) {
+    if (title.length <= 26) {
+      return `${title}${yearPart} Official Trailer, Release Date & Cast`;
+    }
+    return `${title}${yearPart} Trailer & Release Date`;
+  }
   if (title.length <= 24) {
     return `${title}${yearPart} Trailer, Cast & Where to Watch`;
   }

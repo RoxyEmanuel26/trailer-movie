@@ -203,6 +203,84 @@ export function NavbarMobile({ genres, years }: NavbarMobileProps) {
               All movies
             </Link>
 
+            <Link
+              href="/upcoming"
+              prefetch={false}
+              aria-current={pathname === '/upcoming' || pathname.startsWith('/upcoming/') ? 'page' : undefined}
+              className={cn(
+                'mobile-nav-link font-semibold',
+                (pathname === '/upcoming' || pathname.startsWith('/upcoming/')) && 'bg-muted text-primary'
+              )}
+              onClick={closeMenu}
+            >
+              Upcoming trailers
+            </Link>
+
+            <Link
+              href="/tonight"
+              prefetch={false}
+              aria-current={pathname === '/tonight' ? 'page' : undefined}
+              className={cn(
+                'mobile-nav-link font-semibold text-primary',
+                pathname === '/tonight' && 'bg-muted'
+              )}
+              onClick={closeMenu}
+            >
+              What to watch tonight
+            </Link>
+
+            <Link
+              href="/watchlist"
+              prefetch={false}
+              aria-current={pathname === '/watchlist' ? 'page' : undefined}
+              className={cn(
+                'mobile-nav-link font-semibold',
+                pathname === '/watchlist' && 'bg-muted text-primary'
+              )}
+              onClick={closeMenu}
+            >
+              My watchlist
+            </Link>
+
+            <Link
+              href="/collections"
+              prefetch={false}
+              aria-current={pathname === '/collections' || pathname.startsWith('/collection/') ? 'page' : undefined}
+              className={cn(
+                'mobile-nav-link font-semibold',
+                (pathname === '/collections' || pathname.startsWith('/collection/')) && 'bg-muted text-primary'
+              )}
+              onClick={closeMenu}
+            >
+              Franchises in order
+            </Link>
+
+            <Link
+              href="/studios"
+              prefetch={false}
+              aria-current={pathname === '/studios' || pathname.startsWith('/studio/') ? 'page' : undefined}
+              className={cn(
+                'mobile-nav-link font-semibold',
+                (pathname === '/studios' || pathname.startsWith('/studio/')) && 'bg-muted text-primary'
+              )}
+              onClick={closeMenu}
+            >
+              Film studios (A24, TOHO, BBC…)
+            </Link>
+
+            <Link
+              href="/themes"
+              prefetch={false}
+              aria-current={pathname === '/themes' || pathname.startsWith('/theme/') ? 'page' : undefined}
+              className={cn(
+                'mobile-nav-link font-semibold',
+                (pathname === '/themes' || pathname.startsWith('/theme/')) && 'bg-muted text-primary'
+              )}
+              onClick={closeMenu}
+            >
+              Movie themes &amp; tropes
+            </Link>
+
             <MobileNavSection
               label="Genres"
               active={pathname === '/genres' || pathname.startsWith('/genre/')}

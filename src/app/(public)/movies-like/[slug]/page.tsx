@@ -67,7 +67,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return SeoService.generateMetadata('MoviesLikeGuide', movie.id, {
     title: content.metaTitle,
     description: content.metaDescription,
-    image: `${moviePath(movie.slug)}/opengraph-image`,
+    image: `${result.canonicalPath}/opengraph-image`,
     path: result.canonicalPath,
     indexable,
   });

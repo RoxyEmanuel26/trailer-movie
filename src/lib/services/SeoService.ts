@@ -11,6 +11,8 @@ import { MovieRepository } from '../repositories/MovieRepository';
 import { PersonRepository } from '../repositories/PersonRepository';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '../public-catalog';
 import { STREAMING_CATALOG } from '../streaming-catalog';
+import { STUDIO_CATALOG } from '../studio-catalog';
+import { THEME_CATALOG } from '../theme-catalog';
 import { moviePath, moviesLikePath, personPath } from '../public-routes';
 import { absoluteUrl, isValidContactEmail, normalizeMetaDescription, siteConfig } from '../site-config';
 import type { SitemapEntry, SitemapImage } from '../sitemap-xml';
@@ -390,6 +392,9 @@ export class SeoService {
     ]);
     const originCountMap = await MovieRepository.countOriginGroups(ORIGIN_CATALOG);
     const streamingCountMap = await MovieRepository.countStreamingGroups(STREAMING_CATALOG);
+    const studioCountMap = await MovieRepository.countStudioGroups(STUDIO_CATALOG);
+    const themeCountMap = await MovieRepository.countThemeGroups(THEME_CATALOG);
+    const upcomingYears = await MovieRepository.listUpcomingReleaseYears();
     const facetGuides = await MovieRepository.listIndexableFacetGuides({
       platforms: STREAMING_CATALOG.map(({ slug, tmdbIds }) => ({ slug, tmdbIds })),
       origins: ORIGIN_CATALOG.map(({ slug, countryCodes, languageCodes }) => ({
@@ -401,13 +406,20 @@ export class SeoService {
     });
     const originCounts = ORIGIN_CATALOG.map((item) => ({ item, total: originCountMap.get(item.slug) || 0 }));
     const streamingCounts = STREAMING_CATALOG.map((item) => ({ item, total: streamingCountMap.get(item.slug) || 0 }));
+    const studioCounts = STUDIO_CATALOG.map((item) => ({ item, total: studioCountMap.get(item.slug) || 0 }));
+    const themeCounts = THEME_CATALOG.map((item) => ({ item, total: themeCountMap.get(item.slug) || 0 }));
 
     const sitemap: SitemapEntry[] = [
       { url: siteConfig.url, lastModified: homepageLastModified, changeFrequency: 'daily', priority: 1.0 },
       { url: absoluteUrl('/movies'), lastModified: homepageLastModified, changeFrequency: 'daily', priority: 0.8 },
+      { url: absoluteUrl('/upcoming'), lastModified: homepageLastModified, changeFrequency: 'daily', priority: 0.8 },
+      { url: absoluteUrl('/tonight'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
+      { url: absoluteUrl('/watchlist'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.5 },
       { url: absoluteUrl('/movies/under-90-minutes'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
       { url: absoluteUrl('/movies/under-2-hours'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
       { url: absoluteUrl('/collections'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
+      { url: absoluteUrl('/studios'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
+      { url: absoluteUrl('/themes'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
       { url: absoluteUrl('/streaming'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.8 },
       { url: absoluteUrl('/genres'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
       { url: absoluteUrl('/countries'), lastModified: homepageLastModified, changeFrequency: 'weekly', priority: 0.7 },
@@ -457,6 +469,22 @@ export class SeoService {
         priority: 0.7,
       })
     );
+    studioCounts.filter(({ total }) => total >= 3).forEach(({ item }) =>
+      sitemap.push({
+        url: absoluteUrl(`/studio/${item.slug}`),
+        lastModified: homepageLastModified,
+        changeFrequency: 'weekly',
+        priority: 0.7,
+      })
+    );
+    themeCounts.filter(({ total }) => total >= MIN_INDEXABLE_GUIDE_MOVIES).forEach(({ item }) =>
+      sitemap.push({
+        url: absoluteUrl(`/theme/${item.slug}`),
+        lastModified: homepageLastModified,
+        changeFrequency: 'weekly',
+        priority: 0.7,
+      })
+    );
     originCounts.filter(({ total }) => total >= 3).forEach(({ item }) =>
       sitemap.push({
         url: absoluteUrl(`/origin/${item.slug}`),
@@ -471,6 +499,14 @@ export class SeoService {
         lastModified: item.updatedAt,
         changeFrequency: 'weekly',
         priority: 0.6,
+      })
+    );
+    upcomingYears.forEach((item) =>
+      sitemap.push({
+        url: absoluteUrl(`/upcoming/${item.year}`),
+        lastModified: item.updatedAt,
+        changeFrequency: 'daily',
+        priority: 0.7,
       })
     );
 
@@ -509,7 +545,10 @@ export class SeoService {
       if (!path && override.seoableType === 'Page') path = override.seoableId === 'home' ? '/' : `/${override.seoableId.replace(/^\//, '')}`;
       if (!path && override.seoableType === 'OriginCatalog') path = `/origin/${override.seoableId}`;
       if (!path && override.seoableType === 'StreamingCatalog') path = `/streaming/${override.seoableId}`;
+      if (!path && override.seoableType === 'StudioCatalog') path = `/studio/${override.seoableId}`;
+      if (!path && override.seoableType === 'ThemeCatalog') path = `/theme/${override.seoableId}`;
       if (!path && override.seoableType === 'YearCatalog') path = `/year/${override.seoableId}`;
+      if (!path && override.seoableType === 'UpcomingCatalog') path = `/upcoming/${override.seoableId}`;
       if (!path && override.seoableType === 'PopularCatalog') path = `/popular/${override.seoableId}`;
       if (!path && override.seoableType === 'StreamingGenreGuide') path = `/streaming/${override.seoableId}`;
       if (!path && override.seoableType === 'GenreYearGuide') path = `/genre/${override.seoableId}`;

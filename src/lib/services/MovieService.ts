@@ -21,6 +21,13 @@ import {
   MIN_INDEXABLE_GUIDE_MOVIES,
   type IndexableFacetGuides,
 } from '../programmatic-guides';
+import {
+  TONIGHT_MOODS,
+  TONIGHT_REGIONS,
+  TONIGHT_STREAMING_FILTERS,
+  type TonightMovieCard,
+} from '../tonight';
+import { extractUniqueProviders } from '../movie-aeo';
 
 const RELATED_MOVIE_LIMIT = 8;
 
@@ -93,10 +100,13 @@ export interface PublicCatalogPageQuery {
   collectionSlug?: string;
   tagSlug?: string;
   providerTmdbIds?: number[];
+  companyTmdbIds?: number[];
+  keywordTmdbIds?: number[];
   countryCodes?: string[];
   languageCodes?: string[];
   releaseYear?: number;
   latestReleasesOnly?: boolean;
+  upcomingOnly?: boolean;
   minRuntimeMinutes?: number;
   maxRuntimeMinutes?: number;
 }
@@ -114,12 +124,15 @@ async function loadPublicCatalogPage(
     collectionSlug: query.collectionSlug,
     tagSlug: query.tagSlug,
     providerTmdbIds: query.providerTmdbIds,
+    companyTmdbIds: query.companyTmdbIds,
+    keywordTmdbIds: query.keywordTmdbIds,
     countryCodes: query.countryCodes,
     languageCodes: query.languageCodes,
     releaseYear: query.releaseYear,
+    upcomingOnly: query.upcomingOnly,
     minRuntimeMinutes: query.minRuntimeMinutes,
     maxRuntimeMinutes: query.maxRuntimeMinutes,
-    ...(query.latestReleasesOnly ? { releaseDateLte: new Date() } : {}),
+    ...(!query.upcomingOnly && query.latestReleasesOnly ? { releaseDateLte: new Date() } : {}),
   });
 }
 
@@ -159,6 +172,16 @@ const publicCatalogStatsCache = createMemoryCache<Awaited<ReturnType<typeof Movi
 const streamingGroupCountsCache = createMemoryCache<Map<string, number>>({
   maxEntries: 10,
   ttlMs: 10 * 60_000,
+});
+
+const studioGroupCountsCache = createMemoryCache<Map<string, number>>({
+  maxEntries: 5,
+  ttlMs: 60 * 60_000,
+});
+
+const themeGroupCountsCache = createMemoryCache<Map<string, number>>({
+  maxEntries: 5,
+  ttlMs: 60 * 60_000,
 });
 
 const publicSearchCache = createMemoryCache<{ data: PublicMovieCardRecord[]; total: number }>({
@@ -244,6 +267,11 @@ const releaseYearStatsCache = createMemoryCache<Awaited<ReturnType<typeof MovieR
   ttlMs: 60 * 60_000,
 });
 
+const upcomingReleaseYearsCache = createMemoryCache<Awaited<ReturnType<typeof MovieRepository.listUpcomingReleaseYears>>>({
+  maxEntries: 2,
+  ttlMs: 30 * 60_000,
+});
+
 const indexableFacetGuidesCache = createMemoryCache<IndexableFacetGuides>({
   maxEntries: 2,
   ttlMs: 60 * 60_000,
@@ -256,6 +284,9 @@ function notifyPublicCatalogMutation(slug?: string, submitToIndexNow = false) {
     revalidateTag(HOMEPAGE_CATALOG_TAG, { expire: 0 });
     revalidatePath('/');
     revalidatePath('/movies');
+    revalidatePath('/upcoming');
+    revalidatePath('/studios');
+    revalidatePath('/themes');
     revalidatePath('/streaming');
     revalidatePath('/feed.xml');
     revalidatePath('/sitemap.xml');
@@ -292,6 +323,24 @@ export class MovieService {
     )
   );
 
+  static countStudioGroups = cache(async (
+    studios: Array<{ slug: string; tmdbIds: number[] }>,
+  ) =>
+    studioGroupCountsCache.getOrLoad(
+      JSON.stringify(studios.map((s) => s.slug)),
+      () => MovieRepository.countStudioGroups(studios),
+    )
+  );
+
+  static countThemeGroups = cache(async (
+    themes: Array<{ slug: string; keywordTmdbIds: number[] }>,
+  ) =>
+    themeGroupCountsCache.getOrLoad(
+      JSON.stringify(themes.map((t) => t.slug)),
+      () => MovieRepository.countThemeGroups(themes),
+    )
+  );
+
   static listPublishedReleaseYears = cache(async () =>
     releaseYearsCache.getOrLoad('release-years', () => MovieRepository.listPublishedReleaseYears())
   );
@@ -299,6 +348,90 @@ export class MovieService {
   static listPublishedReleaseYearStats = cache(async () =>
     releaseYearStatsCache.getOrLoad('release-year-stats', () => MovieRepository.listPublishedReleaseYearStats())
   );
+
+  static listUpcomingReleaseYears = cache(async () =>
+    upcomingReleaseYearsCache.getOrLoad('upcoming-release-years', () => MovieRepository.listUpcomingReleaseYears())
+  );
+
+  static async getTonightDeck(filters: {
+    mood?: string;
+    region?: string;
+    streaming?: string;
+    maxRuntime?: number | null;
+    minRating?: number | null;
+    limit?: number;
+  }): Promise<TonightMovieCard[]> {
+    const moodCfg = TONIGHT_MOODS.find((m) => m.id === filters.mood) || TONIGHT_MOODS[0];
+    const regionCfg = TONIGHT_REGIONS.find((r) => r.id === filters.region) || TONIGHT_REGIONS[0];
+    const streamingCfg = TONIGHT_STREAMING_FILTERS.find((s) => s.id === filters.streaming) || TONIGHT_STREAMING_FILTERS[0];
+    const limit = Math.min(Math.max(5, filters.limit || 15), 20);
+
+    const baseParams = {
+      genreSlugs: moodCfg.genreSlugs.length ? [...moodCfg.genreSlugs] : undefined,
+      countryCodes: regionCfg.countryCodes.length ? [...regionCfg.countryCodes] : undefined,
+      languageCodes: regionCfg.languageCodes.length ? [...regionCfg.languageCodes] : undefined,
+      providerTmdbIds: streamingCfg.tmdbIds.length ? [...streamingCfg.tmdbIds] : undefined,
+      maxRuntimeMinutes: filters.maxRuntime && filters.maxRuntime >= 60 ? filters.maxRuntime : undefined,
+      minVoteAverage: filters.minRating && filters.minRating > 0 ? filters.minRating : undefined,
+      take: 60,
+    };
+
+    let rows = await MovieRepository.findTonightDeckCandidates({
+      ...baseParams,
+      minVoteCount: 50,
+    });
+
+    if (rows.length < 8) {
+      rows = await MovieRepository.findTonightDeckCandidates({
+        ...baseParams,
+        minVoteCount: 5,
+      });
+    }
+
+    if (rows.length < 5 && (baseParams.maxRuntimeMinutes || baseParams.minVoteAverage)) {
+      rows = await MovieRepository.findTonightDeckCandidates({
+        ...baseParams,
+        maxRuntimeMinutes: undefined,
+        minVoteAverage: undefined,
+        minVoteCount: 5,
+      });
+    }
+
+    const mapped: TonightMovieCard[] = rows.map((movie) => {
+      const youtubeId =
+        extractYouTubeId(movie.trailers[0]?.sourceId || '') ||
+        extractYouTubeId(movie.youtubeTrailerId || '');
+      const providers = extractUniqueProviders(movie.watchProviderLinks).names.slice(0, 4);
+      return {
+        id: movie.id,
+        tmdbId: movie.tmdbId,
+        title: movie.title,
+        slug: movie.slug,
+        synopsis: movie.synopsis ? movie.synopsis.slice(0, 260) : null,
+        posterUrl: movie.posterUrl,
+        backdropUrl: movie.backdropUrl,
+        releaseYear: movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null,
+        runtimeMinutes: movie.runtimeMinutes,
+        voteAverage: movie.voteAverage,
+        youtubeTrailerId: youtubeId,
+        genres: movie.genres.map((g) => g.genre.name),
+        providers,
+      };
+    });
+
+    // Fisher-Yates shuffle the top pool so every movie-night deck feels fresh
+    for (let i = mapped.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [mapped[i], mapped[j]] = [mapped[j], mapped[i]];
+    }
+
+    return mapped.slice(0, limit);
+  }
+
+  static async getSharedWatchlistMovies(tmdbIds: number[]) {
+    if (!tmdbIds.length) return [];
+    return MovieRepository.findPublicMoviesByTmdbIds(tmdbIds);
+  }
 
   static getIndexableFacetGuides = cache(async () =>
     indexableFacetGuidesCache.getOrLoad('indexable-facet-guides', () =>

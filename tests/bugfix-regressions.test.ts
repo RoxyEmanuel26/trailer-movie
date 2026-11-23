@@ -14,7 +14,18 @@ import { sanitizeHtml, sanitizeRichText } from '../src/lib/security/sanitize';
 import { hasRolePermission } from '../src/lib/auth/permissions';
 import { CollectionInputSchema, MovieAdminUpdateSchema, SeoUpdateSchema } from '../src/lib/api/schemas';
 import { catalogStatsQuery } from '../src/lib/catalog-stats-query';
-import { extractUniqueProviders } from '../src/lib/movie-aeo';
+import { extractUniqueProviders, buildMovieQuickFactsAndFaq } from '../src/lib/movie-aeo';
+import { ORIGIN_CATALOG } from '../src/lib/public-catalog';
+import { STREAMING_CATALOG, matchStreamingCatalogSlug } from '../src/lib/streaming-catalog';
+import { getOriginAdjective } from '../src/lib/programmatic-guides';
+import { buildWatchMetaTitle } from '../src/lib/seo-metadata';
+import { formatReleaseCountdown, isUpcomingReleaseDate, parseUpcomingRegion } from '../src/lib/upcoming-guides';
+import { TonightRoomStore, computeRoomMatches, normalizeRoomCode, type TonightMovieCard } from '../src/lib/tonight';
+import { buildSharedWatchlistPath, parseSharedWatchlistIds } from '../src/lib/watchlist';
+import { STUDIO_CATALOG, buildStudioFaqs, getStudioBySlug, matchMovieStudios } from '../src/lib/studio-catalog';
+import { THEME_CATALOG, buildThemeFaqs, getThemeBySlug, matchMovieThemes } from '../src/lib/theme-catalog';
+import { buildMovieEmbedSnippet } from '../src/lib/embed-snippet';
+import { isAllowedRevalidationPath } from '../src/lib/revalidation';
 import { SITEMAP_SNAPSHOT_VERSION } from '../src/lib/sitemap-cache';
 import { pruneStaleSitemapSnapshots } from '../src/lib/sitemap-cache-prune';
 import { serializeSitemap, sitemapUnavailableResponse } from '../src/lib/sitemap-xml';
@@ -465,4 +476,211 @@ test('Phase 1 SEO: movies-like analyzer computes shared themes, runtime deltas, 
   assert.ok(content.faqs.length >= 3);
   assert.equal(RUNTIME_GUIDES['under-90-minutes'].minRuntimeMinutes, 60);
   assert.equal(RUNTIME_GUIDES['under-90-minutes'].maxRuntimeMinutes, 90);
+});
+
+test('Phase 2 SEO: US, Europe, and Asia catalogs & provider normalizers cover top international markets', () => {
+  const originSlugs = new Set(ORIGIN_CATALOG.map((o) => o.slug));
+  for (const slug of ['spain-spanish', 'nordic', 'belgium', 'netherlands-dutch', 'ireland', 'poland-polish']) {
+    assert.equal(originSlugs.has(slug), true, `Missing European origin slug ${slug}`);
+    const origin = ORIGIN_CATALOG.find((o) => o.slug === slug)!;
+    assert.ok(getOriginAdjective(origin).length > 2);
+  }
+
+  const prime = STREAMING_CATALOG.find((s) => s.slug === 'prime-video');
+  assert.ok(prime?.tmdbIds.includes(10), 'prime-video should include Amazon Video (tmdbId 10)');
+
+  for (const slug of ['fandango-at-home', 'sky', 'rakuten-tv', 'canal-plus', 'hoopla', 'mx-player']) {
+    assert.ok(
+      STREAMING_CATALOG.some((s) => s.slug === slug),
+      `Missing international streaming platform ${slug}`,
+    );
+  }
+
+  assert.equal(matchStreamingCatalogSlug('Sky Store'), 'sky');
+  assert.equal(matchStreamingCatalogSlug('Rakuten TV'), 'rakuten-tv');
+  assert.equal(matchStreamingCatalogSlug('Fandango At Home'), 'fandango-at-home');
+  assert.equal(matchStreamingCatalogSlug('Canal VOD'), 'canal-plus');
+  assert.equal(matchStreamingCatalogSlug('Amazon MX Player'), 'mx-player');
+  assert.equal(matchStreamingCatalogSlug('Hoopla'), 'hoopla');
+});
+
+test('Phase 2 SEO: upcoming countdown, watch SERP title, and upcoming FAQ work accurately', () => {
+  const now = new Date('2026-11-23T00:00:00.000Z');
+  const futureDate = new Date('2026-12-18T00:00:00.000Z');
+  assert.equal(isUpcomingReleaseDate(futureDate, now), true);
+  assert.equal(isUpcomingReleaseDate(new Date('2025-01-01T00:00:00.000Z'), now), false);
+  assert.match(formatReleaseCountdown(futureDate, now) || '', /In \d+ weeks/);
+  assert.equal(parseUpcomingRegion('europe'), 'europe');
+  assert.equal(parseUpcomingRegion('invalid'), 'all');
+
+  assert.equal(
+    buildWatchMetaTitle('Avengers: Doomsday', 2026, { isUpcoming: true }),
+    'Avengers: Doomsday (2026) Official Trailer, Release Date & Cast',
+  );
+  assert.equal(
+    buildWatchMetaTitle('Inception', 2010, { isUpcoming: false }),
+    'Inception (2010) Trailer, Cast & Where to Watch',
+  );
+
+  const aeo = buildMovieQuickFactsAndFaq({
+    title: 'Dune: Part Three',
+    year: 2026,
+    releaseDate: new Date(Date.now() + 30 * 86_400_000),
+    runtimeMinutes: null,
+    ageRating: null,
+    mpaaRating: null,
+    voteAverage: null,
+    voteCount: null,
+    genres: ['Science Fiction', 'Adventure'],
+    directors: ['Denis Villeneuve'],
+    cast: [{ name: 'Timothée Chalamet', characterName: 'Paul Atreides' }],
+    countries: ['United States'],
+    languages: ['English'],
+    hasActiveTrailer: true,
+    providerNames: [],
+  });
+  assert.ok(
+    aeo.faqs.some((f) => /When does Dune: Part Three come out in theaters/i.test(f.question)),
+    'Expected upcoming release-date FAQ',
+  );
+});
+
+test('Phase 2 Viral Tools: TonightRoomStore matches mutual host/guest likes and Watchlist sanitizes shared IDs', async () => {
+  const sampleDeck: TonightMovieCard[] = [
+    {
+      id: 'm-1',
+      tmdbId: 27205,
+      title: 'Inception',
+      slug: 'inception-27205',
+      synopsis: 'A thief steals corporate secrets through dream-sharing.',
+      posterUrl: '/poster1.jpg',
+      backdropUrl: '/bg1.jpg',
+      releaseYear: 2010,
+      runtimeMinutes: 148,
+      voteAverage: 8.4,
+      youtubeTrailerId: 'YoHD9XEInc0',
+      genres: ['Science Fiction'],
+      providers: ['Netflix'],
+    },
+    {
+      id: 'm-2',
+      tmdbId: 157336,
+      title: 'Interstellar',
+      slug: 'interstellar-157336',
+      synopsis: 'Explorers travel through a wormhole in space.',
+      posterUrl: '/poster2.jpg',
+      backdropUrl: '/bg2.jpg',
+      releaseYear: 2014,
+      runtimeMinutes: 169,
+      voteAverage: 8.5,
+      youtubeTrailerId: 'zSWdZVtXT7E',
+      genres: ['Science Fiction'],
+      providers: ['Prime Video'],
+    },
+  ];
+
+  const room = await TonightRoomStore.create(sampleDeck);
+  assert.ok(normalizeRoomCode(room.code) === room.code);
+  assert.equal(normalizeRoomCode('bad'), null);
+
+  await TonightRoomStore.recordSwipe({ code: room.code, role: 'host', movieId: 'm-1', decision: 'like' });
+  await TonightRoomStore.recordSwipe({ code: room.code, role: 'guest', movieId: 'm-1', decision: 'pass' });
+  await TonightRoomStore.recordSwipe({ code: room.code, role: 'guest', movieId: 'm-2', decision: 'like' });
+  const afterMatch = await TonightRoomStore.recordSwipe({
+    code: room.code,
+    role: 'host',
+    movieId: 'm-2',
+    decision: 'like',
+  });
+
+  assert.ok(afterMatch);
+  assert.equal(afterMatch.room.guestJoined, true);
+  assert.deepEqual(
+    afterMatch.matches.map((m) => m.id),
+    ['m-2'],
+  );
+  assert.deepEqual(
+    computeRoomMatches(afterMatch.room).map((m) => m.title),
+    ['Interstellar'],
+  );
+
+  // Watchlist ID parser: deduplicates, rejects non-numeric/XSS tokens, caps at 40
+  const parsedIds = parseSharedWatchlistIds('27205, 157336, 27205, <script>, -5, 0, 9999999999, 603');
+  assert.deepEqual(parsedIds, [27205, 157336, 603]);
+  assert.equal(
+    buildSharedWatchlistPath([{ tmdbId: 27205 }, { tmdbId: null }, { tmdbId: 603 }]),
+    '/watchlist?ids=27205,603',
+  );
+});
+
+test('Phase 3 SEO: Global US/Europe/Asia Studio & Theme catalogs match movie relations and generate FAQs', () => {
+  assert.ok(STUDIO_CATALOG.length >= 35, 'Expected at least 35 curated global film studios');
+  for (const slug of ['a24', 'blumhouse', 'bbc-film', 'studiocanal', 'toho', 'cj-enm', 'toei-animation']) {
+    const studio = getStudioBySlug(slug);
+    assert.ok(studio, `Missing studio ${slug}`);
+    assert.ok(studio.tmdbIds.length >= 1);
+    const faqs = buildStudioFaqs({ studio, total: 80, highlights: ['Movie A', 'Movie B'] });
+    assert.ok(faqs.length >= 3);
+  }
+
+  const matchedStudios = matchMovieStudios([
+    { company: { tmdbId: 41077, name: 'A24' } },
+    { company: { tmdbId: 99999999, name: 'Random Shell LLC' } },
+    { company: { tmdbId: 882, name: 'TOHO' } },
+  ]);
+  assert.deepEqual(
+    matchedStudios.map((s) => s.slug),
+    ['a24', 'toho'],
+  );
+
+  assert.ok(THEME_CATALOG.length >= 35, 'Expected at least 35 curated themes & tropes');
+  for (const slug of ['christmas', 'time-travel', 'based-on-true-story', 'found-footage', 'heist', 'cyberpunk', 'folk-horror']) {
+    const theme = getThemeBySlug(slug);
+    assert.ok(theme, `Missing theme ${slug}`);
+    assert.ok(theme.keywordTmdbIds.length >= 1);
+    const faqs = buildThemeFaqs({ theme, total: 250, highlights: ['Inception', 'Interstellar'] });
+    assert.ok(faqs.length >= 3);
+  }
+
+  const matchedThemes = matchMovieThemes([
+    { keyword: { tmdbId: 4379, name: 'time travel' } },
+    { keyword: { tmdbId: 12190, name: 'cyberpunk' } },
+    { keyword: { tmdbId: 123456789, name: 'unindexed keyword' } },
+  ]);
+  assert.deepEqual(
+    matchedThemes.map((t) => t.slug),
+    ['time-travel', 'cyberpunk'],
+  );
+
+  // catalogStatsQuery supports companyTmdbIds and keywordTmdbIds parameterized SQL
+  const studioSql = catalogStatsQuery({ companyTmdbIds: [41077] });
+  assert.match(studioSql.strings.join(' '), /"production_companies"/);
+  const themeSql = catalogStatsQuery({ keywordTmdbIds: [4379] });
+  assert.match(themeSql.strings.join(' '), /"movie_keywords"/);
+});
+
+test('Phase 3 Backlink Engine & Headers: embed snippet escapes HTML attributes and next.config scopes X-Frame-Options', () => {
+  const snippet = buildMovieEmbedSnippet({
+    siteUrl: 'https://www.movieflix.site/',
+    slug: 'inception-27205',
+    title: 'Inception "Dream" <script>',
+    year: 2010,
+  });
+  assert.equal(snippet.embedUrl, 'https://www.movieflix.site/embed/watch/inception-27205');
+  assert.equal(snippet.watchUrl, 'https://www.movieflix.site/watch/inception-27205');
+  assert.equal(snippet.html.includes('<script>'), false);
+  assert.match(snippet.html, /&quot;Dream&quot; &lt;script&gt;/);
+
+  assert.equal(isAllowedRevalidationPath('/studio/a24'), true);
+  assert.equal(isAllowedRevalidationPath('/theme/time-travel'), true);
+  assert.equal(isAllowedRevalidationPath('/upcoming/2026'), true);
+  assert.equal(isAllowedRevalidationPath('/movies-like/inception-27205'), true);
+
+  const nextConfigSrc = readFileSync(path.resolve('next.config.ts'), 'utf8');
+  assert.match(nextConfigSrc, /\/\(\(\?!embed\/\)\.\*\)/);
+  assert.match(nextConfigSrc, /frame-ancestors \*/);
+  assert.match(nextConfigSrc, /\/movies-like\/:slug\/opengraph-image/);
+  assert.match(nextConfigSrc, /\/collection\/:slug\/opengraph-image/);
+  assert.match(nextConfigSrc, /\/person\/:slug\/opengraph-image/);
+  assert.match(nextConfigSrc, /\/upcoming\/opengraph-image/);
 });

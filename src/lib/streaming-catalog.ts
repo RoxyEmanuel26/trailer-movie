@@ -20,7 +20,7 @@ export const STREAMING_CATALOG: StreamingCatalogItem[] = [
   {
     slug: 'prime-video',
     label: 'Prime Video',
-    tmdbIds: [9, 119, 613, 2100],
+    tmdbIds: [9, 10, 119, 613, 2100],
     accessLabel: 'Subscription, rental & purchase',
     tagline: 'Amazon Originals, theatrical hits, and deep genre classics on Prime Video.',
     description:
@@ -153,6 +153,60 @@ export const STREAMING_CATALOG: StreamingCatalogItem[] = [
       'Find movies available to rent or buy on Google Play Movies, complete with trailers, cast and crew profiles, runtime, and ratings.',
   },
   {
+    slug: 'fandango-at-home',
+    label: 'Fandango at Home',
+    tmdbIds: [7, 332],
+    accessLabel: 'Digital rental, purchase & free with ads',
+    tagline: 'New theatrical digital premieres, 4K library rentals, and free ad-supported films in the US.',
+    description:
+      'Discover movies available to rent, buy, or watch free with ads on Fandango at Home (formerly Vudu), complete with trailers, cast credits, and ratings.',
+  },
+  {
+    slug: 'sky',
+    label: 'Sky & Sky Store',
+    tmdbIds: [130, 29, 30, 39],
+    accessLabel: 'Subscription & digital store (UK & Europe)',
+    tagline: 'Sky Cinema premieres, European theatrical releases, and digital rentals across the UK, Germany, and Italy.',
+    description:
+      'Browse movies available on Sky Cinema and Sky Store across Europe, complete with official trailers, cast profiles, ratings, and streaming guides.',
+  },
+  {
+    slug: 'rakuten-tv',
+    label: 'Rakuten TV',
+    tmdbIds: [35],
+    accessLabel: 'European VOD & free streaming',
+    tagline: 'Major Hollywood blockbusters, European cinema, and on-demand rentals across the UK, Spain, Germany, France, and Italy.',
+    description:
+      'Explore movies available to stream or rent on Rakuten TV across Europe, featuring official trailers, runtime, audience scores, and cast credits.',
+  },
+  {
+    slug: 'canal-plus',
+    label: 'CANAL+',
+    tmdbIds: [58, 381],
+    accessLabel: 'Subscription & VOD (France & Europe)',
+    tagline: 'French theatrical hits, acclaimed European cinema, and international premieres on CANAL+ and Canal VOD.',
+    description:
+      'Discover movies available on CANAL+ and Canal VOD, with official trailers, director and cast guides, ratings, and release timelines.',
+  },
+  {
+    slug: 'hoopla',
+    label: 'Hoopla',
+    tmdbIds: [212],
+    accessLabel: 'Free library streaming (US & Canada)',
+    tagline: 'Ad-free critically acclaimed films, indies, and classics streamable with a public library card on Hoopla.',
+    description:
+      'Browse movies available to stream free on Hoopla across North America, complete with official trailers, ratings, cast, and genre guides.',
+  },
+  {
+    slug: 'mx-player',
+    label: 'Amazon MX Player',
+    tmdbIds: [1898],
+    accessLabel: 'Free ad-supported streaming (India & Asia)',
+    tagline: 'Indian blockbusters, regional Asian cinema, and dubbed international favorites free with ads on Amazon MX Player.',
+    description:
+      'Explore movies streaming on Amazon MX Player, complete with official trailers, cast profiles, ratings, and release guides.',
+  },
+  {
     slug: 'youtube',
     label: 'YouTube Movies',
     tmdbIds: [192, 188],
@@ -171,6 +225,7 @@ const NORMALIZED_NAME_TO_SLUG: Record<string, string> = {
   netflix: 'netflix',
   'prime video': 'prime-video',
   'amazon prime video': 'prime-video',
+  'amazon video': 'prime-video',
   'disney+': 'disney-plus',
   'disney plus': 'disney-plus',
   'apple tv': 'apple-tv',
@@ -191,6 +246,17 @@ const NORMALIZED_NAME_TO_SLUG: Record<string, string> = {
   crunchyroll: 'crunchyroll',
   'google play': 'google-play',
   'google play movies': 'google-play',
+  'fandango at home': 'fandango-at-home',
+  vudu: 'fandango-at-home',
+  sky: 'sky',
+  'sky store': 'sky',
+  'sky go': 'sky',
+  'rakuten tv': 'rakuten-tv',
+  'canal+': 'canal-plus',
+  'canal vod': 'canal-plus',
+  hoopla: 'hoopla',
+  'amazon mx player': 'mx-player',
+  'mx player': 'mx-player',
   youtube: 'youtube',
   'youtube movies': 'youtube',
 };

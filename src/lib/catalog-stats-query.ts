@@ -17,12 +17,23 @@ export function catalogStatsQuery(filters: CatalogFilters) {
       Prisma.sql`EXISTS (SELECT 1 FROM "movie_watch_provider_links" mwpl JOIN "watch_providers" wp ON wp."id" = mwpl."providerId" WHERE mwpl."movieId" = m."id" AND wp."tmdbId" IN (${Prisma.join(filters.providerTmdbIds)}))`
     );
   }
+  if (filters.companyTmdbIds?.length) {
+    conditions.push(
+      Prisma.sql`EXISTS (SELECT 1 FROM "movie_companies" mc JOIN "production_companies" pc ON pc."id" = mc."companyId" WHERE mc."movieId" = m."id" AND pc."tmdbId" IN (${Prisma.join(filters.companyTmdbIds)}))`
+    );
+  }
+  if (filters.keywordTmdbIds?.length) {
+    conditions.push(
+      Prisma.sql`EXISTS (SELECT 1 FROM "movie_keywords" mk JOIN "keywords" k ON k."id" = mk."keywordId" WHERE mk."movieId" = m."id" AND k."tmdbId" IN (${Prisma.join(filters.keywordTmdbIds)}))`
+    );
+  }
   const origins: Prisma.Sql[] = [];
   if (filters.countryCodes?.length) origins.push(Prisma.sql`EXISTS (SELECT 1 FROM "movie_countries" mc JOIN "countries" c ON c."id" = mc."countryId" WHERE mc."movieId" = m."id" AND c."isoCode" IN (${Prisma.join(filters.countryCodes)}))`);
   if (filters.languageCodes?.length) origins.push(Prisma.sql`EXISTS (SELECT 1 FROM "movie_languages" ml JOIN "languages" l ON l."id" = ml."languageId" WHERE ml."movieId" = m."id" AND l."isoCode" IN (${Prisma.join(filters.languageCodes)}))`);
   if (origins.length) conditions.push(Prisma.sql`(${Prisma.join(origins, ' OR ')})`);
   if (filters.releaseYear) conditions.push(Prisma.sql`m."releaseDate" >= ${new Date(Date.UTC(filters.releaseYear, 0, 1))} AND m."releaseDate" < ${new Date(Date.UTC(filters.releaseYear + 1, 0, 1))}`);
-  if (filters.latestReleasesOnly) conditions.push(Prisma.sql`m."releaseDate" IS NOT NULL AND m."releaseDate" <= NOW()`);
+  if (filters.upcomingOnly) conditions.push(Prisma.sql`m."releaseDate" IS NOT NULL AND m."releaseDate" > NOW()`);
+  else if (filters.latestReleasesOnly) conditions.push(Prisma.sql`m."releaseDate" IS NOT NULL AND m."releaseDate" <= NOW()`);
   else if (filters.releaseDateLte) conditions.push(Prisma.sql`m."releaseDate" <= ${filters.releaseDateLte}`);
   if (filters.minimumVotes) {
     conditions.push(Prisma.sql`m."voteAverage" IS NOT NULL AND m."voteCount" >= ${filters.minimumVotes}`);

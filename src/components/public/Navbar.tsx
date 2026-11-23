@@ -1,5 +1,6 @@
 import * as React from 'react';
 import Link from 'next/link';
+import { Bookmark } from 'lucide-react';
 import { NavbarSearch } from './NavbarSearch';
 import { NavbarThemeToggle } from './NavbarThemeToggle';
 import { NavbarMobile } from './NavbarMobile';
@@ -79,6 +80,15 @@ export async function Navbar() {
 
         <div className="flex items-center gap-2">
           <NavbarSearch />
+          <Link
+            href="/watchlist"
+            prefetch={false}
+            aria-label="My Watchlist"
+            title="My Watchlist"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Bookmark className="h-[1.15rem] w-[1.15rem]" aria-hidden="true" />
+          </Link>
           <NavbarThemeToggle />
           <NavbarMobile genres={genres} years={years} />
         </div>

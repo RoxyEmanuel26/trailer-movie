@@ -3,7 +3,11 @@ import test from 'node:test';
 import { ImportBatchSchema } from '../src/lib/api/schemas';
 import { classifyJobError } from '../src/lib/jobs/error-classification';
 import { NonRetryableJobError, PartialJobError, RetryableJobError } from '../src/lib/jobs/retry';
-import { evaluateLegacyMovieQuality, evaluateMovieQuality } from '../src/lib/services/ImportQualityService';
+import {
+  evaluateLegacyMovieQuality,
+  evaluateMovieQuality,
+  isUpcomingTrailerReady,
+} from '../src/lib/services/ImportQualityService';
 import { TmdbError } from '../src/lib/tmdb/errors';
 import { getImportThroughput, runBounded } from '../src/lib/jobs/throughput';
 import { ImportRepository, shouldRefreshExistingMovie } from '../src/lib/repositories/ImportRepository';
@@ -33,6 +37,45 @@ test('new imports publish only when every quality requirement is present', () =>
 
 test('an active YouTube trailer record satisfies the trailer quality gate', () => {
   assert.deepEqual(evaluateMovieQuality({ ...completeMovie, youtubeTrailerId: null, activeYoutubeTrailerCount: 1 }), []);
+});
+
+test('upcoming trailer-ready movies within 18 months pass the quality gate while trailerless or past drafts do not', () => {
+  const now = new Date('2026-11-23T00:00:00.000Z');
+  const upcomingReady = {
+    title: 'Avengers: Doomsday',
+    releaseDate: new Date('2026-12-18T00:00:00.000Z'),
+    synopsis: 'Earth’s mightiest heroes reunite to confront a multiversal threat orchestrated by Victor von Doom.',
+    posterUrl: 'https://image.tmdb.org/t/p/w500/doomsday.jpg',
+    productionStatus: 'Post Production',
+    youtubeTrailerId: 'X1aFkAkFASk',
+    genreCount: 3,
+    activeYoutubeTrailerCount: 1,
+  };
+
+  assert.equal(isUpcomingTrailerReady(upcomingReady, now), true);
+  assert.deepEqual(evaluateMovieQuality(upcomingReady, now), []);
+
+  // Missing trailer still blocks upcoming draft
+  assert.deepEqual(
+    evaluateMovieQuality({ ...upcomingReady, youtubeTrailerId: null, activeYoutubeTrailerCount: 0 }, now),
+    ['tmdb_not_released', 'missing_trailer'],
+  );
+
+  // Placeholder short synopsis (<40 chars) blocks upcoming early publish
+  assert.equal(isUpcomingTrailerReady({ ...upcomingReady, synopsis: 'Coming soon.' }, now), false);
+  assert.deepEqual(evaluateMovieQuality({ ...upcomingReady, synopsis: 'Coming soon.' }, now), ['tmdb_not_released']);
+
+  // Far-future movie (> 540 days out) stays draft
+  assert.equal(
+    isUpcomingTrailerReady({ ...upcomingReady, releaseDate: new Date('2029-12-20T00:00:00.000Z') }, now),
+    false,
+  );
+
+  // Past-release non-Released movie keeps tmdb_not_released (backwards-compatible with refresh checks)
+  assert.deepEqual(
+    evaluateMovieQuality({ ...upcomingReady, releaseDate: new Date('2026-01-01T00:00:00.000Z') }, now),
+    ['tmdb_not_released'],
+  );
 });
 
 test('legacy quality gate checks only poster and effective trailer', () => {

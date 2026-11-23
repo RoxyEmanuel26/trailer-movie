@@ -530,6 +530,7 @@ model MovieCompany {
   company ProductionCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@id([movieId, companyId])
+  @@index([companyId])
   @@map("movie_companies")
 }
 

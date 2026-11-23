@@ -20,17 +20,22 @@ import {
   absoluteUrl,
   normalizeMetaDescription,
   organizationSchemaId,
+  siteConfig,
   websiteSchemaId,
 } from '@/lib/site-config';
 import { buildWatchMetaTitle } from '@/lib/seo-metadata';
 import { ORIGIN_CATALOG } from '@/lib/public-catalog';
 import { getOriginAdjective } from '@/lib/programmatic-guides';
 import { cleanFranchiseName } from '@/lib/franchise-guides';
+import { matchMovieStudios } from '@/lib/studio-catalog';
+import { matchMovieThemes } from '@/lib/theme-catalog';
 import { isEligibleForMoviesLikeIndex, MOVIES_LIKE_MIN_VOTES } from '@/lib/movies-like';
 import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
 import { EntityViewTracker } from '@/components/public/EntityViewTracker';
 import { trailerSchema } from '@/lib/trailer-schema';
 import { ShareMovieButton } from '@/components/public/ShareMovieButton';
+import { WatchlistButton } from '@/components/public/WatchlistButton';
+import { EmbedCodeButton } from '@/components/public/EmbedCodeButton';
 import { extractYouTubeId } from '@/lib/utils/youtube';
 import { MovieQuickFactsFaq } from '@/components/movie/MovieQuickFactsFaq';
 import {
@@ -38,6 +43,10 @@ import {
   buildMovieQuickFactsAndFaq,
   extractUniqueProviders,
 } from '@/lib/movie-aeo';
+import {
+  formatReleaseCountdown,
+  isUpcomingReleaseDate,
+} from '@/lib/upcoming-guides';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -50,9 +59,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (result.shouldRedirect) permanentRedirect(result.canonicalPath);
   const { movie, canonicalPath } = result;
   const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
+  const isUpcoming = isUpcomingReleaseDate(movie.releaseDate);
   return SeoService.generateMetadata('Movie', movie.id, {
-    title: buildWatchMetaTitle(movie.title, year),
-    description: normalizeMetaDescription(movie.synopsis, `Watch the trailer for ${movie.title}, explore its cast and crew, and find where it is available.`),
+    title: buildWatchMetaTitle(movie.title, year, { isUpcoming }),
+    description: normalizeMetaDescription(
+      movie.synopsis,
+      isUpcoming
+        ? `Watch the official trailer for ${movie.title}${year ? ` (${year})` : ''}, track its theatrical release date, and explore the confirmed cast and story.`
+        : `Watch the trailer for ${movie.title}, explore its cast and crew, and find where it is available.`,
+    ),
     image: `${canonicalPath}/opengraph-image`,
     path: canonicalPath,
     indexable: movie.importQualityStatus === 'READY',
@@ -135,6 +150,8 @@ export default async function MovieDetailPage({ params }: PageProps) {
   const otherCrew = Array.from(crewMap.values());
 
   const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
+  const isUpcoming = isUpcomingReleaseDate(movie.releaseDate);
+  const upcomingCountdown = isUpcoming ? formatReleaseCountdown(movie.releaseDate) : null;
   const primaryTrailer = movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE' && trailer.isPrimary)
     || movie.trailers.find((trailer) => trailer.status === 'ACTIVE' && trailer.sourceType === 'YOUTUBE');
   const youtubeId =
@@ -151,6 +168,8 @@ export default async function MovieDetailPage({ params }: PageProps) {
     origin.countryCodes.some((code) => movie.countries.some(({ country }) => country.isoCode === code)) ||
     origin.languageCodes.some((code) => movie.languages.some(({ language }) => language.isoCode === code))
   );
+  const matchedStudios = matchMovieStudios(movie.companies, 2);
+  const matchedThemes = matchMovieThemes(movie.keywords, 3);
   const { names: providerNames, hubLinks } = extractUniqueProviders(
     movie.watchProviderLinks as any,
     movie.watchProviders,
@@ -413,6 +432,18 @@ export default async function MovieDetailPage({ params }: PageProps) {
 
         <div className="grid gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] lg:gap-10">
           <div className="order-1 min-w-0 lg:col-start-2 lg:row-start-1">
+            {isUpcoming ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <Link
+                  href="/upcoming"
+                  prefetch={false}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/12 px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/20"
+                >
+                  <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Upcoming Release{upcomingCountdown ? ` · ${upcomingCountdown}` : ''}</span>
+                </Link>
+              </div>
+            ) : null}
             {movie.logoUrl ? (
               <div className="relative mb-6 h-14 w-full max-w-xs">
                 <Image
@@ -424,7 +455,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
                 />
               </div>
             ) : (
-              <p className="eyebrow mb-3">Movie spotlight</p>
+              <p className="eyebrow mb-3">{isUpcoming ? 'Upcoming trailer spotlight' : 'Movie spotlight'}</p>
             )}
             <h1 className="mb-3 break-words text-balance text-[2.15rem] font-semibold leading-[1.04] tracking-[-0.05em] sm:text-5xl lg:text-6xl">
               {movie.title}{' '}
@@ -483,6 +514,27 @@ export default async function MovieDetailPage({ params }: PageProps) {
               </div>
             </div>
 
+            <div className="mt-4 flex flex-wrap items-start gap-2">
+              <WatchlistButton
+                movie={{
+                  id: movie.id,
+                  tmdbId: movie.tmdbId ?? null,
+                  slug: movie.slug,
+                  title: movie.title,
+                  posterUrl: movie.posterUrl,
+                  releaseYear: year,
+                  runtimeMinutes: movie.runtimeMinutes ?? null,
+                  voteAverage: movie.voteAverage ?? null,
+                }}
+              />
+              <EmbedCodeButton
+                siteUrl={siteConfig.url}
+                slug={movie.slug}
+                title={movie.title}
+                year={year}
+              />
+            </div>
+
             <ShareMovieButton title={movie.title} year={year} url={movieUrl} />
           </div>
 
@@ -492,9 +544,20 @@ export default async function MovieDetailPage({ params }: PageProps) {
               {movie.synopsis || 'A synopsis has not been added yet.'}
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-sm">
+              {isUpcoming ? <Link href={year ? `/upcoming/${year}` : '/upcoming'} prefetch={false} className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 font-medium text-foreground transition hover:border-primary hover:text-primary">{year ? `Upcoming ${year} movies` : 'Upcoming releases'}</Link> : null}
               {year ? <Link href={`/year/${year}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">More from {year}</Link> : null}
               {matchingOrigins.map((origin) => <Link key={origin.slug} href={`/origin/${origin.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">{origin.label}</Link>)}
               {hubLinks.slice(0, 4).map((hub) => <Link key={hub.slug} href={`/streaming/${hub.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">On {hub.name}</Link>)}
+              {matchedStudios.map((studio) => (
+                <Link key={studio.slug} href={`/studio/${studio.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">
+                  {studio.name} movies
+                </Link>
+              ))}
+              {matchedThemes.map((theme) => (
+                <Link key={theme.slug} href={`/theme/${theme.slug}`} prefetch={false} className="rounded-lg border px-3 py-2 font-medium transition hover:border-primary hover:text-primary">
+                  {theme.label}
+                </Link>
+              ))}
               {contextualGuideLinks.map((guide) => (
                 <Link key={guide.href} href={guide.href} prefetch={false} className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 font-medium text-foreground transition hover:border-primary hover:text-primary">
                   {guide.label}

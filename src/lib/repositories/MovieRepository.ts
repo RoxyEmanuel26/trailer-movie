@@ -16,12 +16,15 @@ export interface CatalogFilters {
   collectionSlug?: string;
   tagSlug?: string;
   providerTmdbIds?: number[];
+  companyTmdbIds?: number[];
+  keywordTmdbIds?: number[];
   excludeId?: string;
   countryCodes?: string[];
   languageCodes?: string[];
   releaseYear?: number;
   releaseDateLte?: Date;
   latestReleasesOnly?: boolean;
+  upcomingOnly?: boolean;
   minimumVotes?: number;
   minRuntimeMinutes?: number;
   maxRuntimeMinutes?: number;
@@ -95,13 +98,24 @@ function buildCatalogWhere(params: CatalogFilters): Prisma.MovieWhereInput {
       some: { provider: { tmdbId: { in: params.providerTmdbIds } } },
     };
   }
+  if (params.companyTmdbIds?.length) {
+    where.companies = {
+      some: { company: { tmdbId: { in: params.companyTmdbIds } } },
+    };
+  }
+  if (params.keywordTmdbIds?.length) {
+    where.keywords = {
+      some: { keyword: { tmdbId: { in: params.keywordTmdbIds } } },
+    };
+  }
 
   const originFilters: Prisma.MovieWhereInput[] = [];
   if (params.countryCodes?.length) originFilters.push({ countries: { some: { country: { isoCode: { in: params.countryCodes } } } } });
   if (params.languageCodes?.length) originFilters.push({ languages: { some: { language: { isoCode: { in: params.languageCodes } } } } });
   if (originFilters.length) andFilters.push({ OR: originFilters });
   if (params.releaseYear) andFilters.push({ releaseDate: { gte: new Date(Date.UTC(params.releaseYear, 0, 1)), lt: new Date(Date.UTC(params.releaseYear + 1, 0, 1)) } });
-  if (params.latestReleasesOnly) andFilters.push({ releaseDate: { not: null, lte: new Date() } });
+  if (params.upcomingOnly) andFilters.push({ releaseDate: { not: null, gt: new Date() } });
+  else if (params.latestReleasesOnly) andFilters.push({ releaseDate: { not: null, lte: new Date() } });
   else if (params.releaseDateLte) andFilters.push({ releaseDate: { lte: params.releaseDateLte } });
   if (params.minimumVotes) andFilters.push({ voteCount: { gte: params.minimumVotes } });
   if (params.minRuntimeMinutes !== undefined || params.maxRuntimeMinutes !== undefined) {
@@ -203,6 +217,66 @@ export class MovieRepository {
       JOIN published_movies pm ON pm."id" = dpm."movieId"
       JOIN platform_filters pf ON pf."tmdbId" = dpm."tmdbId"
       GROUP BY pf."slug"
+    `);
+    return new Map(rows.map((row) => [row.slug, Number(row.total)]));
+  }
+
+  static async countStudioGroups(
+    studios: Array<{ slug: string; tmdbIds: number[] }>,
+    db: DbClient = prisma,
+  ) {
+    if (!studios.length) return new Map<string, number>();
+    const allTmdbIds = [...new Set(studios.flatMap((s) => s.tmdbIds))];
+    if (!allTmdbIds.length) return new Map<string, number>();
+    const payload = JSON.stringify(studios);
+    const rows = await db.$queryRaw<Array<{ slug: string; total: number }>>(Prisma.sql`
+      WITH studio_filters AS (
+        SELECT "slug", jsonb_array_elements_text("tmdbIds")::int AS "tmdbId"
+        FROM jsonb_to_recordset(${payload}::jsonb)
+          AS item("slug" text, "tmdbIds" jsonb)
+      ),
+      matched_companies AS (
+        SELECT pc."id" AS "companyId", sf."slug"
+        FROM "production_companies" pc
+        JOIN studio_filters sf ON sf."tmdbId" = pc."tmdbId"
+        WHERE pc."tmdbId" IN (${Prisma.join(allTmdbIds)})
+      )
+      SELECT mc_ref."slug", COUNT(DISTINCT mc."movieId")::int AS "total"
+      FROM matched_companies mc_ref
+      JOIN "movie_companies" mc ON mc."companyId" = mc_ref."companyId"
+      JOIN "movies" m ON m."id" = mc."movieId"
+      WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+      GROUP BY mc_ref."slug"
+    `);
+    return new Map(rows.map((row) => [row.slug, Number(row.total)]));
+  }
+
+  static async countThemeGroups(
+    themes: Array<{ slug: string; keywordTmdbIds: number[] }>,
+    db: DbClient = prisma,
+  ) {
+    if (!themes.length) return new Map<string, number>();
+    const allTmdbIds = [...new Set(themes.flatMap((t) => t.keywordTmdbIds))];
+    if (!allTmdbIds.length) return new Map<string, number>();
+    const payload = JSON.stringify(themes);
+    const rows = await db.$queryRaw<Array<{ slug: string; total: number }>>(Prisma.sql`
+      WITH theme_filters AS (
+        SELECT "slug", jsonb_array_elements_text("keywordTmdbIds")::int AS "tmdbId"
+        FROM jsonb_to_recordset(${payload}::jsonb)
+          AS item("slug" text, "keywordTmdbIds" jsonb)
+      ),
+      matched_keywords AS (
+        SELECT k."id" AS "keywordId", tf."slug"
+        FROM "keywords" k
+        JOIN theme_filters tf ON tf."tmdbId" = k."tmdbId"
+        WHERE k."tmdbId" IN (${Prisma.join(allTmdbIds)})
+      )
+      SELECT mk_ref."slug", COUNT(DISTINCT mk."movieId")::int AS "total"
+      FROM matched_keywords mk_ref
+      JOIN "movie_keywords" mk ON mk."keywordId" = mk_ref."keywordId"
+      JOIN "movies" m ON m."id" = mk."movieId"
+      WHERE m."status" = 'PUBLISHED' AND m."deletedAt" IS NULL
+      GROUP BY mk_ref."slug"
     `);
     return new Map(rows.map((row) => [row.slug, Number(row.total)]));
   }
@@ -479,10 +553,13 @@ export class MovieRepository {
       collectionSlug?: string;
       tagSlug?: string;
       providerTmdbIds?: number[];
+      companyTmdbIds?: number[];
+      keywordTmdbIds?: number[];
       countryCodes?: string[];
       languageCodes?: string[];
       releaseYear?: number;
       releaseDateLte?: Date;
+      upcomingOnly?: boolean;
       minRuntimeMinutes?: number;
       maxRuntimeMinutes?: number;
     },
@@ -816,6 +893,162 @@ export class MovieRepository {
       ) eligible
     `);
     return Number(rows[0]?.count || 0);
+  }
+
+  static async listUpcomingReleaseYears(db: DbClient = prisma) {
+    const rows = await db.$queryRaw<Array<{ year: number; count: number; updatedAt: Date }>>(Prisma.sql`
+      SELECT
+        EXTRACT(YEAR FROM "releaseDate")::int AS "year",
+        COUNT(*)::int AS "count",
+        MAX("updatedAt") AS "updatedAt"
+      FROM "movies"
+      WHERE "status" = 'PUBLISHED'
+        AND "deletedAt" IS NULL
+        AND "releaseDate" IS NOT NULL
+        AND "releaseDate" > NOW()
+      GROUP BY EXTRACT(YEAR FROM "releaseDate")
+      HAVING COUNT(*) >= 3
+      ORDER BY "year" ASC
+    `);
+    return rows.map((row) => ({
+      year: Number(row.year),
+      count: Number(row.count),
+      updatedAt: row.updatedAt,
+    }));
+  }
+
+  static async findTonightDeckCandidates(
+    params: {
+      genreSlugs?: string[];
+      countryCodes?: string[];
+      languageCodes?: string[];
+      providerTmdbIds?: number[];
+      maxRuntimeMinutes?: number;
+      minVoteAverage?: number;
+      minVoteCount?: number;
+      take?: number;
+    },
+    db: DbClient = prisma,
+  ) {
+    const andFilters: Prisma.MovieWhereInput[] = [
+      { releaseDate: { lte: new Date() } },
+      {
+        OR: [
+          { youtubeTrailerId: { not: null } },
+          { trailers: { some: { status: 'ACTIVE', sourceType: 'YOUTUBE' } } },
+        ],
+      },
+    ];
+
+    if (params.genreSlugs?.length) {
+      andFilters.push({
+        genres: { some: { genre: { slug: { in: params.genreSlugs } } } },
+      });
+    }
+
+    const originFilters: Prisma.MovieWhereInput[] = [];
+    if (params.countryCodes?.length) {
+      originFilters.push({ countries: { some: { country: { isoCode: { in: params.countryCodes } } } } });
+    }
+    if (params.languageCodes?.length) {
+      originFilters.push({ languages: { some: { language: { isoCode: { in: params.languageCodes } } } } });
+    }
+    if (originFilters.length) {
+      andFilters.push({ OR: originFilters });
+    }
+
+    if (params.providerTmdbIds?.length) {
+      andFilters.push({
+        watchProviderLinks: {
+          some: { provider: { tmdbId: { in: params.providerTmdbIds } } },
+        },
+      });
+    }
+
+    if (params.maxRuntimeMinutes && params.maxRuntimeMinutes > 0) {
+      andFilters.push({
+        runtimeMinutes: { gte: 40, lte: params.maxRuntimeMinutes },
+      });
+    }
+
+    if (params.minVoteAverage && params.minVoteAverage > 0) {
+      andFilters.push({
+        voteAverage: { gte: params.minVoteAverage },
+      });
+    }
+
+    const minVotes = params.minVoteCount ?? 50;
+    if (minVotes > 0) {
+      andFilters.push({
+        voteCount: { gte: minVotes },
+      });
+    }
+
+    return db.movie.findMany({
+      where: {
+        status: 'PUBLISHED',
+        deletedAt: null,
+        posterUrl: { not: null },
+        AND: andFilters,
+      },
+      orderBy: [
+        { popularity: 'desc' },
+        { voteAverage: 'desc' },
+        { voteCount: 'desc' },
+      ],
+      take: Math.min(Math.max(15, params.take || 60), 100),
+      select: {
+        id: true,
+        tmdbId: true,
+        title: true,
+        slug: true,
+        synopsis: true,
+        posterUrl: true,
+        backdropUrl: true,
+        releaseDate: true,
+        runtimeMinutes: true,
+        voteAverage: true,
+        youtubeTrailerId: true,
+        genres: {
+          take: 3,
+          select: {
+            genre: { select: { name: true } },
+          },
+        },
+        trailers: {
+          where: { status: 'ACTIVE', sourceType: 'YOUTUBE' },
+          orderBy: [{ isPrimary: 'desc' }, { publishedDate: 'desc' }],
+          take: 1,
+          select: { sourceId: true },
+        },
+        watchProviderLinks: {
+          take: 10,
+          select: {
+            provider: { select: { name: true } },
+          },
+        },
+      },
+    });
+  }
+
+  static async findPublicMoviesByTmdbIds(tmdbIds: number[], db: DbClient = prisma) {
+    const bounded = [...new Set(tmdbIds.filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 40);
+    if (bounded.length === 0) return [];
+    const movies = await db.movie.findMany({
+      where: {
+        tmdbId: { in: bounded },
+        status: 'PUBLISHED',
+        deletedAt: null,
+      },
+      select: {
+        ...PUBLIC_MOVIE_CARD_SELECT,
+        tmdbId: true,
+      },
+    });
+    const byTmdb = new Map(movies.map((m) => [m.tmdbId, m]));
+    return bounded
+      .map((id) => byTmdb.get(id))
+      .filter((m): m is NonNullable<typeof m> => Boolean(m));
   }
 
   static async listIndexableMoviesLikeForSitemap(

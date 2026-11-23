@@ -42,12 +42,18 @@ export async function POST(request: NextRequest) {
     // Do not evict every watch/person page on each import batch. Those pages
     // have a one-hour ISR TTL; requested detail paths may still be targeted.
     invalidate('/movies');
+    invalidate('/upcoming', 'layout');
+    invalidate('/collections');
+    invalidate('/studios');
+    invalidate('/themes');
     invalidate('/genres');
     invalidate('/countries');
     invalidate('/years');
     invalidate('/popular', 'layout');
     invalidate('/genre', 'layout');
     invalidate('/collection', 'layout');
+    invalidate('/studio', 'layout');
+    invalidate('/theme', 'layout');
     invalidate('/origin', 'layout');
     invalidate('/year', 'layout');
     invalidate('/streaming', 'layout');

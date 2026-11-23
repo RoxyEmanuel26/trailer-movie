@@ -36,7 +36,7 @@ export async function GET() {
     ? `- [Best Horror Movies of ${latestHorrorYear}](${absoluteUrl(`/genre/horror/${latestHorrorYear}`)}): ${latestHorrorYear} horror films ranked by popularity and release date.`
     : `- [Best Horror Movies](${absoluteUrl('/genre/horror')}): Horror films ranked by popularity and release date.`;
 
-  const streamingLinks = STREAMING_CATALOG.slice(0, 12)
+  const streamingLinks = STREAMING_CATALOG.slice(0, 18)
     .map((item) => `- [${item.label} Movies](${absoluteUrl(`/streaming/${item.slug}`)}): ${item.tagline}`)
     .join('\n');
 
@@ -44,7 +44,7 @@ export async function GET() {
     (item) => `- [${item.label}](${absoluteUrl(`/popular/${item.slug}`)}): ${item.description}`
   ).join('\n');
 
-  const originLinks = ORIGIN_CATALOG.slice(0, 10)
+  const originLinks = ORIGIN_CATALOG.slice(0, 18)
     .map(
       (item) =>
         `- [${item.label} Movies](${absoluteUrl(`/origin/${item.slug}`)}): Movies produced in or spoken in ${item.label}.`
@@ -61,9 +61,14 @@ ${siteConfig.name} (${siteConfig.url}) is an independent movie discovery catalog
 
 - [Home](${siteConfig.url}): Featured trailers, trending discoveries, and curated movie rows.
 - [All Movies](${absoluteUrl('/movies')}): Complete chronologically ordered catalog of published films.
+- [Upcoming Movies & Official Trailers](${absoluteUrl('/upcoming')}): Verified upcoming theatrical releases across the US, Europe, and Asia with official YouTube trailers and countdowns.
+- [What to Watch Tonight Picker](${absoluteUrl('/tonight')}): Free interactive solo movie picker and live multiplayer couple/friend trailer swipe matcher.
+- [Personal & Shareable Watchlist](${absoluteUrl('/watchlist')}): Zero-login browser watchlist with one-click shareable list links.
 - [Movies Under 90 Minutes](${absoluteUrl('/movies/under-90-minutes')}): Feature films between 60 and 90 minutes for quick weeknight watches.
 - [Movies Under 2 Hours](${absoluteUrl('/movies/under-2-hours')}): Complete feature films running between 60 and 120 minutes.
 - [Movie Franchises & Watch Orders](${absoluteUrl('/collections')}): Chronological franchise watch guides with total marathon runtimes.
+- [Global Film Studios](${absoluteUrl('/studios')}): Curated catalogs for 36 iconic US, European, and Asian production studios including A24, Blumhouse, Pixar, BBC Film, StudioCanal, TOHO, and CJ ENM.
+- [Movie Themes & Story Tropes](${absoluteUrl('/themes')}): 35 high-intent thematic guides including Time Travel, Based on a True Story, Based on a Book, Found Footage, Heist, Anime, Folk Horror, Cyberpunk, and Christmas Movies.
 - [Streaming Platforms](${absoluteUrl('/streaming')}): Browse movies by streaming, rental, or free-with-ads service.
 - [Popular & Top Rated](${absoluteUrl('/popular')}): Audience popularity leaders, Bayesian-weighted top-rated films, and latest releases.
 - [Genres](${absoluteUrl('/genres')}): Curated genre catalogs including Action, Science Fiction, Drama, Horror, Thriller, Animation, and Comedy.
@@ -99,12 +104,15 @@ ${originLinks}
 - Movie detail & trailer pages: \`${siteConfig.url}/watch/{movie-slug}\` (includes official trailer, synopsis, runtime, age rating, director, top cast, and regional streaming options).
 - Similar movie comparison guides: \`${siteConfig.url}/movies-like/{movie-slug}\` (curated recommendations with shared themes, runtime deltas, ratings, and streaming platforms).
 - Franchise watch order guides: \`${siteConfig.url}/collection/{collection-slug}\` (chronological watch order and total marathon runtime).
+- Film studio catalogs: \`${siteConfig.url}/studio/{studio-slug}\` (e.g., \`/studio/a24\`, \`/studio/blumhouse\`, \`/studio/toho\`, \`/studio/studiocanal\`, \`/studio/bbc-film\`, \`/studio/cj-enm\`).
+- Thematic & story trope guides: \`${siteConfig.url}/theme/{theme-slug}\` (e.g., \`/theme/time-travel\`, \`/theme/based-on-true-story\`, \`/theme/christmas\`, \`/theme/found-footage\`, \`/theme/heist\`).
 - Cast & crew filmography pages: \`${siteConfig.url}/person/{person-slug}\` (includes biography, personal details, and published catalog filmography).
 - Genre pages: \`${siteConfig.url}/genre/{genre-slug}\`
 - Genre by release year guides: \`${siteConfig.url}/genre/{genre-slug}/{yyyy}\`
 - Streaming platform pages: \`${siteConfig.url}/streaming/{platform-slug}\`
 - Streaming by genre guides: \`${siteConfig.url}/streaming/{platform-slug}/{genre-slug}\`
 - Release year pages: \`${siteConfig.url}/year/{yyyy}\`
+- Upcoming theatrical calendar by year: \`${siteConfig.url}/upcoming/{yyyy}\`
 - Country & language pages: \`${siteConfig.url}/origin/{origin-slug}\`
 - Country & language by genre guides: \`${siteConfig.url}/origin/{origin-slug}/{genre-slug}\`
 

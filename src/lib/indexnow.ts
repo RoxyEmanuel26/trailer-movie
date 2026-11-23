@@ -96,6 +96,11 @@ export function coreIndexNowPaths() {
   return [
     absoluteUrl('/'),
     absoluteUrl('/movies'),
+    absoluteUrl('/upcoming'),
+    absoluteUrl('/tonight'),
+    absoluteUrl('/collections'),
+    absoluteUrl('/studios'),
+    absoluteUrl('/themes'),
     absoluteUrl('/popular'),
     absoluteUrl('/streaming'),
     absoluteUrl('/genres'),

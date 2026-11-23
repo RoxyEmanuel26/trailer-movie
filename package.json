@@ -22,6 +22,8 @@
     "db:audit": "npx tsx scripts/audit-database-fields.ts",
     "seo:seed-genres": "npx tsx --env-file=.env scripts/seed-genre-descriptions.ts",
     "seo:activate-franchises": "tsx --env-file=.env scripts/activate-franchise-collections.ts",
+    "seo:publish-upcoming": "tsx --env-file=.env scripts/publish-upcoming-trailers.ts",
+    "seo:maintain": "tsx --env-file=.env scripts/run-seo-maintenance.ts",
     "seo:warm-sitemaps": "tsx --env-file=.env scripts/warm-sitemap-cache.ts",
     "db:prune-imports": "tsx --env-file=.env scripts/prune-import-jobs.ts",
     "db:cleanup": "tsx --env-file=.env scripts/cleanup-database.ts",

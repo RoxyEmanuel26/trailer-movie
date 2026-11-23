@@ -155,6 +155,26 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         Movies
       </Link>
 
+      <Link
+        href="/upcoming"
+        prefetch={false}
+        className="nav-link"
+        aria-current={isPathActive(pathname, ['/upcoming']) ? 'page' : undefined}
+        onPointerEnter={() => handleClose(0)}
+      >
+        Upcoming
+      </Link>
+
+      <Link
+        href="/tonight"
+        prefetch={false}
+        className="nav-link"
+        aria-current={pathname === '/tonight' ? 'page' : undefined}
+        onPointerEnter={() => handleClose(0)}
+      >
+        Movie Picker
+      </Link>
+
       <NavDropdown
         menu="genres"
         label="Genres"
@@ -198,7 +218,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         label="Streaming"
         active={isPathActive(pathname, ['/streaming'])}
         openMenu={openMenu}
-        panelClassName="left-0 w-[30rem]"
+        panelClassName="left-0 w-[34rem]"
         onOpen={handleOpen}
         onToggle={handleToggle}
         onClose={handleClose}
@@ -215,7 +235,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
               All services
             </Link>
           </div>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-3 gap-1">
             {STREAMING_CATALOG.map((item) => (
               <Link
                 key={item.slug}
@@ -227,6 +247,99 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
                 {item.label}
               </Link>
             ))}
+          </div>
+        </div>
+      </NavDropdown>
+
+      <NavDropdown
+        menu="explore"
+        label="Explore"
+        active={isPathActive(pathname, ['/themes', '/theme', '/studios', '/studio', '/collections', '/collection'])}
+        openMenu={openMenu}
+        panelClassName="left-0 w-[36rem]"
+        onOpen={handleOpen}
+        onToggle={handleToggle}
+        onClose={handleClose}
+      >
+        <div className="nav-dropdown-surface space-y-3">
+          <div>
+            <div className="flex items-center justify-between px-3 pb-2 pt-1">
+              <p className="nav-dropdown-label">Themes, tropes &amp; watch guides</p>
+              <Link
+                href="/themes"
+                prefetch={false}
+                onClick={() => handleClose(0)}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                All themes
+              </Link>
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+              {[
+                { href: '/collections', label: 'Franchises in Order' },
+                { href: '/movies/under-90-minutes', label: 'Under 90 Minutes' },
+                { href: '/theme/christmas', label: 'Christmas Movies' },
+                { href: '/theme/time-travel', label: 'Time Travel' },
+                { href: '/theme/based-on-true-story', label: 'True Stories' },
+                { href: '/theme/based-on-a-book', label: 'Based on a Book' },
+                { href: '/theme/found-footage', label: 'Found Footage' },
+                { href: '/theme/psychological-thriller', label: 'Psych Thriller' },
+                { href: '/theme/plot-twist', label: 'Plot Twist' },
+                { href: '/theme/anime', label: 'Anime Movies' },
+                { href: '/theme/heist', label: 'Heist Movies' },
+                { href: '/theme/cyberpunk', label: 'Cyberpunk' },
+              ].map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  prefetch={false}
+                  onClick={() => handleClose(0)}
+                  className="nav-dropdown-item"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t pt-2">
+            <div className="flex items-center justify-between px-3 pb-2 pt-1">
+              <p className="nav-dropdown-label">Iconic film studios (US · Europe · Asia)</p>
+              <Link
+                href="/studios"
+                prefetch={false}
+                onClick={() => handleClose(0)}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                All studios
+              </Link>
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+              {[
+                { href: '/studio/a24', label: 'A24' },
+                { href: '/studio/blumhouse', label: 'Blumhouse' },
+                { href: '/studio/marvel-studios', label: 'Marvel Studios' },
+                { href: '/studio/pixar', label: 'Pixar' },
+                { href: '/studio/warner-bros', label: 'Warner Bros.' },
+                { href: '/studio/bbc-film', label: 'BBC Film' },
+                { href: '/studio/studiocanal', label: 'StudioCanal' },
+                { href: '/studio/film4', label: 'Film4' },
+                { href: '/studio/pathe', label: 'Pathé' },
+                { href: '/studio/toho', label: 'TOHO' },
+                { href: '/studio/cj-enm', label: 'CJ ENM' },
+                { href: '/studio/toei-animation', label: 'Toei Animation' },
+              ].map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  prefetch={false}
+                  onClick={() => handleClose(0)}
+                  className="nav-dropdown-item"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
       </NavDropdown>
@@ -272,7 +385,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
         label="Countries"
         active={isPathActive(pathname, ['/countries', '/origin'])}
         openMenu={openMenu}
-        panelClassName="left-1/2 w-[38rem] -translate-x-1/2"
+        panelClassName="left-1/2 w-[42rem] -translate-x-1/2"
         onOpen={handleOpen}
         onToggle={handleToggle}
         onClose={handleClose}
@@ -289,7 +402,7 @@ export function BrowseNav({ genres, years }: BrowseNavProps) {
               Overview
             </Link>
           </div>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-3 gap-1">
             {ORIGIN_CATALOG.map((item) => (
               <Link
                 key={item.slug}

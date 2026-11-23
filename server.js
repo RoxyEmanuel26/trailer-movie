@@ -174,6 +174,8 @@ const NON_CACHEABLE_PREFIXES = [
   '/admin',
   '/login',
   '/search',
+  '/tonight',
+  '/watchlist',
   '/monitoring',
   '/person-not-found',
   '/_next',
@@ -490,7 +492,10 @@ function scheduleSitemapWarmup(port) {
   const warmCoreHubs = async () => {
     const corePaths = [
       '/',
+      '/upcoming',
       '/collections',
+      '/studios',
+      '/themes',
       '/movies/under-90-minutes',
       '/years',
       '/countries',
@@ -507,11 +512,43 @@ function scheduleSitemapWarmup(port) {
     }
   };
 
+  const runDailySeoMaintenanceIfEnabled = () => {
+    if (process.env.ENABLE_AUTO_SEO_MAINTENANCE !== 'true' || !revalidationSecret) return;
+    try {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port,
+          path: '/api/internal/seo-maintain',
+          method: 'POST',
+          headers: {
+            Host: hostHeader,
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${revalidationSecret}`,
+            ...(originToken ? { 'x-movieflix-origin-token': originToken } : {}),
+          },
+          timeout: 120_000,
+        },
+        (res) => {
+          res.resume();
+        },
+      );
+      req.on('error', () => {});
+      req.write(JSON.stringify({ dryRun: false, submitIndexNow: true }));
+      req.end();
+    } catch {}
+  };
+
   setTimeout(() => {
     void warmCoreHubs().then(() => runWarmup(false));
     setInterval(() => {
       void runWarmup(true);
     }, 4 * 3600 * 1000).unref();
+    if (process.env.ENABLE_AUTO_SEO_MAINTENANCE === 'true') {
+      setInterval(() => {
+        runDailySeoMaintenanceIfEnabled();
+      }, 24 * 3600 * 1000).unref();
+    }
   }, 15_000).unref();
 }
 

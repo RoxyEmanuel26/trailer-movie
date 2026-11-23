@@ -46,6 +46,23 @@ const nextConfig: NextConfig = {
   },
   poweredByHeader: false,
   async headers() {
+    const baseCsp = `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://image.tmdb.org https://i.ytimg.com; font-src 'self' data:; connect-src 'self'${sentryConnectOrigin ? ` ${sentryConnectOrigin}` : ''}`;
+    const ogImageHeaders = [
+      { key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' },
+      {
+        key: 'Cache-Control',
+        value: 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+      },
+      {
+        key: 'CDN-Cache-Control',
+        value: 'public, max-age=3600, stale-while-revalidate=86400',
+      },
+      {
+        key: 'Cloudflare-CDN-Cache-Control',
+        value: 'public, max-age=3600, stale-while-revalidate=86400',
+      },
+    ];
+
     return [
       {
         source: '/(.*)',
@@ -55,20 +72,12 @@ const nextConfig: NextConfig = {
             value: 'nosniff',
           },
           {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin',
           },
           {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://image.tmdb.org https://i.ytimg.com; font-src 'self' data:; connect-src 'self'${sentryConnectOrigin ? ` ${sentryConnectOrigin}` : ''}`,
           },
           {
             key: 'Permissions-Policy',
@@ -85,40 +94,62 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/opengraph-image',
+        source: '/((?!embed/).*)',
         headers: [
-          { key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' },
           {
-            key: 'Cache-Control',
-            value: 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+            key: 'X-Frame-Options',
+            value: 'DENY',
           },
           {
-            key: 'CDN-Cache-Control',
-            value: 'public, max-age=3600, stale-while-revalidate=86400',
-          },
-          {
-            key: 'Cloudflare-CDN-Cache-Control',
-            value: 'public, max-age=3600, stale-while-revalidate=86400',
+            key: 'Content-Security-Policy',
+            value: baseCsp,
           },
         ],
       },
       {
-        source: '/watch/:slug/opengraph-image',
+        source: '/embed/:path*',
         headers: [
-          { key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' },
           {
-            key: 'Cache-Control',
-            value: 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+            key: 'Content-Security-Policy',
+            value: `${baseCsp}; frame-ancestors *`,
           },
           {
-            key: 'CDN-Cache-Control',
-            value: 'public, max-age=3600, stale-while-revalidate=86400',
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'cross-origin',
           },
           {
-            key: 'Cloudflare-CDN-Cache-Control',
-            value: 'public, max-age=3600, stale-while-revalidate=86400',
+            key: 'X-Robots-Tag',
+            value: 'noindex, nofollow',
           },
         ],
+      },
+      {
+        source: '/opengraph-image',
+        headers: ogImageHeaders,
+      },
+      {
+        source: '/tonight/opengraph-image',
+        headers: ogImageHeaders,
+      },
+      {
+        source: '/upcoming/opengraph-image',
+        headers: ogImageHeaders,
+      },
+      {
+        source: '/watch/:slug/opengraph-image',
+        headers: ogImageHeaders,
+      },
+      {
+        source: '/movies-like/:slug/opengraph-image',
+        headers: ogImageHeaders,
+      },
+      {
+        source: '/collection/:slug/opengraph-image',
+        headers: ogImageHeaders,
+      },
+      {
+        source: '/person/:slug/opengraph-image',
+        headers: ogImageHeaders,
       },
       {
         source: '/brand/:path*',

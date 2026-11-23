@@ -22,9 +22,32 @@ export type MovieQualityInput = {
   activeYoutubeTrailerCount: number;
 };
 
-export function evaluateMovieQuality(input: MovieQualityInput): MovieQualityIssue[] {
+export const UPCOMING_WINDOW_DAYS = 540;
+const UPCOMING_PRODUCTION_STATUSES = new Set(['post production', 'in production', 'planned']);
+
+export function isUpcomingTrailerReady(input: MovieQualityInput, now = new Date()): boolean {
+  const status = input.productionStatus?.trim().toLowerCase() || '';
+  if (!UPCOMING_PRODUCTION_STATUSES.has(status)) return false;
+  if (!input.releaseDate) return false;
+  const releaseTime = input.releaseDate.getTime();
+  if (!Number.isFinite(releaseTime)) return false;
+  const nowTime = now.getTime();
+  const maxUpcomingTime = nowTime + UPCOMING_WINDOW_DAYS * 86_400_000;
+  if (releaseTime <= nowTime || releaseTime > maxUpcomingTime) return false;
+  if (!input.title.trim()) return false;
+  if ((input.synopsis?.trim().length ?? 0) < 40) return false;
+  if (!input.posterUrl?.trim() || /coming soon/i.test(input.posterUrl)) return false;
+  if (input.genreCount === 0) return false;
+  if (!input.youtubeTrailerId?.trim() && input.activeYoutubeTrailerCount === 0) return false;
+  return true;
+}
+
+export function evaluateMovieQuality(input: MovieQualityInput, now = new Date()): MovieQualityIssue[] {
   const issues: MovieQualityIssue[] = [];
-  if (input.productionStatus?.toLowerCase() !== 'released') issues.push('tmdb_not_released');
+  const isReleased = input.productionStatus?.toLowerCase() === 'released';
+  if (!isReleased && !isUpcomingTrailerReady(input, now)) {
+    issues.push('tmdb_not_released');
+  }
   if (!input.title.trim()) issues.push('missing_title');
   if (!input.releaseDate) issues.push('missing_release_date');
   if (!input.synopsis?.trim()) issues.push('missing_synopsis');

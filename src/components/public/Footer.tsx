@@ -40,6 +40,33 @@ export async function Footer() {
             </li>
             <li>
               <Link
+                href="/upcoming"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Upcoming Releases
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/tonight"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Movie Night Picker
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/watchlist"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                My Watchlist
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/popular"
                 prefetch={false}
                 className="flex min-h-11 items-center hover:text-foreground"
@@ -54,6 +81,24 @@ export async function Footer() {
                 className="flex min-h-11 items-center hover:text-foreground"
               >
                 Franchises in Order
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/studios"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Film Studios
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/themes"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Themes &amp; Tropes
               </Link>
             </li>
             <li>
@@ -159,6 +204,69 @@ export async function Footer() {
                 className="flex min-h-11 items-center hover:text-foreground"
               >
                 Korean thriller movies
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/streaming/sky"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Movies on Sky
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/origin/spain-spanish"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Spanish movies
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/origin/nordic"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Nordic cinema
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/studio/a24"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                A24 movies
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/studio/toho"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                TOHO movies
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/theme/time-travel"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Time travel movies
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/theme/based-on-true-story"
+                prefetch={false}
+                className="flex min-h-11 items-center hover:text-foreground"
+              >
+                Based on a true story
               </Link>
             </li>
           </ul>
