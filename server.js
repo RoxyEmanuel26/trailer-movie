@@ -713,7 +713,9 @@ function scheduleDiskHousekeeping() {
 }
 
 const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '5060', 10);
-const hostname = process.env.HOSTNAME || '0.0.0.0';
+// Always bind to 0.0.0.0 by default in container environments (Docker sets HOSTNAME to the container UUID,
+// which binds only to the container's internal hostname IP and blocks 127.0.0.1 and external port forwarding).
+const hostname = process.env.BIND_HOST || '0.0.0.0';
 
 process.env.NODE_ENV = 'production';
 process.env.PORT = String(port);
