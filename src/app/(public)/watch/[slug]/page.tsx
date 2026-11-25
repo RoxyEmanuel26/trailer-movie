@@ -68,7 +68,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         ? `Watch the official trailer for ${movie.title}${year ? ` (${year})` : ''}, track its theatrical release date, and explore the confirmed cast and story.`
         : `Watch the trailer for ${movie.title}, explore its cast and crew, and find where it is available.`,
     ),
-    image: `${canonicalPath}/opengraph-image`,
+    useRouteOpenGraphImage: true,
     path: canonicalPath,
     indexable: movie.importQualityStatus === 'READY',
   });

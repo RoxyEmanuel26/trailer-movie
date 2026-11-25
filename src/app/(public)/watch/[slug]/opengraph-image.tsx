@@ -64,10 +64,10 @@ export default async function MovieOpenGraphImage({
             : movie.synopsis;
       }
       if (movie.backdropUrl) {
-        backdropSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.backdropUrl, 1280));
+        backdropSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.backdropUrl, 780));
       }
       if (movie.posterUrl) {
-        posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.posterUrl, 500));
+        posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.posterUrl, 342));
       }
     }
   } catch {

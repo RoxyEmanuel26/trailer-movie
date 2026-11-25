@@ -45,11 +45,11 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
 
   return SeoService.generateMetadata('Page', 'tonight', {
     title: roomCode
-      ? `Join Movie Night Room ${roomCode} — Swipe & Match Trailers | ${siteConfig.name}`
+      ? `Join Movie Night Room ${roomCode} — Swipe & Match Trailers`
       : 'What to Watch Tonight? Free Movie Picker & Couple Swipe Matcher',
     description:
       'Decide what movie to watch tonight in 30 seconds. Filter by mood, Netflix, Prime Video, Disney+, US, European & Asian cinema—or swipe live with your partner or friends to match.',
-    image: '/tonight/opengraph-image',
+    useRouteOpenGraphImage: true,
     path: '/tonight',
     indexable: !roomCode,
   });

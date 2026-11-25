@@ -45,10 +45,10 @@ export default async function MoviesLikeOpenGraphImage({
         subtitle = `Featuring ${topRecs} — compare shared themes, runtimes, ratings & streaming platforms.`;
       }
       if (movie.backdropUrl) {
-        backdropSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.backdropUrl, 1280));
+        backdropSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.backdropUrl, 780));
       }
       if (movie.posterUrl) {
-        posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.posterUrl, 500));
+        posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(movie.posterUrl, 342));
       }
     }
   } catch {

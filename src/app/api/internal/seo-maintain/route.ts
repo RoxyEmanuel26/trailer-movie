@@ -48,7 +48,9 @@ export async function POST(request: NextRequest) {
       revalidatePath('/collections');
       revalidatePath('/collection', 'layout');
       revalidatePath('/studios');
+      revalidatePath('/studio', 'layout');
       revalidatePath('/themes');
+      revalidatePath('/theme', 'layout');
       revalidatePath('/sitemap.xml');
       revalidatePath('/sitemaps', 'layout');
     } catch {

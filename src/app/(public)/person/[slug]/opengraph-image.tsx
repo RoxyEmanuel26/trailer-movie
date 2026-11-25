@@ -46,7 +46,7 @@ export default async function PersonOpenGraphImage({
         bioSnippet = clean.length > 135 ? `${clean.slice(0, 132).trimEnd()}...` : clean;
       }
       if (person.headshotUrl) {
-        headshotSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(person.headshotUrl, 500));
+        headshotSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(person.headshotUrl, 342));
       }
     }
   } catch {

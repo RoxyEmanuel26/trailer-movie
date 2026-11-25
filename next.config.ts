@@ -124,31 +124,11 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/opengraph-image',
+        source: '/opengraph-image:suffix(-[a-z0-9]+)?',
         headers: ogImageHeaders,
       },
       {
-        source: '/tonight/opengraph-image',
-        headers: ogImageHeaders,
-      },
-      {
-        source: '/upcoming/opengraph-image',
-        headers: ogImageHeaders,
-      },
-      {
-        source: '/watch/:slug/opengraph-image',
-        headers: ogImageHeaders,
-      },
-      {
-        source: '/movies-like/:slug/opengraph-image',
-        headers: ogImageHeaders,
-      },
-      {
-        source: '/collection/:slug/opengraph-image',
-        headers: ogImageHeaders,
-      },
-      {
-        source: '/person/:slug/opengraph-image',
+        source: '/:path*/opengraph-image:suffix(-[a-z0-9]+)?',
         headers: ogImageHeaders,
       },
       {

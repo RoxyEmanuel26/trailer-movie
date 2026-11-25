@@ -1,7 +1,10 @@
 import * as React from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, Building2, Globe2 } from 'lucide-react';
+import { matchMovieStudios } from '@/lib/studio-catalog';
+import { matchMovieThemes } from '@/lib/theme-catalog';
 
 function formatCurrency(amount: any) {
   return new Intl.NumberFormat('en-US', {
@@ -124,34 +127,47 @@ export function MovieExtraInfo({
           <div className="flex flex-col gap-4">
             {safeCompanies.map((mc: any, idx: number) => {
               const company = mc.company || mc;
+              const matchedStudio = matchMovieStudios([{ company }], 1)[0] || null;
+              const logoNode = company.logoUrl || company.logo_path ? (
+                <div className="relative w-10 h-10 bg-white rounded-md p-1 border shrink-0">
+                  <Image
+                    src={
+                      company.logoUrl || `https://image.tmdb.org/t/p/w92${company.logo_path}`
+                    }
+                    alt={company.name}
+                    fill
+                    sizes="40px"
+                    className="object-contain p-1"
+                  />
+                </div>
+              ) : (
+                <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-md border shrink-0">
+                  <Building2 className="w-4 h-4 text-muted-foreground" />
+                </div>
+              );
+              const key = company.id
+                ? `${company.id}-${idx}`
+                : company.name
+                  ? `${company.name}-${idx}`
+                  : idx;
+
+              if (matchedStudio) {
+                return (
+                  <Link
+                    key={key}
+                    href={`/studio/${matchedStudio.slug}`}
+                    prefetch={false}
+                    className="group flex items-center gap-3 rounded-lg transition-colors hover:text-primary"
+                  >
+                    {logoNode}
+                    <span className="text-sm font-medium group-hover:underline">{company.name}</span>
+                  </Link>
+                );
+              }
+
               return (
-                <div
-                  key={
-                    company.id
-                      ? `${company.id}-${idx}`
-                      : company.name
-                        ? `${company.name}-${idx}`
-                        : idx
-                  }
-                  className="flex items-center gap-3"
-                >
-                  {company.logoUrl || company.logo_path ? (
-                    <div className="relative w-10 h-10 bg-white rounded-md p-1 border">
-                      <Image
-                        src={
-                          company.logoUrl || `https://image.tmdb.org/t/p/w92${company.logo_path}`
-                        }
-                        alt={company.name}
-                        fill
-                        sizes="40px"
-                        className="object-contain p-1"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-10 h-10 bg-muted flex items-center justify-center rounded-md border">
-                      <Building2 className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                  )}
+                <div key={key} className="flex items-center gap-3">
+                  {logoNode}
                   <span className="text-sm font-medium">{company.name}</span>
                 </div>
               );
@@ -168,9 +184,25 @@ export function MovieExtraInfo({
           <div className="flex flex-wrap gap-2">
             {safeKeywords.map((mk: any, idx: number) => {
               const k = mk.keyword || mk;
+              const matchedTheme = matchMovieThemes([{ keyword: k }], 1)[0] || null;
+              const key = k.id ? `${k.id}-${idx}` : k.name ? `${k.name}-${idx}` : idx;
+
+              if (matchedTheme) {
+                return (
+                  <Link key={key} href={`/theme/${matchedTheme.slug}`} prefetch={false}>
+                    <Badge
+                      variant="secondary"
+                      className="font-medium text-xs transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      {k.name}
+                    </Badge>
+                  </Link>
+                );
+              }
+
               return (
                 <Badge
-                  key={k.id ? `${k.id}-${idx}` : k.name ? `${k.name}-${idx}` : idx}
+                  key={key}
                   variant="secondary"
                   className="font-normal text-xs"
                 >

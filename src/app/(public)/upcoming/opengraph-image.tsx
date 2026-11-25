@@ -37,7 +37,7 @@ export default async function UpcomingOpenGraphImage() {
       subtitle = `Featuring ${topTitles} — official trailers, release dates, countdowns & cast lists.`;
     }
     if (data[0]?.posterUrl) {
-      posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(data[0].posterUrl, 500));
+      posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(data[0].posterUrl, 342));
     }
   } catch {
     // Fallback to branded card

@@ -25,6 +25,7 @@ import { buildSharedWatchlistPath, parseSharedWatchlistIds } from '../src/lib/wa
 import { STUDIO_CATALOG, buildStudioFaqs, getStudioBySlug, matchMovieStudios } from '../src/lib/studio-catalog';
 import { THEME_CATALOG, buildThemeFaqs, getThemeBySlug, matchMovieThemes } from '../src/lib/theme-catalog';
 import { buildMovieEmbedSnippet } from '../src/lib/embed-snippet';
+import { coreIndexNowPaths } from '../src/lib/indexnow';
 import { isAllowedRevalidationPath } from '../src/lib/revalidation';
 import { SITEMAP_SNAPSHOT_VERSION } from '../src/lib/sitemap-cache';
 import { pruneStaleSitemapSnapshots } from '../src/lib/sitemap-cache-prune';
@@ -679,8 +680,73 @@ test('Phase 3 Backlink Engine & Headers: embed snippet escapes HTML attributes a
   const nextConfigSrc = readFileSync(path.resolve('next.config.ts'), 'utf8');
   assert.match(nextConfigSrc, /\/\(\(\?!embed\/\)\.\*\)/);
   assert.match(nextConfigSrc, /frame-ancestors \*/);
-  assert.match(nextConfigSrc, /\/movies-like\/:slug\/opengraph-image/);
-  assert.match(nextConfigSrc, /\/collection\/:slug\/opengraph-image/);
-  assert.match(nextConfigSrc, /\/person\/:slug\/opengraph-image/);
-  assert.match(nextConfigSrc, /\/upcoming\/opengraph-image/);
+  assert.match(nextConfigSrc, /\/opengraph-image:suffix\(-\[a-z0-9\]\+\)\?/);
+  assert.match(nextConfigSrc, /\/:path\*\/opengraph-image:suffix\(-\[a-z0-9\]\+\)\?/);
+});
+
+test('Phase 3 Audit Regressions: dynamic OG deferral, proxy pagination hubs, single title suffix & core IndexNow paths', () => {
+  const ogRouteFiles = [
+    'src/app/(public)/watch/[slug]/page.tsx',
+    'src/app/(public)/movies-like/[slug]/page.tsx',
+    'src/app/(public)/collection/[slug]/page.tsx',
+    'src/app/(public)/person/[slug]/page.tsx',
+    'src/app/(public)/upcoming/page.tsx',
+    'src/app/(public)/tonight/page.tsx',
+  ];
+
+  for (const relPath of ogRouteFiles) {
+    const src = readFileSync(path.resolve(relPath), 'utf8');
+    assert.match(src, /useRouteOpenGraphImage:\s*true/, `${relPath} must defer OG images to compiled hashed route`);
+    assert.doesNotMatch(
+      src,
+      /image:\s*(?:absoluteUrl\()?\s*['"`][^'"`]*\/opengraph-image['"`]/,
+      `${relPath} must not hardcode unhashed /opengraph-image URL`,
+    );
+  }
+
+  const seoServiceSrc = readFileSync(path.resolve('src/lib/services/SeoService.ts'), 'utf8');
+  assert.match(seoServiceSrc, /deferToRouteOpenGraphImage/);
+  assert.match(seoServiceSrc, /\.\.\.\(image \? \{ images: \[image\] \} : \{\}\)/);
+
+  const proxySrc = readFileSync(path.resolve('src/proxy.ts'), 'utf8');
+  const match = proxySrc.match(/const paginatedPublicPath\s*=\s*(\/[^\n]+\/);/);
+  assert.ok(match, 'paginatedPublicPath regex should exist in src/proxy.ts');
+  const paginatedRegex = new RegExp(match[1].slice(1, -1));
+  for (const p of [
+    '/movies',
+    '/movies/under-90-minutes',
+    '/movies/under-2-hours',
+    '/upcoming',
+    '/upcoming/2026',
+    '/studio/a24',
+    '/theme/time-travel',
+    '/collection/the-avengers-collection',
+  ]) {
+    assert.equal(paginatedRegex.test(p), true, `Expected paginatedPublicPath to match ${p}`);
+  }
+  assert.equal(paginatedRegex.test('/watch/inception-27205'), false);
+
+  const corePathnames = coreIndexNowPaths().map((url) => new URL(url).pathname);
+  for (const expected of [
+    '/movies/under-90-minutes',
+    '/movies/under-2-hours',
+    '/studios',
+    '/themes',
+    '/upcoming',
+    '/tonight',
+  ]) {
+    assert.ok(corePathnames.includes(expected), `coreIndexNowPaths() must include ${expected}`);
+  }
+
+  const tonightSrc = readFileSync(path.resolve('src/app/(public)/tonight/page.tsx'), 'utf8');
+  assert.doesNotMatch(tonightSrc, /\|\s*\$\{siteConfig\.name\}/);
+  const embedSrc = readFileSync(path.resolve('src/app/embed/watch/[slug]/page.tsx'), 'utf8');
+  assert.doesNotMatch(embedSrc, /\|\s*\$\{siteConfig\.name\}/);
+
+  const maintainSrc = readFileSync(path.resolve('src/app/api/internal/seo-maintain/route.ts'), 'utf8');
+  assert.match(maintainSrc, /revalidatePath\('\/studio',\s*'layout'\)/);
+  assert.match(maintainSrc, /revalidatePath\('\/theme',\s*'layout'\)/);
+
+  const schemaSrc = readFileSync(path.resolve('prisma/schema.prisma'), 'utf8');
+  assert.match(schemaSrc, /@@index\(\[companyId\]\)/);
 });

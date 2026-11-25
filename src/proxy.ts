@@ -8,7 +8,7 @@ import { hasValidOriginToken, ORIGIN_GATE_HEADER } from '@/lib/security/origin-g
 
 const legacyIdPattern = /^c[a-z0-9]{20,}$/i;
 const paginatedPublicPath =
-  /^\/(?:movies|search|genre\/[^/]+(?:\/\d{4})?|origin\/[^/]+(?:\/[^/]+)?|streaming\/[^/]+(?:\/[^/]+)?|year\/[^/]+|popular\/[^/]+|collection\/[^/]+|tag\/[^/]+)$/;
+  /^\/(?:movies(?:\/(?:under-90-minutes|under-2-hours))?|upcoming(?:\/\d{4})?|search|genre\/[^/]+(?:\/\d{4})?|origin\/[^/]+(?:\/[^/]+)?|streaming\/[^/]+(?:\/[^/]+)?|studio\/[^/]+|theme\/[^/]+|year\/[^/]+|popular\/[^/]+|collection\/[^/]+|tag\/[^/]+)$/;
 
 function invalidPaginationResponse() {
   return new NextResponse(

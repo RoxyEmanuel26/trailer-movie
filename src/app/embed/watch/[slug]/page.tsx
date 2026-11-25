@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { movie, canonicalPath } = result;
   const year = movie.releaseDate ? new Date(movie.releaseDate).getUTCFullYear() : null;
   return {
-    title: `${movie.title}${year ? ` (${year})` : ''} — Official Trailer Embed | ${siteConfig.name}`,
+    title: `${movie.title}${year ? ` (${year})` : ''} — Official Trailer Embed`,
     alternates: { canonical: absoluteUrl(canonicalPath) },
     robots: { index: false, follow: false },
   };

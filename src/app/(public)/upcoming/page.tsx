@@ -58,7 +58,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
     title: `Upcoming Movies & Official Trailers (${yearSpan}) — Release Calendar${page > 1 ? ` — Page ${page}` : ''}`,
     description:
       'Watch verified official trailers for the most anticipated upcoming movies across the US, Europe, and Asia. Track theatrical release dates, countdowns, casts, and synopses.',
-    image: '/upcoming/opengraph-image',
+    useRouteOpenGraphImage: true,
     path: pagePath('/upcoming', page),
     indexable: region === 'all' && total > 0,
   });

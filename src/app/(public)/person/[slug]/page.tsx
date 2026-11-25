@@ -360,7 +360,7 @@ export async function generateMetadata({
   return SeoService.generateMetadata('Person', person.id, {
     title: `${person.name} Movies, Biography & Filmography`,
     description,
-    image: `${canonicalPath}/opengraph-image`,
+    useRouteOpenGraphImage: true,
     path: canonicalPath,
     indexable: PersonRepository.isIndexableProfile(person),
     openGraphType: 'profile',

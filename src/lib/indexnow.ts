@@ -98,6 +98,8 @@ export function coreIndexNowPaths() {
     absoluteUrl('/movies'),
     absoluteUrl('/upcoming'),
     absoluteUrl('/tonight'),
+    absoluteUrl('/movies/under-90-minutes'),
+    absoluteUrl('/movies/under-2-hours'),
     absoluteUrl('/collections'),
     absoluteUrl('/studios'),
     absoluteUrl('/themes'),

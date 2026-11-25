@@ -75,7 +75,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     return SeoService.generateMetadata('Collection', collection.id, {
       title: guide.metaTitle,
       description: guide.metaDescription,
-      image: `/collection/${collection.slug}/opengraph-image`,
+      useRouteOpenGraphImage: true,
       path: pagePath(`/collection/${collection.slug}`, page),
       indexable: guide.indexable,
     });

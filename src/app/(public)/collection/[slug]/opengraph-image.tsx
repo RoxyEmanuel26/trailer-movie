@@ -61,11 +61,11 @@ export default async function CollectionOpenGraphImage({
 
     const rawBackdrop = collection.backdropUrl || collection.coverImageUrl || '';
     if (rawBackdrop) {
-      backdropSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(rawBackdrop, 1280));
+      backdropSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(rawBackdrop, 780));
     }
     const rawPoster = collection.posterUrl || movies[0]?.posterUrl || '';
     if (rawPoster) {
-      posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(rawPoster, 500));
+      posterSrc = resolveAbsoluteImageUrl(getTmdbImageUrl(rawPoster, 342));
     }
   } catch {
     // Fallback to branded card if DB is unreachable

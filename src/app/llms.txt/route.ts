@@ -1,5 +1,7 @@
 import { STREAMING_CATALOG } from '@/lib/streaming-catalog';
 import { ORIGIN_CATALOG, POPULAR_CATALOG } from '@/lib/public-catalog';
+import { STUDIO_CATALOG } from '@/lib/studio-catalog';
+import { THEME_CATALOG } from '@/lib/theme-catalog';
 import { absoluteUrl, siteConfig } from '@/lib/site-config';
 import { SeoRepository } from '@/lib/repositories/SeoRepository';
 import { MovieService } from '@/lib/services/MovieService';
@@ -67,8 +69,8 @@ ${siteConfig.name} (${siteConfig.url}) is an independent movie discovery catalog
 - [Movies Under 90 Minutes](${absoluteUrl('/movies/under-90-minutes')}): Feature films between 60 and 90 minutes for quick weeknight watches.
 - [Movies Under 2 Hours](${absoluteUrl('/movies/under-2-hours')}): Complete feature films running between 60 and 120 minutes.
 - [Movie Franchises & Watch Orders](${absoluteUrl('/collections')}): Chronological franchise watch guides with total marathon runtimes.
-- [Global Film Studios](${absoluteUrl('/studios')}): Curated catalogs for 36 iconic US, European, and Asian production studios including A24, Blumhouse, Pixar, BBC Film, StudioCanal, TOHO, and CJ ENM.
-- [Movie Themes & Story Tropes](${absoluteUrl('/themes')}): 35 high-intent thematic guides including Time Travel, Based on a True Story, Based on a Book, Found Footage, Heist, Anime, Folk Horror, Cyberpunk, and Christmas Movies.
+- [Global Film Studios](${absoluteUrl('/studios')}): Curated catalogs for ${STUDIO_CATALOG.length} iconic US, European, and Asian production studios including A24, Blumhouse, Pixar, BBC Film, StudioCanal, TOHO, and CJ ENM.
+- [Movie Themes & Story Tropes](${absoluteUrl('/themes')}): ${THEME_CATALOG.length} high-intent thematic guides including Time Travel, Based on a True Story, Based on a Book, Found Footage, Heist, Anime, Folk Horror, Cyberpunk, and Christmas Movies.
 - [Streaming Platforms](${absoluteUrl('/streaming')}): Browse movies by streaming, rental, or free-with-ads service.
 - [Popular & Top Rated](${absoluteUrl('/popular')}): Audience popularity leaders, Bayesian-weighted top-rated films, and latest releases.
 - [Genres](${absoluteUrl('/genres')}): Curated genre catalogs including Action, Science Fiction, Drama, Horror, Thriller, Animation, and Comedy.

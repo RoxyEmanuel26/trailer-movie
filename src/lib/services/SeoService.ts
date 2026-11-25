@@ -199,6 +199,7 @@ export class SeoService {
       title?: string;
       description?: string;
       image?: string;
+      useRouteOpenGraphImage?: boolean;
       path?: string;
       indexable?: boolean;
       openGraphType?: 'website' | 'profile';
@@ -221,7 +222,11 @@ export class SeoService {
 
     // Canonical URL
     const canonical = catalogMetadataCanonical(pageSeo?.canonicalUrl, fallback.path || '/');
-    const image = socialImage(ogImage, title);
+    // When a route provides a colocated opengraph-image.tsx (compiled with a route hash in Next.js 16),
+    // omitting `images` when no explicit CMS/fallback image override exists lets Next.js auto-inject
+    // the exact hashed URL into both OpenGraph and Twitter metadata.
+    const deferToRouteOpenGraphImage = Boolean(fallback.useRouteOpenGraphImage && !ogImage);
+    const image = deferToRouteOpenGraphImage ? null : socialImage(ogImage, title);
 
     const isNoindex =
       !siteConfig.indexingEnabled || pageSeo?.isNoindex === true || fallback.indexable === false;
@@ -259,14 +264,14 @@ export class SeoService {
         description: description,
         url: canonical,
         siteName: globalSettings.ogSiteName,
-        images: [image],
+        ...(image ? { images: [image] } : {}),
         type: fallback.openGraphType || 'website',
       },
       twitter: {
         card: 'summary_large_image',
         title: title,
         description: description,
-        images: [image],
+        ...(image ? { images: [image] } : {}),
         ...(globalSettings.twitterHandle ? { creator: globalSettings.twitterHandle } : {}),
       },
       ...(hasVerification

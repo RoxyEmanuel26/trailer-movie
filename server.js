@@ -530,7 +530,21 @@ function scheduleSitemapWarmup(port) {
           timeout: 120_000,
         },
         (res) => {
-          res.resume();
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => {
+            if (body.length < 4096) body += chunk;
+          });
+          res.on('end', () => {
+            try {
+              const data = JSON.parse(body);
+              console.log(
+                `[MovieFlix] Daily SEO maintenance completed: promoted=${data?.upcoming?.promotedCount ?? 0}, franchises=${data?.franchises?.updatedCount ?? 0}, indexNow=${data?.indexNow?.submitted ?? 0}`,
+              );
+            } catch {
+              console.log(`[MovieFlix] Daily SEO maintenance finished (HTTP ${res.statusCode}).`);
+            }
+          });
         },
       );
       req.on('error', () => {});

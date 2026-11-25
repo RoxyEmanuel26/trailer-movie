@@ -13,6 +13,8 @@ import { absoluteUrl, organizationSchemaId, siteConfig, websiteSchemaId } from '
 import { moviePath } from '@/lib/public-routes';
 import { getTmdbImageUrl } from '@/lib/tmdb-image-loader';
 import { formatReleaseCountdown, formatUpcomingDateShort } from '@/lib/upcoming-guides';
+import { STUDIO_CATALOG } from '@/lib/studio-catalog';
+import { THEME_CATALOG } from '@/lib/theme-catalog';
 import { isTransientDatabaseError } from '@/lib/database-errors';
 import { logger } from '@/lib/logger';
 
@@ -286,7 +288,7 @@ export default async function HomePage() {
                 </h2>
               </div>
               <Link href="/studios" prefetch={false} className="text-xs font-semibold text-primary hover:underline">
-                All 36 studios →
+                All {STUDIO_CATALOG.length} studios →
               </Link>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -329,7 +331,7 @@ export default async function HomePage() {
                 </h2>
               </div>
               <Link href="/themes" prefetch={false} className="text-xs font-semibold text-primary hover:underline">
-                All 35 themes →
+                All {THEME_CATALOG.length} themes →
               </Link>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -370,7 +372,7 @@ export default async function HomePage() {
           {[
             { href: '/upcoming', title: 'Upcoming releases', text: 'Watch verified official trailers and countdowns for upcoming theatrical films.' },
             { href: '/tonight', title: 'What to watch tonight?', text: 'Swipe trailers solo in 30 seconds or match live with your partner or friends.' },
-            { href: '/collections', title: 'Franchises in order', text: 'Chronological watch orders and marathon runtimes for 260+ major film series.' },
+            { href: '/collections', title: 'Franchises in order', text: 'Chronological watch orders and marathon runtimes for 270+ major film series.' },
             { href: '/studios', title: 'Browse by film studio', text: 'Explore A24, Blumhouse, Pixar, BBC Film, StudioCanal, TOHO, CJ ENM, and more.' },
             { href: '/themes', title: 'Movies by theme & trope', text: 'Time travel, true stories, heist, cyberpunk, folk horror, anime, and holiday picks.' },
             { href: '/movies', title: 'Explore all movies', text: 'Browse the newest releases first, then filter the catalog by what matters to you.' },

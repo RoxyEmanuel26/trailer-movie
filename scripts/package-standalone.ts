@@ -138,6 +138,9 @@ async function main() {
     if (!rawEnv.includes('INDEXNOW_KEY=')) {
       rawEnv += '\nINDEXNOW_KEY="014b76f401bfd193126b9e04845499de"\n';
     }
+    if (!rawEnv.includes('ENABLE_AUTO_SEO_MAINTENANCE=')) {
+      rawEnv += '\nENABLE_AUTO_SEO_MAINTENANCE="true"\n';
+    }
     fs.writeFileSync(path.join(STAGING_DIR, '.env.production.local'), rawEnv, 'utf8');
     fs.writeFileSync(path.join(STAGING_DIR, '.env'), rawEnv, 'utf8');
   }
